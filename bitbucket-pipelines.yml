@@ -1,56 +1,39 @@
-image: node:18
+image: node:18   # Node.js official image use kar rahe hain
 
 definitions:
-  caches:
-    npm: ~/.npm
+  steps:
+    - step: &build-and-deploy
+        name: Build and Deploy App
+        caches:
+          - node
+        script:
+          # 1. Dependencies install karo
+          - npm install
+
+          # 2. Agar .env load karna hai to ek Node.js script bana lo
+          - node load_env.js .env .env.example
+
+          # 3. Build your app (agar build script hai to)
+          - npm run build
+
+          # 4. SSH se remote server par deploy command run karo
+          - pipe: atlassian/ssh-run:0.6.1
+            variables:
+              SSH_USER: $K8S_LOGIN_USER
+              SERVER: $K8S_IP_SERVER
+              PORT: $K8S_PORT_SERVER
+              MODE: 'command'
+              COMMAND: '$K8S_OPEN_DIR_COMMAND $K8S_DEPLOYMENT_NAME $K8S_APP_NAME=$BITBUCKET_BUILD_NUMBER --record --namespace=$K8S_NAMESPACE'
 
 pipelines:
-  default:
-    - step:
-        name: Build and Test
-        caches:
-          - npm
-        script:
-          - npm ci
-          - npm run build
-        artifacts:
-          - dist/**
-          - package*.json
-
   branches:
+    prod:
+      - step:
+          deployment: prod
+          trigger: automatic
+          <<: *build-and-deploy
     dev:
       - step:
-          name: Build and Deploy to Staging
-          caches:
-            - npm
-          script:
-            - npm ci
-            - npm run build
-            - npm test
-            - echo "Deploying to staging server..."
-            - chmod +x scripts/deploy.sh
-            - ./scripts/deploy.sh staging $SERVER_PATH deploy $SERVER_HOST
-
-    master:
-      - step:
-          name: Build and Deploy to Production
-          caches:
-            - npm
-          script:
-            - npm ci
-            - npm run build
-            - npm test
-            - echo "Deploying to production server..."
-            - chmod +x scripts/deploy.sh
-            - ./scripts/deploy.sh production /var/www/dealics-prod deploy $SERVER_HOST
-
-  pull-requests:
-    '**':
-      - step:
-          name: Build and Test
-          caches:
-            - npm
-          script:
-            - npm ci
-            - npm run build
-            - npm test
+          deployment: dev
+          trigger: automatic
+          <<: *build-and-deploy

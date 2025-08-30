@@ -12,6 +12,7 @@ import {
 } from "sequelize-typescript";
   import { Category } from "../models/category.model.js";
   import { User } from "../models/user.model.js";
+  import { CardCondition } from "../models/cardCondition.model.js";
   
   @Table({
     tableName: "trading_cards",
@@ -22,7 +23,7 @@ import {
   export class TradingCard extends Model<TradingCard> {
     @PrimaryKey
     @AutoIncrement
-    @Column(DataType.BIGINT.UNSIGNED)
+    @Column(DataType.INTEGER)
     id!: number;
   
     @Default(0)
@@ -111,6 +112,7 @@ import {
     @Column(DataType.INTEGER)
     grade_rating_id?: number;
   
+    @ForeignKey(() => CardCondition)
     @AllowNull
     @Column(DataType.INTEGER)
     card_condition_id?: number;
@@ -926,5 +928,8 @@ import {
 
     @BelongsTo(() => User)
      trader?: User;
+
+    @BelongsTo(() => CardCondition)
+    cardCondition?: CardCondition;
   } 
   

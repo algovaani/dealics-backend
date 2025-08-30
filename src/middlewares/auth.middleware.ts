@@ -1,18 +1,53 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-export function userAuth(req: Request, res: Response, next: NextFunction) {
-	const authHeader = req.headers["authorization"];
-	const token = authHeader && authHeader.split(" ")[1];
+function extractToken(req: Request): string | null {
+	// Authorization header variants
+	const rawAuthLower = req.headers["authorization"] as string | undefined;
+	const rawAuthUpper = (req.headers as any)["Authorization"] as string | undefined;
+	let headerStr: string | null = null;
+	if (typeof rawAuthLower === "string" && rawAuthLower.trim()) headerStr = rawAuthLower;
+	else if (typeof rawAuthUpper === "string" && rawAuthUpper.trim()) headerStr = rawAuthUpper;
+	if (headerStr) {
+		const parts = headerStr.trim().split(/\s+/);
+		if (parts.length === 2 && /^Bearer$/i.test(parts[0] as string)) return (parts[1] as string).trim();
+		// Sometimes clients send just the token
+		if (parts.length === 1) return (parts[0] as string).trim();
+	}
 
+	// x-access-token header
+	const xAccess = req.headers["x-access-token"] as string | string[] | undefined;
+	if (typeof xAccess === "string" && xAccess.trim()) return xAccess.trim();
+	if (Array.isArray(xAccess) && xAccess[0]) return xAccess[0].trim();
+
+	// Cookie: token=...
+	const cookieHeader = req.headers["cookie"] as string | undefined;
+	if (typeof cookieHeader === "string" && cookieHeader) {
+		const parts = cookieHeader.split(";").map((c: string) => c.trim());
+		const found = parts.find((c) => c.startsWith("token="));
+		if (found) return found.slice("token=".length);
+	}
+
+	return null;
+}
+
+export function userAuth(req: Request, res: Response, next: NextFunction) {
+	const token = extractToken(req);
 	if (!token) return res.status(401).json({ message: "Unauthorized" });
 
 	try {
-		const payload = jwt.verify(token, process.env.JWT_SECRET!);
-		// Attach user info to request
-		req.user = payload;
-		next();
-	} catch (err) {
+		const secret = process.env.JWT_SECRET || "dev-secret-change";
+		const payload = jwt.verify(token, secret) as any;
+		// Attach user info to request and normalize id
+		req.user = {
+			...payload,
+			id: (payload && (payload.user_id || payload.sub || payload.id)) ?? undefined,
+		};
+		return next();
+	} catch (err: any) {
+		if (err?.name === "TokenExpiredError") {
+			return res.status(403).json({ message: "Token expired" });
+		}
 		return res.status(403).json({ message: "Invalid or expired token" });
 	}
 }

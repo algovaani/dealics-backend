@@ -18,7 +18,7 @@ import {
   export class User extends Model<User> {
     @PrimaryKey
     @AutoIncrement
-    @Column(DataType.BIGINT.UNSIGNED)
+    @Column(DataType.INTEGER)
     id!: number;
   
     @Default(0)
@@ -109,9 +109,9 @@ import {
     @Column(DataType.STRING)
     shipping_state?: string;
   
-    @AllowNull
-    @Column(DataType.BIGINT)
-    shipping_zip_code?: number;
+         @AllowNull
+     @Column(DataType.INTEGER)
+     shipping_zip_code?: number;
   
     @Default("1")
     @Column(DataType.ENUM("1", "0"))
@@ -125,9 +125,9 @@ import {
     @Column(DataType.STRING(100))
     remember_token?: string;
   
-    @AllowNull
-    @Column(DataType.BIGINT.UNSIGNED)
-    current_team_id?: number;
+         @AllowNull
+     @Column(DataType.INTEGER)
+     current_team_id?: number;
   
     @AllowNull
     @Column(DataType.STRING(2048))

@@ -29,7 +29,7 @@ pipelines:
             - npm test
             - echo "Deploying to staging server..."
             - chmod +x scripts/deploy.sh
-            - ./scripts/deploy.sh staging /var/www/dealics-staging deploy $STAGING_SERVER_HOST
+            - ./scripts/deploy.sh staging $SERVER_PATH deploy $SERVER_HOST
 
     main:
       - step:
@@ -42,7 +42,7 @@ pipelines:
             - npm test
             - echo "Deploying to production server..."
             - chmod +x scripts/deploy.sh
-            - ./scripts/deploy.sh production /var/www/dealics-prod deploy $PRODUCTION_SERVER_HOST
+            - ./scripts/deploy.sh production /var/www/dealics-prod deploy $SERVER_HOST
 
   pull-requests:
     '**':

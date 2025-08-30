@@ -5,10 +5,10 @@
 
 set -e
 
-ENVIRONMENT=${1:-staging}
-SERVER_PATH=${2:-"/var/www/dealics-backend"}
-SERVER_USER=${3:-"deploy"}
-SERVER_HOST=${4:-"your-server.com"}
+ENVIRONMENT=${"staging"}
+SERVER_PATH=${SERVER_PATH}
+SERVER_USER=${SERVER_USER}
+SERVER_HOST=${SERVER_HOST}
 
 echo "🚀 Deploying to $ENVIRONMENT environment..."
 

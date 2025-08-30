@@ -18,7 +18,7 @@ import {
   export class Category extends Model<Category> {
     @PrimaryKey
     @AutoIncrement
-    @Column(DataType.BIGINT.UNSIGNED)
+    @Column(DataType.INTEGER)
     id!: number;
   
     @AllowNull

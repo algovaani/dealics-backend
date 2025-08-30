@@ -1,7 +1,45 @@
 import { Model } from "sequelize-typescript";
 export declare class User extends Model<User> {
     id: number;
-    name: string;
-    email: string;
+    is_demo: boolean;
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+    profile_picture?: string;
+    email?: string;
+    is_email_verified: string;
+    email_verified_at?: Date;
+    password?: string;
+    two_factor_secret?: string;
+    two_factor_recovery_codes?: string;
+    two_factor_confirmed_at?: Date;
+    ebay_store_url?: string;
+    is_ebay_store_verified: string;
+    ebay_store_verified_at?: Date;
+    country_code?: string;
+    phone_number?: string;
+    about_user?: string;
+    bio?: string;
+    shipping_address?: string;
+    shipping_city?: string;
+    shipping_state?: string;
+    shipping_zip_code?: number;
+    user_status: string;
+    user_role: string;
+    remember_token?: string;
+    current_team_id?: number;
+    profile_photo_path?: string;
+    gmail_login: boolean;
+    is_veteran_user: boolean;
+    cxp_coins?: number;
+    ratings?: string;
+    followers?: number;
+    trade_transactions?: number;
+    trading_cards?: number;
+    recover_password_token?: string;
+    paypal_business_email?: string;
+    is_free_shipping: boolean;
+    shipping_flat_rate?: number;
+    add_product_shipping_flat_rate?: number;
 }
 //# sourceMappingURL=user.model.d.ts.map

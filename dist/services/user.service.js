@@ -17,7 +17,6 @@ export class UserService {
         const user = await User.findByPk(id);
         if (!user)
             return null;
-        user.name = name;
         user.email = email;
         await user.save();
         return user;

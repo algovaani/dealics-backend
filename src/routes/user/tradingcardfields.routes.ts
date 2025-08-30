@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { getTradingCardFields } from "../../controllers/tradingcardfields.controller.js";
+import { getCategoryFields } from "../../controllers/categoryfields.controller.js";
 import { userAuth } from "../../middlewares/auth.middleware.js";
 
 const router = Router();
 
 router.use(userAuth);
-router.get("/", getTradingCardFields);
+router.get("/", getCategoryFields);
 
 export default router;

@@ -13,13 +13,12 @@ pipelines:
         script:
           - npm ci
           - npm run build
-          - npm test
         artifacts:
           - dist/**
           - package*.json
 
   branches:
-    staging:
+    develop:
       - step:
           name: Build and Deploy to Staging
           caches:
@@ -30,9 +29,9 @@ pipelines:
             - npm test
             - echo "Deploying to staging server..."
             - chmod +x scripts/deploy.sh
-            - ./scripts/deploy.sh staging $SERVER_PATH deploy $SERVER_PATH
+            - ./scripts/deploy.sh staging /var/www/dealics-staging deploy $STAGING_SERVER_HOST
 
-    production:
+    main:
       - step:
           name: Build and Deploy to Production
           caches:
@@ -43,7 +42,7 @@ pipelines:
             - npm test
             - echo "Deploying to production server..."
             - chmod +x scripts/deploy.sh
-            - ./scripts/deploy.sh production /var/www/dealics-prod deploy $SERVER_PATH
+            - ./scripts/deploy.sh production /var/www/dealics-prod deploy $PRODUCTION_SERVER_HOST
 
   pull-requests:
     '**':

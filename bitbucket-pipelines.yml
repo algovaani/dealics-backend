@@ -1,0 +1,57 @@
+image: node:18
+
+definitions:
+  caches:
+    npm: ~/.npm
+
+pipelines:
+  default:
+    - step:
+        name: Build and Test
+        caches:
+          - npm
+        script:
+          - npm ci
+          - npm run build
+          - npm test
+        artifacts:
+          - dist/**
+          - package*.json
+
+  branches:
+    staging:
+      - step:
+          name: Build and Deploy to Staging
+          caches:
+            - npm
+          script:
+            - npm ci
+            - npm run build
+            - npm test
+            - echo "Deploying to staging server..."
+            - chmod +x scripts/deploy.sh
+            - ./scripts/deploy.sh staging $SERVER_PATH deploy $SERVER_PATH
+
+    production:
+      - step:
+          name: Build and Deploy to Production
+          caches:
+            - npm
+          script:
+            - npm ci
+            - npm run build
+            - npm test
+            - echo "Deploying to production server..."
+            - chmod +x scripts/deploy.sh
+            - ./scripts/deploy.sh production /var/www/dealics-prod deploy $SERVER_PATH
+
+  pull-requests:
+    '**':
+      - step:
+          name: Build and Test
+          caches:
+            - npm
+          script:
+            - npm ci
+            - npm run build
+            - npm test

@@ -18,7 +18,7 @@ pipelines:
           - package*.json
 
   branches:
-    develop:
+    dev:
       - step:
           name: Build and Deploy to Staging
           caches:
@@ -31,7 +31,7 @@ pipelines:
             - chmod +x scripts/deploy.sh
             - ./scripts/deploy.sh staging $SERVER_PATH deploy $SERVER_HOST
 
-    main:
+    master:
       - step:
           name: Build and Deploy to Production
           caches:

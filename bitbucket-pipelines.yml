@@ -27,8 +27,8 @@ pipelines:
     dev:
       - step: *build-step
       - step:
-          name: Deploy to Development
-          deployment: development
+          name: Deploy to staging
+          deployment: staging
           script:
             - apt-get update
             - apt-get install -y openssh-client rsync

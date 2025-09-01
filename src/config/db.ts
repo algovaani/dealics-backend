@@ -1,4 +1,5 @@
 import { Sequelize } from "sequelize-typescript";
+import mysql from "mysql2";   // ✅ add this
 
 export const sequelize = new Sequelize({
   database: "stagingtradeblock",
@@ -7,7 +8,7 @@ export const sequelize = new Sequelize({
   host: "localhost",
   port: 3306,
   dialect: "mysql",
-  dialectModule: require("mysql2"),
+  dialectModule: mysql,   // ✅ use imported mysql
   logging: false,
 });
 

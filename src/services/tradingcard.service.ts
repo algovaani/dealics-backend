@@ -2,7 +2,7 @@
 import { TradingCard } from "../models/tradingcard.model.js";
 import { Category } from "../models/category.model.js";
 import { User } from "../models/user.model.js";
-import { CategoryField } from "../models/category_field.model.js";
+import { CategoryField } from "../models/categoryField.model.js";
 import { CardCondition } from "../models/cardCondition.model.js";
 import { HelperService } from "./helper.service.js";
 import { Op, Sequelize, QueryTypes } from "sequelize";
@@ -328,6 +328,331 @@ export class TradingCardService {
     } catch (error) {
       console.error('Error getting card condition by ID:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Save trading card with master data processing (equivalent to Laravel saveProductData)
+   */
+  async saveTradingCard(
+    requestData: any,
+    categoryId: number,
+    userId: number
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      // Base save data
+      const saveData: any = {
+        creator_id: userId,
+        trader_id: userId,
+        category_id: categoryId,
+      };
+
+      // Get category fields with priority
+      const categoryFields = await CategoryField.findAll({
+        where: { category_id: categoryId },
+        order: [['priority', 'ASC']],
+        attributes: ['fields', 'is_required', 'additional_information']
+      });
+
+      // Process category fields
+      const productAttributes: any = {};
+      const markAsTitleArr: any = {};
+      const markAsTitleColsArr: string[] = [];
+
+      for (const cField of categoryFields) {
+        const fieldName = cField.fields;
+        
+        if (fieldName && requestData[fieldName] !== undefined) {
+          saveData[fieldName] = requestData[fieldName];
+        }
+
+        // Handle mark as title logic
+        if (fieldName && cField.additional_information) {
+          try {
+            const additionalInfo = JSON.parse(cField.additional_information);
+            if (additionalInfo.mark_as_title === 1) {
+              markAsTitleColsArr.push(fieldName);
+              
+              if (requestData[fieldName] && requestData[fieldName].trim()) {
+                markAsTitleArr[fieldName] = {
+                  value: requestData[fieldName]
+                };
+              }
+
+              // Get item column data for prefix and type
+              const itemColumnData = await HelperService.getMasterDatas('item_columns', categoryId);
+              const itemColumn = itemColumnData.find((item: any) => item.name === fieldName);
+              
+              if (itemColumn) {
+                if (itemColumn.prefix) {
+                  markAsTitleArr[fieldName].prefix = itemColumn.prefix;
+                }
+
+                if (itemColumn.type === 'select' || itemColumn.type === 'autocomplete') {
+                  const textFieldName = `${fieldName}_text`;
+                  if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+                    markAsTitleArr[fieldName].value = requestData[textFieldName];
+                  } else {
+                    markAsTitleArr[fieldName].rel_model_fun = itemColumn.rel_model_fun || null;
+                    markAsTitleArr[fieldName].rel_model_col = itemColumn.rel_model_col || null;
+                  }
+                }
+              }
+            }
+          } catch (parseError) {
+            console.log(`Could not parse additional_information for field ${fieldName}`);
+          }
+        }
+
+        // Handle select/autocomplete fields with master data
+        if (fieldName) {
+          const textFieldName = `${fieldName}_text`;
+          if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+            // Get item column data to check field type
+            const itemColumnData = await HelperService.getMasterDatas('item_columns', categoryId);
+            const itemColumn = itemColumnData.find((item: any) => item.name === fieldName);
+            
+            if (itemColumn && (itemColumn.type === 'select' || itemColumn.type === 'autocomplete')) {
+              const masterId = await HelperService.saveMasterDataAndReturnMasterId(
+                requestData[textFieldName],
+                fieldName,
+                categoryId
+              );
+              
+              if (masterId > 0) {
+                saveData[fieldName] = masterId;
+              }
+            }
+          }
+        }
+      }
+
+      // Create trading card
+      const tradingCard = await TradingCard.create(saveData);
+
+      if (!tradingCard.id) {
+        throw new Error("Failed to create TradingCard record");
+      }
+
+      // Store additional data for response
+      const result = {
+        tradingCard,
+        markAsTitleArr,
+        markAsTitleColsArr,
+        productAttributes
+      };
+
+      return {
+        success: true,
+        data: result
+      };
+
+    } catch (error: any) {
+      console.error('Error saving trading card:', error);
+      return {
+        success: false,
+        error: error.message || 'Unknown error occurred'
+      };
+    }
+  }
+
+  /**
+   * Update trading card (equivalent to Laravel update_trade_card)
+   */
+  async updateTradingCard(
+    cardId: number,
+    requestData: any,
+    userId: number
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      // Find the existing trading card
+      const existingCard = await TradingCard.findByPk(cardId);
+      if (!existingCard) {
+        return { success: false, error: "Trading card not found" };
+      }
+
+      const categoryId = existingCard.category_id;
+      if (!categoryId) {
+        return { success: false, error: "Category ID not found" };
+      }
+
+      // Prepare base save data - only include fields that are actually being updated
+      const saveData: any = {};
+
+      // Get category fields with priority
+      const categoryFields = await CategoryField.findAll({
+        where: { category_id: categoryId },
+        order: [['priority', 'ASC']],
+        attributes: ['fields', 'is_required', 'additional_information', 'mark_as_title']
+      });
+
+      // Process category fields
+      const productAttributes: any = {};
+      const markAsTitleArr: any = {};
+      const markAsTitleColsArr: string[] = [];
+
+      for (const cField of categoryFields) {
+        const fieldName = cField.fields;
+        
+        if (fieldName && requestData[fieldName] !== undefined) {
+          // Handle boolean fields (convert '1' to 1, others to 0)
+          if (requestData[fieldName] === '1') {
+            saveData[fieldName as string] = 1;
+          } else {
+            saveData[fieldName as string] = 0;
+          }
+        }
+        // Don't set default values for fields not provided - this is PATCH behavior
+
+        // Handle mark as title logic
+        if (cField.mark_as_title === true && fieldName) {
+          markAsTitleColsArr.push(fieldName);
+          
+          if (requestData[fieldName] && requestData[fieldName].trim()) {
+            markAsTitleArr[fieldName] = {
+              value: requestData[fieldName]
+            };
+          }
+
+          // Handle select/autocomplete fields for title
+          const textFieldName = `${fieldName}_text`;
+          if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+            markAsTitleArr[fieldName] = {
+              value: requestData[textFieldName]
+            };
+          }
+        }
+
+        // Handle select/autocomplete fields with master data
+        if (fieldName) {
+          const textFieldName = `${fieldName}_text`;
+          if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+            // Get item column data to check field type
+            const itemColumnData = await HelperService.getMasterDatas('item_columns', categoryId);
+            const itemColumn = itemColumnData.find((item: any) => item.name === fieldName);
+            
+            if (itemColumn && (itemColumn.type === 'select' || itemColumn.type === 'autocomplete')) {
+              const masterId = await HelperService.saveMasterDataAndReturnMasterId(
+                requestData[textFieldName],
+                fieldName,
+                categoryId
+              );
+              
+              if (masterId > 0) {
+                saveData[fieldName] = masterId;
+              }
+            }
+          }
+        }
+      }
+
+      // Handle file uploads - only update if files are provided
+      if (requestData.trading_card_img !== undefined) {
+        saveData.trading_card_img = requestData.trading_card_img;
+      }
+      if (requestData.trading_card_img_back !== undefined) {
+        saveData.trading_card_img_back = requestData.trading_card_img_back;
+      }
+
+      // Check if we have any data to update
+      if (Object.keys(saveData).length === 0) {
+        return { success: false, error: "No data provided for update" };
+      }
+
+      // Update the trading card
+      await TradingCard.update(saveData, { where: { id: cardId } });
+
+      // Generate search parameters and slug
+      let searchParam = '';
+      let tradingCardSlug = '';
+      
+      if (Object.keys(markAsTitleArr).length > 0) {
+        const slugData = await this.createProductSearchParametersAndSlug(
+          markAsTitleArr, 
+          cardId, 
+          markAsTitleColsArr
+        );
+        searchParam = slugData.search_param;
+        tradingCardSlug = slugData.trading_card_slug;
+      }
+
+      // Update search parameters and slug
+      await TradingCard.update(
+        { 
+          search_param: searchParam,
+          trading_card_slug: tradingCardSlug 
+        },
+        { where: { id: cardId } }
+      );
+
+      // Handle product attributes
+      if (Object.keys(productAttributes).length > 0) {
+        // You'll need to implement ProductAttribute model
+        // For now, we'll skip this part
+        console.log('Product attributes to save:', productAttributes);
+      }
+
+      // Handle card images - only update if provided
+      const cardImagesData: any = {};
+      if (requestData.icon1 !== undefined) cardImagesData.card_image_1 = requestData.icon1;
+      if (requestData.icon2 !== undefined) cardImagesData.card_image_2 = requestData.icon2;
+      if (requestData.icon3 !== undefined) cardImagesData.card_image_3 = requestData.icon3;
+      if (requestData.icon4 !== undefined) cardImagesData.card_image_4 = requestData.icon4;
+
+      if (Object.keys(cardImagesData).length > 0) {
+        // You'll need to implement CardImages model
+        console.log('Card images to save:', cardImagesData);
+      }
+
+      // Get updated trading card
+      const updatedCard = await TradingCard.findByPk(cardId);
+
+      return {
+        success: true,
+        data: {
+          tradingCard: updatedCard,
+          message: "Trading card updated successfully"
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error updating trading card:', error);
+      return {
+        success: false,
+        error: error.message || 'Unknown error occurred'
+      };
+    }
+  }
+
+  /**
+   * Create product search parameters and slug (equivalent to Laravel ____createProductSearchParametersAndSlug)
+   */
+  private async createProductSearchParametersAndSlug(
+    markAsTitleArr: any,
+    cardId: number,
+    markAsTitleColsArr: string[]
+  ): Promise<{ search_param: string; trading_card_slug: string }> {
+    try {
+      // This is a simplified version - you'll need to implement the full logic
+      const searchParam = Object.values(markAsTitleArr).join(' ');
+      const tradingCardSlug = Object.values(markAsTitleArr)
+        .map((value: any) => value.value || value)
+        .join('-')
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      return {
+        search_param: searchParam,
+        trading_card_slug: tradingCardSlug
+      };
+    } catch (error) {
+      console.error('Error creating search parameters and slug:', error);
+      return {
+        search_param: '',
+        trading_card_slug: ''
+      };
     }
   }
 }

@@ -44,6 +44,10 @@ export class CategoryField extends Model<CategoryField> {
   @Column(DataType.INTEGER)
   priority?: number;
 
+  @AllowNull
+  @Column(DataType.BOOLEAN)
+  mark_as_title?: boolean;
+
   @BelongsTo(() => Category)
   category?: Category;
 }

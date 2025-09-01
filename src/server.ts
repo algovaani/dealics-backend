@@ -1,17 +1,16 @@
 import "reflect-metadata";
 import express from "express";
+import cors from "cors";
 import { sequelize } from "./config/db.js";
 import { fixDatabaseSchema } from "./config/fixDatabaseSchema.js";
-
-// Import models
 import { User } from "./models/user.model.js";
 import { Category } from "./models/category.model.js";
 import { TradingCard } from "./models/tradingcard.model.js";
-import { CategoryField } from "./models/category_field.model.js";
+import { CategoryField } from "./models/categoryField.model.js";
 import { CardCondition } from "./models/cardCondition.model.js";
-import { Slider } from "./models/slider.model.js";
 
-// Import routes
+// Add models to Sequelize instance
+sequelize.addModels([User, Category, TradingCard, CategoryField, CardCondition]);
 import userRoutes from "./routes/user.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import categoryRoutes from "./routes/category.routes.js";
@@ -23,6 +22,16 @@ import sliderRoutes from "./routes/slider.routes.js";
 
 
 const app = express();
+
+// Configure CORS to allow all origins
+app.use(cors({
+  origin: true, // Allow all origins
+  credentials: true, // Allow credentials (cookies, authorization headers)
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // Allow all HTTP methods
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'], // Allow common headers
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'] // Expose additional headers if needed
+}));
+
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
@@ -41,46 +50,35 @@ app.get("/", (req, res) => {
   res.send("TypeScript + MySQL API running 🚀");
 });
 
-// Health check endpoint for Kubernetes
-app.get("/health", async (req, res) => {
-  try {
-    // Check database connection
-    await sequelize.authenticate();
-    res.status(200).json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      database: "connected",
-      uptime: process.uptime()
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(503).json({
-      status: "unhealthy",
-      timestamp: new Date().toISOString(),
-      database: "disconnected",
-      error: errorMessage,
-      uptime: process.uptime()
-    });
-  }
-});
-
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/tradingCards", tradingcardRoutes);
 app.use("/api/admin/tradingCards", adminTradingcardRoutes);
-app.use("/api/user/tradingCards", userTradingcardRoutes);
+app.use("/api/user/tradingcards", userTradingcardRoutes);
 app.use("/api/user/trading-cards-fields", userTradingcardFieldsRoutes);
 app.use("/api/sliders", sliderRoutes);
 
+// Add a catch-all route to log all incoming requests
+app.use((req, res, next) => {
+  console.log(`🔍 Request: ${req.method} ${req.originalUrl}`);
+  console.log(`   Headers:`, req.headers);
+  console.log(`   Body:`, req.body);
+  next();
+});
+
+// Add a 404 handler for unmatched routes
+app.use((req, res) => {
+  console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    status: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
+    timestamp: new Date().toISOString()
+  });
+});
+
 const start = async () => {
   try {
-    console.log("🚀 Starting server...");
-    
-    // Register models first
-    sequelize.addModels([User, Category, TradingCard, CategoryField, CardCondition, Slider]);
-    console.log("✅ Models registered!");
-    
     await sequelize.authenticate();
     console.log("✅ MySQL Connected!");
     
@@ -95,11 +93,7 @@ const start = async () => {
       console.log(`Server running at http://localhost:${PORT}`);
     });
   } catch (err) {
-    console.error("❌ Server startup failed:", err);
-    if (err instanceof Error) {
-      console.error("Error details:", err.message);
-      console.error("Stack trace:", err.stack);
-    }
+    console.error("❌ DB Connection failed:", err);
     process.exit(1);
   }
 };

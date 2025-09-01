@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { CategoryField } from "../models/category_field.model.js";
+import { CategoryField } from "../models/categoryField.model.js";
 
 export const getCategoryFields = async (req: Request, res: Response) => {
   try {

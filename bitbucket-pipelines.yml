@@ -1,39 +1,59 @@
-image: node:18   # Node.js official image use kar rahe hain
+image: node:20-bullseye
 
 definitions:
+  caches:
+    npm: ~/.npm-store
   steps:
-    - step: &build-and-deploy
-        name: Build and Deploy App
+    - step: &build-step
+        name: Build Application
         caches:
           - node
+          - npm
         script:
-          # 1. Dependencies install karo
-          - npm install
-
-          # 2. Agar .env load karna hai to ek Node.js script bana lo
-          - node load_env.js .env .env.example
-
-          # 3. Build your app (agar build script hai to)
+          - corepack enable
+          - corepack prepare npm@10.2.4 --activate
+          - npm ci
           - npm run build
-
-          # 4. SSH se remote server par deploy command run karo
-          - pipe: atlassian/ssh-run:0.6.1
-            variables:
-              SSH_USER: $K8S_LOGIN_USER
-              SERVER: $K8S_IP_SERVER
-              PORT: $K8S_PORT_SERVER
-              MODE: 'command'
-              COMMAND: '$K8S_OPEN_DIR_COMMAND $K8S_DEPLOYMENT_NAME $K8S_APP_NAME=$BITBUCKET_BUILD_NUMBER --record --namespace=$K8S_NAMESPACE'
+        artifacts:
+          - dist/**
+          - package.json
+          - package-lock.json
+          - ecosystem.config.cjs
+          - deploy.sh
+          - env.example
 
 pipelines:
   branches:
-    prod:
-      - step:
-          deployment: prod
-          trigger: automatic
-          <<: *build-and-deploy
     dev:
+      - step: *build-step
       - step:
-          deployment: dev
-          trigger: automatic
-          <<: *build-and-deploy
+          name: Deploy to Development
+          deployment: development
+          script:
+            - apt-get update
+            - apt-get install -y openssh-client rsync
+            - mkdir -p ~/.ssh
+            - echo "$SERVER_PRIVATE_KEY" > ~/.ssh/id_rsa
+            - chmod 600 ~/.ssh/id_rsa
+            - ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+            - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
+            - chmod +x deploy.sh
+            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && export NODE_ENV=development && chmod +x deploy.sh && ./deploy.sh"
+    master:
+      - step: *build-step
+      - step:
+          name: Deploy to Production
+          deployment: production
+          script:
+            - apt-get update
+            - apt-get install -y openssh-client rsync
+            - mkdir -p ~/.ssh
+            - echo "$SERVER_PRIVATE_KEY" > ~/.ssh/id_rsa
+            - chmod 600 ~/.ssh/id_rsa
+            - ssh-keyscan -H "$PROD_DEPLOY_HOST" >> ~/.ssh/known_hosts
+            - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" ./ "$PROD_DEPLOY_USER@$PROD_DEPLOY_HOST:$PROD_DEPLOY_PATH"
+            - chmod +x deploy.sh
+            - ssh "$PROD_DEPLOY_USER@$PROD_DEPLOY_HOST" "cd $PROD_DEPLOY_PATH && export NODE_ENV=production && chmod +x deploy.sh && ./deploy.sh"
+  pull-requests:
+    '**':
+      - step: *build-step

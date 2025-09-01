@@ -1,247 +1,166 @@
 # Bitbucket Pipeline Setup Guide
 
-This repository includes a comprehensive Bitbucket pipeline setup for automated building, testing, and deployment of the Dealics backend application.
+## Overview
+This pipeline automatically deploys your Node.js application to different domains based on the branch:
+- **master branch** → Production domain
+- **dev branch** → Development domain
 
-## 🚀 Pipeline Overview
+## Pipeline Configuration
 
-The Bitbucket pipeline includes:
-- **Automated Testing**: Unit tests and build verification
-- **Build Automation**: TypeScript compilation
-- **Multi-Environment Deployment**: Staging and production server deployments
-- **Simple Deployment**: Direct server deployment via SSH
+The pipeline uses rsync to deploy files and SSH to execute the deployment script on your servers.
 
-## 📁 Pipeline Files
+## Required Environment Variables
 
-### Bitbucket Pipeline
-- `bitbucket-pipelines.yml` - Main pipeline configuration
+### Production Environment Variables (for master branch)
+Set these in Bitbucket Repository Settings → Pipelines → Repository Variables:
 
-### Deployment Scripts
-- `scripts/deploy.sh` - Server deployment script
+| Variable Name | Description | Example |
+|---------------|-------------|---------|
+| `PROD_SSH_PRIVATE_KEY` | SSH private key for production server | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `PROD_DEPLOY_HOST` | Production server hostname/IP | `192.168.1.100` |
+| `PROD_DEPLOY_USER` | SSH username for production server | `deploy` |
+| `PROD_DEPLOY_PATH` | Deployment path on production server | `/var/www/api.yourdomain.com` |
 
-### Server Configuration
-- `deploy/dealics-backend.service` - Systemd service file
-- `deploy/nginx.conf` - Nginx configuration
-- `SERVER_SETUP.md` - Server setup guide
+### Development Environment Variables (for dev branch)
+Set these in Bitbucket Repository Settings → Pipelines → Repository Variables:
 
-## 🛠️ Setup Instructions
+| Variable Name | Description | Example |
+|---------------|-------------|---------|
+| `DEV_SSH_PRIVATE_KEY` | SSH private key for development server | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `DEV_DEPLOY_HOST` | Development server hostname/IP | `192.168.1.101` |
+| `DEV_DEPLOY_USER` | SSH username for development server | `deploy` |
+| `DEV_DEPLOY_PATH` | Deployment path on development server | `/var/www/dev-api.yourdomain.com` |
 
-### 1. Bitbucket Repository Setup
+## Server Setup Requirements
 
-#### Repository Variables
-Add these variables to your Bitbucket repository (Repository settings > Pipelines > Repository variables):
+### 1. SSH Access
+Ensure your Bitbucket pipeline can SSH to your servers:
+- Generate SSH key pair for deployment
+- Add the public key to your server's `~/.ssh/authorized_keys`
+- Add the private key as a repository variable in Bitbucket
 
-```bash
-# Server Configuration
-STAGING_SERVER_HOST=your-staging-server.com
-PRODUCTION_SERVER_HOST=your-production-server.com
-
-# Optional: Database Configuration (if needed for tests)
-DATABASE_URL=mysql://user:password@host:port/database
+### 2. Directory Structure
+Your servers should have this structure:
+```
+/var/www/
+├── api.yourdomain.com/      # Production
+│   ├── dist/
+│   ├── package.json
+│   ├── ecosystem.config.cjs
+│   ├── deploy.sh
+│   └── logs/
+└── dev-api.yourdomain.com/  # Development
+    ├── dist/
+    ├── package.json
+    ├── ecosystem.config.cjs
+    ├── deploy.sh
+    └── logs/
 ```
 
-#### Enable Pipelines
-1. Go to Repository settings > Pipelines
-2. Enable Pipelines if not already enabled
-3. Ensure the `bitbucket-pipelines.yml` file is in your repository root
-
-### 2. Server Setup
-
-Follow the [SERVER_SETUP.md](SERVER_SETUP.md) guide to set up your deployment server.
-
-### 3. SSH Key Setup
-
-#### Prerequisites
-- Server with Node.js 18+ installed
-- SSH access with key-based authentication
-- Nginx for reverse proxy (optional)
-
-#### Setup SSH Keys
+### 3. PM2 Setup
+Install PM2 on your servers:
 ```bash
-# Generate SSH key pair
-ssh-keygen -t rsa -b 4096 -C "your-email@example.com"
-
-# Copy public key to server
-ssh-copy-id deploy@your-server.com
-
-# Test connection
-ssh deploy@your-server.com
+npm install -g pm2
 ```
 
-## 🔄 Pipeline Workflow
-
-### Default Branch (any branch)
-1. **Push to any branch** → Triggers pipeline
-2. **Lint & Test** → Code quality checks with MySQL and Redis services
-
-### Development Branch (`develop`)
-1. **Push to develop** → Triggers pipeline
-2. **Build & Test** → TypeScript compilation and testing
-3. **Security Scan** → Vulnerability assessment
-4. **Build Docker Image** → Container image creation
-5. **Deploy to Staging** → Staging environment deployment
-
-### Main Branch (`main`)
-1. **Push to main** → Triggers pipeline
-2. **All previous steps** → Quality gates
-3. **Database Migration** → Schema updates
-4. **Build Docker Image** → Production image creation
-5. **Push to Registry** → Container registry upload
-6. **Deploy to Production** → Production deployment
-7. **Health Check** → Post-deployment verification
-
-### Pull Requests
-- Triggers all quality checks
-- Blocks merge if tests fail
-- Provides feedback on code quality
-
-### Tags (Releases)
-- **v* tags** → Release pipeline
-- **Build Release** → Production build
-- **Push Docker Image** → Tagged image to registry
-- **Deploy Release** → Production deployment
-
-## 🧪 Testing and Quality
-
-### Automated Tests
+### 4. Node.js Setup
+Install Node.js 20+ and NVM on your servers:
 ```bash
-# Run tests locally
-npm test
+# Install NVM
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+source ~/.bashrc
 
-# Run with coverage
-npm run test:coverage
+# Install Node.js 20
+nvm install 20
+nvm use 20
+nvm alias default 20
 
-# Run linting
-npm run lint
+# Install PM2
+npm install -g pm2
 ```
 
-### Security Scanning
-- **npm audit**: Dependency vulnerability checks
-- **Container scanning**: Docker image security
+## Pipeline Workflow
 
-### Code Quality
-- TypeScript strict mode enabled
-- ESLint configuration (if configured)
-- Automated formatting (if configured)
+### Master Branch (Production)
+1. Triggers on push to `master`
+2. Builds TypeScript application
+3. Uses rsync to transfer files to production server
+4. Executes deployment script on production server
+5. Installs dependencies and starts PM2 process
 
-## 🚀 Deployment Strategies
+### Dev Branch (Development)
+1. Triggers on push to `dev`
+2. Builds TypeScript application
+3. Uses rsync to transfer files to development server
+4. Executes deployment script on development server
+5. Installs dependencies and starts PM2 process
 
-### Blue-Green Deployment
-- Zero-downtime deployments
-- Easy rollback capability
-- Traffic switching between versions
+## Deployment Script
 
-### Rolling Updates
-- Gradual pod replacement
-- Maintains service availability
-- Configurable update strategy
+The `deploy.sh` script handles:
+- Environment setup (NVM, corepack, npm)
+- Dependency installation
+- TypeScript compilation
+- PM2 process management
+- Logging and error handling
 
-### Canary Deployments
-- Gradual traffic shifting
-- Risk mitigation
-- Performance monitoring
+## Files Included in Deployment
 
-## 📊 Monitoring and Observability
+The pipeline transfers these files to your servers:
+- `dist/` - Compiled TypeScript code
+- `package.json` - Dependencies and scripts
+- `package-lock.json` - Locked dependency versions
+- `ecosystem.config.cjs` - PM2 configuration
+- `deploy.sh` - Deployment script
+- `env.example` - Environment template
 
-### Health Checks
-- `/health` endpoint for Kubernetes probes
-- Database connection monitoring
-- Application uptime tracking
-
-### Logging
-- Structured logging
-- Log aggregation (ELK stack compatible)
-- Error tracking and alerting
-
-### Metrics
-- Application performance metrics
-- Resource utilization
-- Business metrics integration
-
-## 🔧 Customization
-
-### Environment-Specific Configs
-```bash
-# Create environment-specific files
-cp k8s/deployment.yaml k8s/deployment-staging.yaml
-cp k8s/deployment.yaml k8s/deployment-production.yaml
-
-# Modify resource limits, replicas, etc.
-```
-
-### Custom Deployment Scripts
-```bash
-# Add to pipeline
-- name: Custom deployment
-  script:
-    - ./scripts/deploy.sh $BITBUCKET_BRANCH
-```
-
-### Integration with External Tools
-- Slack notifications
-- Jira ticket updates
-- Email alerts
-- Status page updates
-
-## 🚨 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
-#### Pipeline Failures
-```bash
-# Check pipeline logs in Bitbucket
-# Verify repository variables are set correctly
-# Check environment variables
-```
+1. **SSH Connection Failed**
+   - Verify SSH private key is correctly set in repository variables
+   - Check server hostname/IP and username
+   - Ensure SSH key is added to server's authorized_keys
 
-#### Docker Build Issues
-```bash
-# Clear Docker cache
-docker system prune -a
+2. **PM2 Process Not Found**
+   - Make sure PM2 is installed globally on the server
+   - Check if the app was previously started with PM2
+   - Verify ecosystem.config.cjs file exists
 
-# Check .dockerignore
-# Verify Dockerfile syntax
-```
+3. **Build Failures**
+   - Check TypeScript compilation errors
+   - Verify all dependencies are in package.json
+   - Ensure build script is working locally
 
-#### Kubernetes Deployment Issues
-```bash
-# Check pod status
-kubectl describe pod <pod-name> -n dealics
+4. **Permission Issues**
+   - Ensure deploy user has write permissions to deployment path
+   - Check that deploy.sh is executable: `chmod +x deploy.sh`
 
-# Check logs
-kubectl logs <pod-name> -n dealics
+### Debugging
 
-# Verify secrets
-kubectl get secrets -n dealics
-```
+To debug pipeline issues:
+1. Check Bitbucket Pipeline logs
+2. SSH to server manually and run deployment commands
+3. Check PM2 logs: `pm2 logs dealics-backend`
+4. Verify file permissions and ownership
+5. Check server logs in `/var/www/[domain]/logs/`
 
-### Debug Commands
-```bash
-# Pipeline debugging
-# Use Bitbucket's built-in pipeline debugging tools
+## Security Considerations
 
-# Docker debugging
-docker run --rm -it dealics-backend:latest sh
+1. **SSH Keys**: Use dedicated deployment keys with minimal permissions
+2. **Environment Variables**: Never commit sensitive data to your repository
+3. **Server Access**: Limit SSH access to deployment user only
+4. **PM2**: Run PM2 processes with non-root user
+5. **File Permissions**: Ensure proper file permissions on deployment paths
 
-# Kubernetes debugging
-kubectl exec -it <pod-name> -n dealics -- sh
-```
+## Customization
 
-## 📚 Additional Resources
-
-- [Bitbucket Pipelines Documentation](https://support.atlassian.com/bitbucket-cloud/docs/get-started-with-bitbucket-pipelines/)
-- [Docker Best Practices](https://docs.docker.com/develop/dev-best-practices/)
-- [Kubernetes Documentation](https://kubernetes.io/docs/)
-- [CI/CD Best Practices](https://www.atlassian.com/continuous-delivery/principles/continuous-integration-vs-delivery-deployment)
-
-## 🤝 Contributing
-
-When contributing to the pipeline:
-1. Test changes locally first
-2. Update documentation
-3. Follow existing patterns
-4. Add appropriate tests
-5. Update this guide if needed
-
-## 📄 License
-
-This pipeline configuration is part of the Dealics project and follows the same license terms.
+You can customize the pipeline by:
+- Adding additional build steps
+- Including database migrations
+- Adding health checks
+- Implementing rollback mechanisms
+- Adding Slack/email notifications
+- Customizing PM2 configuration
+- Adding environment-specific configurations

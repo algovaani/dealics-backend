@@ -3,7 +3,7 @@
 ## Overview
 This pipeline automatically deploys your Node.js application to different domains based on the branch:
 - **master branch** → Production domain
-- **dev branch** → Development domain
+- **dev branch** → Development/Staging domain
 
 ## Pipeline Configuration
 
@@ -11,25 +11,16 @@ The pipeline uses rsync to deploy files and SSH to execute the deployment script
 
 ## Required Environment Variables
 
-### Production Environment Variables (for master branch)
 Set these in Bitbucket Repository Settings → Pipelines → Repository Variables:
 
 | Variable Name | Description | Example |
 |---------------|-------------|---------|
-| `PROD_SSH_PRIVATE_KEY` | SSH private key for production server | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `PROD_DEPLOY_HOST` | Production server hostname/IP | `192.168.1.100` |
-| `PROD_DEPLOY_USER` | SSH username for production server | `deploy` |
-| `PROD_DEPLOY_PATH` | Deployment path on production server | `/var/www/api.yourdomain.com` |
+| `SERVER_PRIVATE_KEY` | SSH private key for server | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `SERVER_HOST` | Server hostname/IP | `192.168.1.100` |
+| `SERVER_USER` | SSH username for server | `deploy` |
+| `SERVER_PATH` | Deployment path on server | `/var/www/apis/stagingApi` |
 
-### Development Environment Variables (for dev branch)
-Set these in Bitbucket Repository Settings → Pipelines → Repository Variables:
-
-| Variable Name | Description | Example |
-|---------------|-------------|---------|
-| `DEV_SSH_PRIVATE_KEY` | SSH private key for development server | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `DEV_DEPLOY_HOST` | Development server hostname/IP | `192.168.1.101` |
-| `DEV_DEPLOY_USER` | SSH username for development server | `deploy` |
-| `DEV_DEPLOY_PATH` | Deployment path on development server | `/var/www/dev-api.yourdomain.com` |
+**Note**: The same variables are used for both dev and master branches. The environment is determined by the `NODE_ENV` variable set during deployment.
 
 ## Server Setup Requirements
 
@@ -40,16 +31,16 @@ Ensure your Bitbucket pipeline can SSH to your servers:
 - Add the private key as a repository variable in Bitbucket
 
 ### 2. Directory Structure
-Your servers should have this structure:
+Your server should have this structure:
 ```
-/var/www/
-├── api.yourdomain.com/      # Production
+/var/www/apis/
+├── stagingApi/          # Development/Staging
 │   ├── dist/
 │   ├── package.json
 │   ├── ecosystem.config.cjs
 │   ├── deploy.sh
 │   └── logs/
-└── dev-api.yourdomain.com/  # Development
+└── productionApi/       # Production (if different path)
     ├── dist/
     ├── package.json
     ├── ecosystem.config.cjs
@@ -58,13 +49,13 @@ Your servers should have this structure:
 ```
 
 ### 3. PM2 Setup
-Install PM2 on your servers:
+Install PM2 on your server:
 ```bash
 npm install -g pm2
 ```
 
 ### 4. Node.js Setup
-Install Node.js 20+ and NVM on your servers:
+Install Node.js 20+ and NVM on your server:
 ```bash
 # Install NVM
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
@@ -84,15 +75,15 @@ npm install -g pm2
 ### Master Branch (Production)
 1. Triggers on push to `master`
 2. Builds TypeScript application
-3. Uses rsync to transfer files to production server
-4. Executes deployment script on production server
+3. Uses rsync to transfer files to server
+4. Executes deployment script with `NODE_ENV=production`
 5. Installs dependencies and starts PM2 process
 
-### Dev Branch (Development)
+### Dev Branch (Development/Staging)
 1. Triggers on push to `dev`
 2. Builds TypeScript application
-3. Uses rsync to transfer files to development server
-4. Executes deployment script on development server
+3. Uses rsync to transfer files to server
+4. Executes deployment script with `NODE_ENV=development`
 5. Installs dependencies and starts PM2 process
 
 ## Deployment Script
@@ -106,7 +97,7 @@ The `deploy.sh` script handles:
 
 ## Files Included in Deployment
 
-The pipeline transfers these files to your servers:
+The pipeline transfers these files to your server:
 - `dist/` - Compiled TypeScript code
 - `package.json` - Dependencies and scripts
 - `package-lock.json` - Locked dependency versions
@@ -137,6 +128,11 @@ The pipeline transfers these files to your servers:
    - Ensure deploy user has write permissions to deployment path
    - Check that deploy.sh is executable: `chmod +x deploy.sh`
 
+5. **Variable Assignment Errors**
+   - Ensure all environment variables are set in Bitbucket
+   - Check for typos in variable names
+   - Verify variable values are correct
+
 ### Debugging
 
 To debug pipeline issues:
@@ -144,7 +140,7 @@ To debug pipeline issues:
 2. SSH to server manually and run deployment commands
 3. Check PM2 logs: `pm2 logs dealics-backend`
 4. Verify file permissions and ownership
-5. Check server logs in `/var/www/[domain]/logs/`
+5. Check server logs in `/var/www/apis/[path]/logs/`
 
 ## Security Considerations
 

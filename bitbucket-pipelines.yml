@@ -38,7 +38,7 @@ pipelines:
             - ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
             - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
             - chmod +x deploy.sh
-            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deploy.sh && ./deploy.sh"
+            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && export NODE_ENV=development && chmod +x deploy.sh && ./deploy.sh"
     master:
       - step: *build-step
       - step:
@@ -50,10 +50,10 @@ pipelines:
             - mkdir -p ~/.ssh
             - echo "$SERVER_PRIVATE_KEY" > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
-            - ssh-keyscan -H "$PROD_DEPLOY_HOST" >> ~/.ssh/known_hosts
-            - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" ./ "$PROD_DEPLOY_USER@$PROD_DEPLOY_HOST:$PROD_DEPLOY_PATH"
+            - ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+            - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
             - chmod +x deploy.sh
-            - ssh "$PROD_DEPLOY_USER@$PROD_DEPLOY_HOST" "cd $PROD_DEPLOY_PATH && export NODE_ENV=production && chmod +x deploy.sh && ./deploy.sh"
+            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && export NODE_ENV=production && chmod +x deploy.sh && ./deploy.sh"
   pull-requests:
     '**':
       - step: *build-step

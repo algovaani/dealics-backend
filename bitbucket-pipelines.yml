@@ -54,6 +54,4 @@ pipelines:
             - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
             - chmod +x deploy.sh
             - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && export NODE_ENV=production && chmod +x deploy.sh && ./deploy.sh"
-  pull-requests:
-    '**':
-      - step: *build-step
+

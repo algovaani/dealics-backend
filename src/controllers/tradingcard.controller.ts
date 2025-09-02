@@ -17,8 +17,7 @@ const sendApiResponse = (res: Response, statusCode: number, status: boolean, mes
   return res.status(statusCode).json({
     status,
     message,
-    data,
-    timestamp: new Date().toISOString()
+    data: data || []
   });
 };
 

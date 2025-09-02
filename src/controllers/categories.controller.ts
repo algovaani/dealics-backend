@@ -3,15 +3,36 @@ import { CategoryService } from "../services/categories.service.js";
 
 const categoriesService = new CategoryService();
 
+// Helper function to send standardized API responses
+const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any) => {
+  return res.status(statusCode).json({
+    status,
+    message,
+    data: data || []
+  });
+};
+
 export const getCategories = async (req: Request, res: Response) => {
-  const categories = await categoriesService.getAllCategories();
-  res.json(categories);
+  try {
+    const categories = await categoriesService.getAllCategories();
+    return sendApiResponse(res, 200, true, "Categories retrieved successfully", categories);
+  } catch (error: any) {
+    console.error("Error getting categories:", error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
 };
 
 export const getCategory = async (req: Request, res: Response) => {
-  const category = await categoriesService.getCategoryById(Number(req.params.id));
-  if (!category) return res.status(404).json({ message: "Category not found" });
-  res.json(category);
+  try {
+    const category = await categoriesService.getCategoryById(Number(req.params.id));
+    if (!category) {
+      return sendApiResponse(res, 404, false, "Category not found", []);
+    }
+    return sendApiResponse(res, 200, true, "Category retrieved successfully", [category]);
+  } catch (error: any) {
+    console.error("Error getting category:", error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
 };
 
 // export const createCategory = async (req: Request, res: Response) => {
@@ -21,12 +42,21 @@ export const getCategory = async (req: Request, res: Response) => {
 // };
 
 export const updateCategory = async (req: Request, res: Response) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-  
-  const category = await categoriesService.updateCategory(id, req.body);
-  if (!category) return res.status(404).json({ message: "Category not found" });
-  res.json(category);
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      return sendApiResponse(res, 400, false, "Invalid ID", []);
+    }
+    
+    const category = await categoriesService.updateCategory(id, req.body);
+    if (!category) {
+      return sendApiResponse(res, 404, false, "Category not found", []);
+    }
+    return sendApiResponse(res, 200, true, "Category updated successfully", [category]);
+  } catch (error: any) {
+    console.error("Error updating category:", error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
 };
 
 // export const deleteCategory = async (req: Request, res: Response) => {

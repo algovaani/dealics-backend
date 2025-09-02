@@ -9,9 +9,18 @@ declare global {
 	}
 }
 
+// Helper function to send standardized API responses
+const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any) => {
+  return res.status(statusCode).json({
+    status,
+    message,
+    data: data || []
+  });
+};
+
 export function adminAuth(req: Request, res: Response, next: NextFunction) {
-	if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+	if (!req.user) return sendApiResponse(res, 401, false, "Unauthorized", []);
 	if (req.user.user_role !== "admin")
-		return res.status(403).json({ message: "Forbidden" });
+		return sendApiResponse(res, 403, false, "Forbidden", []);
 	next();
 }

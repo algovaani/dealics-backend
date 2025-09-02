@@ -44,12 +44,12 @@ import {
     })
     card_condition_status!: '1' | '0';
   
-    @CreatedAt
-    @Column({ field: 'created_at' })
+        @CreatedAt
+    @Column({ field: 'created_at', type: DataType.DATE })
     created_at?: Date;
-  
+
     @UpdatedAt
-    @Column({ field: 'updated_at' })
+    @Column({ field: 'updated_at', type: DataType.DATE })
     updated_at?: Date;
 
     @HasMany(() => TradingCard)

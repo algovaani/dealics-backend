@@ -24,4 +24,3 @@ Thumbs.db
 .idea/
 
 # Database configuration
-src/config/db.ts

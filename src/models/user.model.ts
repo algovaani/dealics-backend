@@ -56,6 +56,10 @@ import {
     @AllowNull
     @Column(DataType.STRING)
     password?: string;
+
+    @AllowNull
+    @Column(DataType.STRING)
+    recover_password_token?: string;
   
     @AllowNull
     @Column(DataType.TEXT)

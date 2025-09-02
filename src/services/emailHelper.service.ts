@@ -58,8 +58,18 @@ export class EmailHelperService {
         return await this.saveToMailQueue();
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in executeMailSender:', error);
+      
+      // Log specific error details
+      if (error.message) {
+        console.error('Error details:', error.message);
+      }
+      
+      if (error.code) {
+        console.error('Error code:', error.code);
+      }
+      
       return false;
     }
   }
@@ -158,6 +168,13 @@ export class EmailHelperService {
    */
   private static async sendMail(): Promise<boolean> {
     try {
+      // Check if email password is configured
+      const emailPassword = process.env.MAIL_PASSWORD;
+      if (!emailPassword || emailPassword === '') {
+        console.error('Email password not configured. Please set MAIL_PASSWORD in .env file');
+        return false;
+      }
+
       // Create transporter
       const transporter = nodemailer.createTransport({
         host: process.env.MAIL_HOST || 'mail.hitpacks.com',
@@ -165,7 +182,7 @@ export class EmailHelperService {
         secure: true, // true for 465 (SSL), false for other ports
         auth: {
           user: process.env.MAIL_USERNAME || 'support@hitpacks.com',
-          pass: process.env.MAIL_PASSWORD || '',
+          pass: emailPassword,
         },
         tls: {
           rejectUnauthorized: false // Allow self-signed certificates
@@ -189,8 +206,20 @@ export class EmailHelperService {
       
       return true;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending email:', error);
+      
+      // Provide specific error messages based on error type
+      if (error.code === 'EAUTH') {
+        console.error('Email authentication failed. Check MAIL_USERNAME and MAIL_PASSWORD');
+      } else if (error.code === 'ECONNECTION') {
+        console.error('Email connection failed. Check MAIL_HOST and MAIL_PORT');
+      } else if (error.code === 'ETIMEDOUT') {
+        console.error('Email timeout. Check network connection');
+      } else {
+        console.error('Unknown email error:', error.message);
+      }
+      
       return false;
     }
   }
@@ -379,6 +408,20 @@ export class EmailHelperService {
   }
 
   /**
+   * Send forgot password email (equivalent to Laravel recovery_password1)
+   */
+  public static async sendForgotPasswordEmail(email: string, resetLink: string, name?: string, username?: string): Promise<boolean> {
+    const mailInputs = {
+      to: email,
+      name: name || this.setName('User', ''),
+      username: username || '',
+      resetlink: resetLink,
+    };
+
+    return await this.executeMailSender('reset-password-request', mailInputs);
+  }
+
+  /**
    * Send order confirmation email
    */
   public static async sendOrderConfirmation(email: string, orderData: any, name?: string): Promise<boolean> {
@@ -430,4 +473,5 @@ export class EmailHelperService {
   public static async sendCustomEmail(templateAlias: string, emailData: any): Promise<boolean> {
     return await this.executeMailSender(templateAlias, emailData);
   }
+
 }

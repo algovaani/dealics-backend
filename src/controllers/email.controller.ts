@@ -271,6 +271,14 @@ export const sendUnifiedEmail = async (req: Request, res: Response) => {
         message = "Password reset email sent successfully";
         break;
 
+      case 'forgot-password':
+        if (!data?.resetLink) {
+          return sendApiResponse(res, 400, false, "resetLink is required for forgot password email", []);
+        }
+        success = await EmailHelperService.sendForgotPasswordEmail(email, data.resetLink, name, data?.username);
+        message = "Forgot password email sent successfully";
+        break;
+
       case 'order-confirmation':
         if (!data?.orderData) {
           return sendApiResponse(res, 400, false, "orderData is required for order confirmation email", []);
@@ -310,7 +318,7 @@ export const sendUnifiedEmail = async (req: Request, res: Response) => {
     if (success) {
       return sendApiResponse(res, 200, true, message, []);
     } else {
-      return sendApiResponse(res, 500, false, `Failed to send ${type} email`, []);
+      return sendApiResponse(res, 500, false, `Email not sent. Please try again later or contact support.`, []);
     }
 
   } catch (error: any) {
@@ -346,9 +354,9 @@ console.log("mailInputs====",mailInputs);
     const success = await EmailHelperService.executeMailSender('verify-email-on-register', mailInputs);
 
     if (success) {
-      return sendApiResponse(res, 200, true, "Please enter your email address", []);
+      return sendApiResponse(res, 200, true, "Verification email sent successfully", []);
     } else {
-      return sendApiResponse(res, 500, false, "Failed to send verification email", []);
+      return sendApiResponse(res, 500, false, "Email not sent. Please try again later or contact support.", []);
     }
 
   } catch (error: any) {

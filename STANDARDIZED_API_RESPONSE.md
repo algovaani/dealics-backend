@@ -169,16 +169,43 @@ GET /api/tradingcards/category/:categoryName
 }
 ```
 
-#### Get All Trading Cards
+#### Get All Trading Cards (with Pagination)
 ```
-GET /api/tradingcards
+GET /api/tradingcards?page=1&perPage=10&category_id=1
 ```
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `perPage` (optional): Items per page (default: 10, max: 100)
+- `category_id` (optional): Filter by category ID
+
 **Response:**
 ```json
 {
   "status": true,
   "message": "Trading cards retrieved successfully",
-  "data": [/* array of trading cards */]
+  "data": [
+    {
+      "id": 1,
+      "category_id": 1,
+      "trading_card_img": "image.jpg",
+      "trading_card_img_back": "image_back.jpg",
+      "trading_card_slug": "trading-card-1",
+      "trading_card_recent_trade_value": "100.00",
+      "trading_card_asking_price": "120.00",
+      "sport_name": "Trading Cards"
+    },
+    {
+      "id": 2,
+      "category_id": 1,
+      "trading_card_img": "image2.jpg",
+      "trading_card_img_back": "image2_back.jpg",
+      "trading_card_slug": "trading-card-2",
+      "trading_card_recent_trade_value": "150.00",
+      "trading_card_asking_price": "180.00",
+      "sport_name": "Trading Cards"
+    }
+  ]
 }
 ```
 

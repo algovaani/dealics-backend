@@ -5,13 +5,65 @@ import { User } from "../models/user.model.js";
 import { CategoryField } from "../models/categoryField.model.js";
 import { CardCondition } from "../models/cardCondition.model.js";
 import { HelperService } from "./helper.service.js";
-import { Op, Sequelize, QueryTypes } from "sequelize";
+import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 
 export class TradingCardService {
-  // Get all TradingCard
-  async getAllTradingCards() {
-    return await TradingCard.findAll();
+  // Get all TradingCard with pagination and category_name
+  async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
+    const offset = (page - 1) * perPage;
+    let whereClause = '';
+    if (categoryId) {
+      whereClause = `WHERE tc.category_id = ${categoryId}`;
+    }
+
+    // Use raw SQL to get data with sport_name and interested_in status
+    let interestedJoin = '';
+    if (loggedInUserId && loggedInUserId > 0) {
+      interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${loggedInUserId}`;
+    } else {
+      interestedJoin = 'LEFT JOIN interested_in ii ON 1=0'; // This will never match, so interested_in will always be false
+    }
+    
+    const rawQuery = `
+      SELECT 
+        tc.id,
+        tc.category_id,
+        tc.trading_card_img,
+        tc.trading_card_img_back,
+        tc.trading_card_slug,
+        tc.trading_card_recent_trade_value,
+        tc.trading_card_asking_price,
+        tc.search_param,
+        c.sport_name,
+        CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in
+      FROM trading_cards tc
+      LEFT JOIN categories c ON tc.category_id = c.id
+      ${interestedJoin}
+      ${whereClause}
+      ORDER BY tc.created_at DESC
+      LIMIT ${perPage} OFFSET ${offset}
+    `;
+    
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM trading_cards tc
+      LEFT JOIN categories c ON tc.category_id = c.id
+      ${whereClause}
+    `;
+
+    const results = await sequelize.query(rawQuery, {
+      type: Sequelize.QueryTypes.SELECT
+    });
+    
+    const countResults = await sequelize.query(countQuery, {
+      type: Sequelize.QueryTypes.SELECT
+    });
+
+    return {
+      rows: results,
+      count: countResults[0]?.total || 0
+    };
   }
 
   // Get TradingCard by ID
@@ -76,7 +128,7 @@ export class TradingCardService {
     const tradingCards = await TradingCard.findAll({
       where: {
         category_id: category.id,
-        ...(loggedInUserId ? { trader_id: { [Op.ne]: loggedInUserId } } : {})
+        ...(loggedInUserId ? { trader_id: { [Sequelize.Op.ne]: loggedInUserId } } : {})
       },
       include: [
         { model: Category, attributes: ['id', 'slug', 'sport_name'] },
@@ -84,7 +136,7 @@ export class TradingCardService {
         { model: CardCondition, attributes: ['id', 'card_condition_name', 'card_condition_status'] }
       ],
       attributes: [
-        'id', 'code', 'category_id', 'trading_card_img', 
+        'id', 'code', 'category_id', 'trading_card_img','search_param', 
         'trading_card_slug', 'trading_card_estimated_value', 'is_demo',
         [haveItemSubQuery, 'haveitem']
       ],
@@ -105,8 +157,8 @@ export class TradingCardService {
     let whereClause: any = {
       trader_id: userId,
       trading_card_status: "1",
-      is_traded: { [Op.ne]: "1" },
-      mark_as_deleted: { [Op.is]: null },
+      is_traded: { [Sequelize.Op.ne]: "1" },
+      mark_as_deleted: { [Sequelize.Op.is]: null },
     };
 
     // If category is not "all", filter by specific category
@@ -166,7 +218,7 @@ export class TradingCardService {
       where: {
         ...baseWhere,
         id: {
-          [Op.in]: Sequelize.literal(`(${subquery})`)
+          [Sequelize.Op.in]: Sequelize.literal(`(${subquery})`)
         }
       },
       order: [["sport_name", "ASC"]],
@@ -634,9 +686,14 @@ export class TradingCardService {
   ): Promise<{ search_param: string; trading_card_slug: string }> {
     try {
       // This is a simplified version - you'll need to implement the full logic
-      const searchParam = Object.values(markAsTitleArr).join(' ');
+      const searchParam = Object.values(markAsTitleArr)
+        .map((value: any) => value.value || value)
+        .filter(Boolean)
+        .join(' ');
+      
       const tradingCardSlug = Object.values(markAsTitleArr)
         .map((value: any) => value.value || value)
+        .filter(Boolean)
         .join('-')
         .toLowerCase()
         .replace(/[^a-z0-9-]/g, '-')
@@ -653,6 +710,34 @@ export class TradingCardService {
         search_param: '',
         trading_card_slug: ''
       };
+    }
+  }
+
+  /**
+   * Simple method to populate search_param for existing trading cards
+   */
+  async populateSearchParams() {
+    try {
+      // Use raw SQL to update search_param for all trading cards
+      const result = await sequelize.query(`
+        UPDATE trading_cards 
+        SET search_param = CONCAT(
+          COALESCE(trading_card_slug, ''),
+          ' ',
+          COALESCE(code, ''),
+          ' ',
+          COALESCE(trading_card_estimated_value, '')
+        )
+        WHERE search_param IS NULL OR search_param = ''
+      `, {
+        type: QueryTypes.UPDATE
+      });
+
+      console.log('Updated search_param for trading cards');
+      return true;
+    } catch (error) {
+      console.error('Error populating search parameters:', error);
+      throw error;
     }
   }
 }

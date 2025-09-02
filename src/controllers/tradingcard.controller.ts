@@ -3,6 +3,7 @@ import { TradingCardService } from "../services/tradingcard.service.js";
 import { Category } from "../models/category.model.js";
 import { TradingCard } from "../models/tradingcard.model.js";
 import { Sequelize } from "sequelize";
+import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
 
 // Extend Request interface to include files property
@@ -13,12 +14,19 @@ interface RequestWithFiles extends Request {
 const tradingcardService = new TradingCardService();
 
 // Helper function to send standardized API responses
-const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any) => {
-  return res.status(statusCode).json({
+const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any, pagination?: any) => {
+  const response: any = {
     status,
     message,
     data: data || []
-  });
+  };
+  
+  // Only add pagination if it's provided
+  if (pagination) {
+    response.pagination = pagination;
+  }
+  
+  return res.status(statusCode).json(response);
 };
 
 // Get trading cards by category name
@@ -47,11 +55,75 @@ export const getTradingCardsByCategoryName = async (req: Request, res: Response)
 
 export const getTradingCards = async (req: Request, res: Response) => {
   try {
-    const TradingCards = await tradingcardService.getAllTradingCards();
-    return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", TradingCards);
+    // Get pagination parameters from query
+    const pageParam = req.query.page as string;
+    const perPageParam = req.query.perPage as string;
+    const categoryIdParam = req.query.category_id as string;
+    const loggedInUserIdParam = req.query.loggedInUserId as string;
+    
+    const page = pageParam ? parseInt(pageParam, 10) : 1;
+    const perPage = perPageParam ? parseInt(perPageParam, 10) : 100;
+    const categoryId: number | undefined = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
+    const loggedInUserId: number | undefined = loggedInUserIdParam ? parseInt(loggedInUserIdParam, 10) : undefined;
+
+    // Validate pagination parameters
+    if (isNaN(page) || page < 1) {
+      return sendApiResponse(res, 400, false, "Page must be a valid number greater than 0", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+    }
+
+    if (isNaN(perPage) || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "PerPage must be a valid number between 1 and 100", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+    }
+
+    if (categoryIdParam && (isNaN(categoryId) || categoryId < 1)) {
+      return sendApiResponse(res, 400, false, "Category ID must be a valid positive number", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+    }
+
+    const result = await tradingcardService.getAllTradingCards(page, perPage, categoryId, loggedInUserId);
+
+    // Transform the data - now result.rows contains raw SQL results array
+    const tradingCards = (result.rows || []).map((card: any) => {
+      const baseResponse = {
+        id: card.id,
+        category_id: card.category_id,
+        trading_card_img: card.trading_card_img,
+        trading_card_img_back: card.trading_card_img_back,
+        trading_card_slug: card.trading_card_slug,
+        trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+        trading_card_asking_price: card.trading_card_asking_price,
+        search_param: card.search_param || null,
+        sport_name: card.sport_name || null
+      };
+
+      // Only add interested_in field if loggedInUserId is provided
+      if (loggedInUserId) {
+        return {
+          ...baseResponse,
+          interested_in: Boolean(card.interested_in)
+        };
+      }
+
+      return baseResponse;
+    });
+
+    // Only include pagination if pagination parameters were provided
+    const hasPaginationParams = pageParam || perPageParam;
+    
+    if (hasPaginationParams) {
+      return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", tradingCards, {
+        current_page: page,
+        per_page: perPage,
+        total: result.count,
+        total_pages: Math.ceil(result.count / perPage),
+        has_next_page: page < Math.ceil(result.count / perPage),
+        has_prev_page: page > 1
+      });
+    } else {
+      return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", tradingCards);
+    }
   } catch (error: any) {
     console.error(error);
-    return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
+    return sendApiResponse(res, 500, false, "Internal server error", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
   }
 };
 
@@ -259,6 +331,46 @@ export const saveTradingCard = async (req: Request, res: Response) => {
 };
 
 /**
+ * Populate search parameters for existing trading cards
+ * POST /api/tradingcards/populate-search-params
+ */
+export const populateSearchParams = async (req: Request, res: Response) => {
+  try {
+    await tradingcardService.populateSearchParams();
+    return sendApiResponse(
+      res, 
+      200, 
+      true, 
+      "Search parameters populated successfully", 
+      { success: true }
+    );
+  } catch (error: any) {
+    console.error("Error populating search parameters:", error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error");
+  }
+};
+
+/**
+ * Update search parameters for existing trading cards
+ * POST /api/tradingcards/update-search-params
+ */
+export const updateSearchParams = async (req: Request, res: Response) => {
+  try {
+    const updatedCount = await tradingcardService.updateSearchParamsForExistingCards();
+    return sendApiResponse(
+      res, 
+      200, 
+      true, 
+      `Updated search parameters for ${updatedCount} trading cards`, 
+      { updatedCount }
+    );
+  } catch (error: any) {
+    console.error("Error updating search parameters:", error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error");
+  }
+};
+
+/**
  * Update trading card (equivalent to Laravel update_trade_card)
  * PATCH /api/user/tradingcards/:cardId
  */
@@ -340,5 +452,90 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
   } catch (error: any) {
     console.error("Error updating trading card:", error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error");
+  }
+};
+
+// Interested in card API - Add/Remove interest
+export const interestedInCard = async (req: Request, res: Response) => {
+  try {
+    const { card_id } = req.body;
+    const userId = req.user?.id;
+    // Check if user is authenticated
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Check if card_id is provided
+    if (!card_id || isNaN(Number(card_id))) {
+      return sendApiResponse(res, 400, false, "Valid Card ID is required", []);
+    }
+
+    const cardId = Number(card_id);
+
+    // Get trading card to get trader_id
+    const tradingCard = await TradingCard.findByPk(cardId, {
+      attributes: ['trader_id']
+    });
+
+    if (!tradingCard) {
+      return sendApiResponse(res, 404, false, "Trading card not found", []);
+    }
+
+    const traderId = tradingCard.trader_id;
+
+    // Check if user already interested in this card
+    const existingInterest = await sequelize.query(`
+      SELECT id FROM interested_in 
+      WHERE trading_card_id = ${cardId} 
+      AND trader_id = ${traderId} 
+      AND user_id = ${userId}
+    `, {
+      type: Sequelize.QueryTypes.SELECT
+    });
+
+    let action = false;
+    let favCounts = 0;
+
+    if (existingInterest && existingInterest.length > 0) {
+      // Remove interest (delete record)
+      await sequelize.query(`
+        DELETE FROM interested_in 
+        WHERE trading_card_id = ${cardId} 
+        AND trader_id = ${traderId} 
+        AND user_id = ${userId}
+      `, {
+        type: Sequelize.QueryTypes.DELETE
+      });
+
+      action = false; // Removed
+    } else {
+      // Add interest (insert record)
+      await sequelize.query(`
+        INSERT INTO interested_in (trading_card_id, trader_id, user_id, created_at) 
+        VALUES (${cardId}, ${traderId}, ${userId}, NOW())
+      `, {
+        type: Sequelize.QueryTypes.INSERT
+      });
+
+      action = true; // Added
+    }
+
+    // Get updated favorite count
+    const favCountResult = await sequelize.query(`
+      SELECT COUNT(*) as count FROM interested_in WHERE user_id = ${userId}
+    `, {
+      type: Sequelize.QueryTypes.SELECT
+    });
+
+    favCounts = favCountResult[0]?.count || 0;
+
+    return sendApiResponse(res, 200, true, "Interest updated successfully", {
+      action: action, 
+      fav_counts: favCounts
+    });
+
+  } catch (error: any) {
+    console.error('Interested in card error:', error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };

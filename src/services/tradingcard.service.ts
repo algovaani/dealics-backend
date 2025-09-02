@@ -10,7 +10,7 @@ import { sequelize } from "../config/db.js";
 
 export class TradingCardService {
   // Get all TradingCard with pagination and category_name
-  async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number | undefined, loggedInUserId?: number | undefined) {
+  async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
     const offset = (page - 1) * perPage;
     let whereClause = '';
     if (categoryId) {

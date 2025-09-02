@@ -5,12 +5,12 @@ import { User } from "../models/user.model.js";
 import { CategoryField } from "../models/categoryField.model.js";
 import { CardCondition } from "../models/cardCondition.model.js";
 import { HelperService } from "./helper.service.js";
-import { Sequelize, QueryTypes } from "sequelize";
+import { Sequelize, QueryTypes, Op } from "sequelize";
 import { sequelize } from "../config/db.js";
 
 export class TradingCardService {
   // Get all TradingCard with pagination and category_name
-  async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number | undefined, loggedInUserId?: number | undefined) {
+  async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
     const offset = (page - 1) * perPage;
     let whereClause = '';
     if (categoryId) {
@@ -737,6 +737,32 @@ export class TradingCardService {
       return true;
     } catch (error) {
       console.error('Error populating search parameters:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update search parameters for existing cards (for the controller)
+   */
+  async updateSearchParamsForExistingCards(): Promise<number> {
+    try {
+      const result = await sequelize.query(`
+        UPDATE trading_cards 
+        SET search_param = CONCAT(
+          COALESCE(trading_card_slug, ''),
+          ' ',
+          COALESCE(code, ''),
+          ' ',
+          COALESCE(trading_card_estimated_value, '')
+        )
+        WHERE search_param IS NULL OR search_param = ''
+      `, {
+        type: QueryTypes.UPDATE
+      });
+
+      return result[1] as number; // Number of affected rows
+    } catch (error) {
+      console.error('Error updating search parameters:', error);
       throw error;
     }
   }

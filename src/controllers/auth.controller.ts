@@ -78,12 +78,15 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     // Mask email for response
     const maskEmail = (email: string) => {
+      if (!email || typeof email !== 'string') return '';
       const parts = email.split('@');
-      const namePart = parts[0].substring(0, 3) + '*'.repeat(Math.max(0, parts[0].length - 3));
-      return namePart + '@' + parts[1];
+      if (parts.length !== 2) return '';
+      const [name = '', domain = ''] = parts;
+      const namePart = name.substring(0, 3) + '*'.repeat(Math.max(0, (name?.length ?? 0) - 3));
+      return namePart + '@' + domain;
     };
-    
-    const maskedEmail = maskEmail(email || '');
+
+    const maskedEmail = maskEmail(email);
     
     return sendApiResponse(res, 200, true, `Password reset instructions have been sent to ${maskedEmail}. Please check your email.`, []);
 

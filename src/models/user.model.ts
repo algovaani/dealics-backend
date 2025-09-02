@@ -166,10 +166,6 @@ import {
     trading_cards?: number;
   
     @AllowNull
-    @Column(DataType.STRING)
-    recover_password_token?: string;
-  
-    @AllowNull
     @Column(DataType.STRING(100))
     paypal_business_email?: string;
   

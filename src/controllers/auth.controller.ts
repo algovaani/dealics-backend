@@ -83,7 +83,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
       return namePart + '@' + parts[1];
     };
     
-    const maskedEmail = maskEmail(email);
+    const maskedEmail = maskEmail(email as string);
     
     return sendApiResponse(res, 200, true, `Password reset instructions have been sent to ${maskedEmail}. Please check your email.`, []);
 

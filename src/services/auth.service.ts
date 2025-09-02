@@ -201,7 +201,7 @@ export class AuthService {
       await User.update(
         { 
           password: hashedPassword,
-          recover_password_token: undefined 
+          recover_password_token: '' 
         },
         { where: { id: userId } }
       );

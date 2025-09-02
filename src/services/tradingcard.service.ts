@@ -10,7 +10,7 @@ import { sequelize } from "../config/db.js";
 
 export class TradingCardService {
   // Get all TradingCard with pagination and category_name
-  async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
+    async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
     const offset = (page - 1) * perPage;
     let whereClause = '';
     if (categoryId) {
@@ -53,20 +53,20 @@ export class TradingCardService {
     `;
 
     const results = await sequelize.query(rawQuery, {
-      type: Sequelize.QueryTypes.SELECT
+      type: QueryTypes.SELECT
     });
     
     const countResults = await sequelize.query(countQuery, {
-      type: Sequelize.QueryTypes.SELECT
+      type: QueryTypes.SELECT
     });
 
     return {
-      rows: results,
-      count: countResults[0]?.total || 0
+      status: true,
+      message: "Trading cards fetched successfully",
+      data: results as any[],
+      count: (countResults[0] as any)?.total ?? 0
     };
   }
-
-  // Get TradingCard by ID
   async getTradingCardById(id: number) {
     return await TradingCard.findByPk(id);
   }
@@ -128,7 +128,7 @@ export class TradingCardService {
     const tradingCards = await TradingCard.findAll({
       where: {
         category_id: category.id,
-        ...(loggedInUserId ? { trader_id: { [Sequelize.Op.ne]: loggedInUserId } } : {})
+        ...(loggedInUserId ? { trader_id: { [Op.ne]: loggedInUserId } } : {})
       },
       include: [
         { model: Category, attributes: ['id', 'slug', 'sport_name'] },
@@ -157,8 +157,8 @@ export class TradingCardService {
     let whereClause: any = {
       trader_id: userId,
       trading_card_status: "1",
-      is_traded: { [Sequelize.Op.ne]: "1" },
-      mark_as_deleted: { [Sequelize.Op.is]: null },
+      is_traded: { [Op.ne]: "1" },
+      mark_as_deleted: { [Op.is]: null },
     };
 
     // If category is not "all", filter by specific category
@@ -218,7 +218,7 @@ export class TradingCardService {
       where: {
         ...baseWhere,
         id: {
-          [Sequelize.Op.in]: Sequelize.literal(`(${subquery})`)
+          [Op.in]: Sequelize.literal(`(${subquery})`)
         }
       },
       order: [["sport_name", "ASC"]],

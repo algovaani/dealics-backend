@@ -75,14 +75,35 @@ export const getTradingCards = async (req: Request, res: Response) => {
       return sendApiResponse(res, 400, false, "PerPage must be a valid number between 1 and 100", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
     }
 
-    if (categoryIdParam && (isNaN(categoryId) || categoryId < 1)) {
-      return sendApiResponse(res, 400, false, "Category ID must be a valid positive number", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+    if (categoryIdParam) {
+      if (categoryId === undefined || isNaN(categoryId) || categoryId < 1) {
+        return sendApiResponse(
+          res,
+          400,
+          false,
+          "Category ID must be a valid positive number",
+          [],
+          {
+            current_page: 1,
+            per_page: 100,
+            total: 0,
+            total_pages: 0,
+            has_next_page: false,
+            has_prev_page: false
+          }
+        );
+      }
     }
 
-    const result = await tradingcardService.getAllTradingCards(page, perPage, categoryId, loggedInUserId);
+    const result = await tradingcardService.getAllTradingCards(
+      page,
+      perPage,
+      categoryId,
+      loggedInUserId
+    );
 
-    // Transform the data - now result.rows contains raw SQL results array
-    const tradingCards = (result.rows || []).map((card: any) => {
+    // Transform the data - now result.data contains the trading cards array
+    const tradingCards = (result.data || []).map((card: any) => {
       const baseResponse = {
         id: card.id,
         category_id: card.category_id,
@@ -527,13 +548,17 @@ export const interestedInCard = async (req: Request, res: Response) => {
       type: QueryTypes.SELECT
     });
 
-    favCounts = favCountResult[0]?.count || 0;
+    // Ensure count is parsed as a number, since it may be returned as a string
+    favCounts = favCountResult[0] && ('count' in favCountResult[0]) && (typeof (favCountResult[0] as { count: any }).count === 'string' || typeof (favCountResult[0] as { count: any }).count === 'number')
+      ? Number((favCountResult[0] as { count: any }).count)
+      : 0;
 
-    return sendApiResponse(res, 200, true, "Interest updated successfully", {
-      action: action, 
-      fav_counts: favCounts
-    });
-
+    return sendApiResponse(res, 200, true, "Interest updated successfully", [
+      {
+        action: action,
+        fav_counts: favCounts
+      }
+    ]);
   } catch (error: any) {
     console.error('Interested in card error:', error);
     return sendApiResponse(res, 500, false, "Internal server error", []);

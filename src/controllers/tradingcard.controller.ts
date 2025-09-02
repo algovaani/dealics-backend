@@ -79,7 +79,7 @@ export const getTradingCards = async (req: Request, res: Response) => {
       return sendApiResponse(res, 400, false, "Category ID must be a valid positive number", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
     }
 
-    const result = await tradingcardService.getAllTradingCards(page, perPage, categoryId || undefined, loggedInUserId);
+    const result = await tradingcardService.getAllTradingCards(page, perPage, categoryId, loggedInUserId);
 
     // Transform the data - now result.rows contains raw SQL results array
     const tradingCards = (result.rows || []).map((card: any) => {

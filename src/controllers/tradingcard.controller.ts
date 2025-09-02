@@ -490,7 +490,7 @@ export const interestedInCard = async (req: Request, res: Response) => {
       AND trader_id = ${traderId} 
       AND user_id = ${userId}
     `, {
-      type: Sequelize.QueryTypes.SELECT
+      type: QueryTypes.SELECT
     });
 
     let action = false;
@@ -504,7 +504,7 @@ export const interestedInCard = async (req: Request, res: Response) => {
         AND trader_id = ${traderId} 
         AND user_id = ${userId}
       `, {
-        type: Sequelize.QueryTypes.DELETE
+        type: QueryTypes.DELETE
       });
 
       action = false; // Removed
@@ -514,7 +514,7 @@ export const interestedInCard = async (req: Request, res: Response) => {
         INSERT INTO interested_in (trading_card_id, trader_id, user_id, created_at) 
         VALUES (${cardId}, ${traderId}, ${userId}, NOW())
       `, {
-        type: Sequelize.QueryTypes.INSERT
+        type: QueryTypes.INSERT
       });
 
       action = true; // Added
@@ -524,7 +524,7 @@ export const interestedInCard = async (req: Request, res: Response) => {
     const favCountResult = await sequelize.query(`
       SELECT COUNT(*) as count FROM interested_in WHERE user_id = ${userId}
     `, {
-      type: Sequelize.QueryTypes.SELECT
+      type: QueryTypes.SELECT
     });
 
     favCounts = favCountResult[0]?.count || 0;

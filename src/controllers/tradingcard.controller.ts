@@ -104,6 +104,24 @@ export const getTradingCards = async (req: Request, res: Response) => {
 
     // Transform the data - now result.data contains the trading cards array
     const tradingCards = (result.data || []).map((card: any) => {
+      // Add canTradeOrOffer logic
+      let canTradeOrOffer = true;
+      
+      // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
+      if (loggedInUserId && card.trader_id === loggedInUserId) {
+        canTradeOrOffer = false;
+      }
+      
+      // If card is already traded, user can't trade
+      if (card.is_traded === '1') {
+        canTradeOrOffer = false;
+      }
+      
+      // If can_buy and can_trade are both 0, user can't trade or make offers
+      if (card.can_buy === 0 && card.can_trade === 0) {
+        canTradeOrOffer = false;
+      }
+
       const baseResponse = {
         id: card.id,
         category_id: card.category_id,
@@ -113,7 +131,8 @@ export const getTradingCards = async (req: Request, res: Response) => {
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
         search_param: card.search_param || null,
-        sport_name: card.sport_name || null
+        sport_name: card.sport_name || null,
+        canTradeOrOffer: canTradeOrOffer
       };
 
       // Only add interested_in field if loggedInUserId is provided
@@ -150,13 +169,58 @@ export const getTradingCards = async (req: Request, res: Response) => {
 
 export const getTradingCard = async (req: Request, res: Response) => {
   try {
-    const TradingCard = await tradingcardService.getTradingCardById(Number(req.params.id));
+    // Validate the ID parameter
+    const cardId = Number(req.params.id);
+    if (!req.params.id || isNaN(cardId) || cardId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid trading card ID is required");
+    }
     
-    if (!TradingCard) {
+    // Get logged in user ID from request (from auth middleware or query parameter)
+    const loggedInUserId = (req as any).user?.id || (req.query.loggedInUserId ? Number(req.query.loggedInUserId) : undefined);
+    
+    console.log("Controller - cardId:", cardId);
+    console.log("Controller - loggedInUserId:", loggedInUserId);
+    console.log("Controller - req.query.loggedInUserId:", req.query.loggedInUserId);
+    console.log("Controller - req.user?.id:", (req as any).user?.id);
+    
+    const result = await tradingcardService.getTradingCardById(cardId, loggedInUserId);
+    
+    if (!result) {
       return sendApiResponse(res, 404, false, "Trading Card not found");
     }
     
-    return sendApiResponse(res, 200, true, "Trading card retrieved successfully", TradingCard);
+    const { tradingCard, additionalFields, cardImages, canTradeOrOffer } = result;
+    
+    // Transform the response to include trader_name
+    const transformedCard = {
+      id: tradingCard.id,
+      code: tradingCard.code,
+      trading_card_status: tradingCard.trading_card_status,
+      category_id: tradingCard.category_id,
+      search_param: tradingCard.search_param,
+      trading_card_img: tradingCard.trading_card_img,
+      trading_card_img_back: tradingCard.trading_card_img_back,
+      trading_card_slug: tradingCard.trading_card_slug,
+      is_traded: tradingCard.is_traded,
+      created_at: tradingCard.created_at,
+      is_demo: tradingCard.is_demo,
+      trader_id: tradingCard.trader_id,
+      trader_name: tradingCard.trader ? tradingCard.trader.username : null,
+      trading_card_asking_price: tradingCard.trading_card_asking_price,
+      trading_card_estimated_value: tradingCard.trading_card_estimated_value,
+      trading_card_recent_sell_link: tradingCard.trading_card_recent_sell_link,
+      trading_card_recent_trade_value: tradingCard.trading_card_recent_trade_value,
+      can_trade: tradingCard.can_trade,
+      can_buy: tradingCard.can_buy,
+      // Add all non-null additional fields from trading card
+      additionalFields: additionalFields,
+      // Add card images data
+      cardImages: cardImages,
+      // Add can trade or offer parameter
+      canTradeOrOffer: canTradeOrOffer
+    };
+    
+    return sendApiResponse(res, 200, true, "Trading card retrieved successfully", transformedCard);
   } catch (error: any) {
     console.error(error);
     return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
@@ -177,7 +241,13 @@ export const createTradingCard = async (req: Request, res: Response) => {
 
 export const deleteTradingCard = async (req: Request, res: Response) => {
   try {
-    const success = await tradingcardService.deleteTradingCard(Number(req.params.id));
+    // Validate the ID parameter
+    const cardId = Number(req.params.id);
+    if (!req.params.id || isNaN(cardId) || cardId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid trading card ID is required");
+    }
+    
+    const success = await tradingcardService.deleteTradingCard(cardId);
     
     if (!success) {
       return sendApiResponse(res, 404, false, "Trading Card not found");
@@ -190,23 +260,54 @@ export const deleteTradingCard = async (req: Request, res: Response) => {
   }
 };
 
-// GET /user/tradingcards/my-products/:categoryName?page=1&perPage=9
+// GET /user/tradingcards/my-products/:categoryName?page=1&perPage=9&loggedInUserId=123
 export const getMyTradingCardsByCategory = async (req: Request, res: Response) => {
   try {
     const { categoryName } = req.params;
+    // Get userId from auth middleware or query parameter
     const userId = req.user?.id as number | undefined;
+    // Get loggedInUserId from query parameter for trade/offer check
+    const loggedInUserId = req.query.loggedInUserId ? Number(req.query.loggedInUserId) : undefined;
     const page = parseInt((req.query.page as string) || "1", 10);
     const perPage = parseInt((req.query.perPage as string) || "9", 10);
 
-    if (!userId) {
-      return sendApiResponse(res, 401, false, "Unauthorized");
-    }
+    console.log("getMyTradingCardsByCategory - categoryName:", categoryName);
+    console.log("getMyTradingCardsByCategory - userId:", userId);
+    console.log("getMyTradingCardsByCategory - loggedInUserId:", loggedInUserId);
+
+    // Remove authentication requirement - allow access without login
+    // if (!userId) {
+    //   return sendApiResponse(res, 401, false, "Unauthorized");
+    // }
     
     if (!categoryName) {
       return sendApiResponse(res, 400, false, "Category slug is required");
     }
 
-    const { rows, count } = await tradingcardService.getMyTradingCardsByCategorySlug(categoryName, userId, page, perPage);
+    // Get all trading cards for the category without user filtering since we removed authentication
+    const { rows, count } = await tradingcardService.getAllTradingCardsByCategorySlug(categoryName, page, perPage);
+
+    // Add canTradeOrOffer logic to each trading card
+    const tradingCardsWithTradeStatus = rows.map((card: any) => {
+      let canTradeOrOffer = true;
+      
+      // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
+      if (loggedInUserId && card.trader_id === loggedInUserId) {
+        canTradeOrOffer = false;
+        console.log(`Card ${card.id}: User ${loggedInUserId} owns this card, canTradeOrOffer = false`);
+      }
+      
+      // If card is already traded, user can't trade
+      if (card.is_traded === '1') {
+        canTradeOrOffer = false;
+        console.log(`Card ${card.id}: Card is already traded, canTradeOrOffer = false`);
+      }
+      
+      return {
+        ...card,
+        canTradeOrOffer: canTradeOrOffer
+      };
+    });
 
     // Stag-like data: categories available for this user
     // If category is "all", return all categories, otherwise return user's categories
@@ -220,12 +321,12 @@ export const getMyTradingCardsByCategory = async (req: Request, res: Response) =
       });
       stagDatas = allCategories.map((c: any) => c.toJSON());
     } else {
-      // Get categories filtered by user's active cards
-      stagDatas = await tradingcardService.getCategoriesForUser(userId);
+      // Get categories filtered by user's active cards (if userId is provided)
+      stagDatas = await tradingcardService.getCategoriesForUser(userId || undefined);
     }
 
     const payload = {
-      tradingcards: rows,
+      tradingcards: tradingCardsWithTradeStatus,
       pagination: {
         page,
         perPage,
@@ -562,5 +663,132 @@ export const interestedInCard = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Interested in card error:', error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// GET /api/tradingCards/public-profile - Get public profile trading cards for a specific user
+export const getPublicProfileTradingCards = async (req: Request, res: Response) => {
+  try {
+    // Get parameters from query params
+    const userId = req.query.userId as string;
+    const pageParam = req.query.page as string;
+    const perPageParam = req.query.perPage as string;
+    const loggedInUserIdParam = req.query.loggedInUserId as string;
+    const categoryIdParam = req.query.categoryId as string;
+    
+    // Validate required parameters
+    if (!userId || isNaN(Number(userId)) || Number(userId) <= 0) {
+      return sendApiResponse(res, 400, false, "Valid user ID is required");
+    }
+
+    const page = pageParam ? parseInt(pageParam.toString(), 10) : 1;
+    const perPage = perPageParam ? parseInt(perPageParam.toString(), 10) : 10;
+    let loggedInUserId: number | undefined = undefined;
+    let categoryId: number | undefined = undefined;
+    
+    if (loggedInUserIdParam && !isNaN(Number(loggedInUserIdParam)) && Number(loggedInUserIdParam) > 0) {
+      loggedInUserId = parseInt(loggedInUserIdParam.toString(), 10);
+    }
+    
+    if (categoryIdParam && !isNaN(Number(categoryIdParam)) && Number(categoryIdParam) > 0) {
+      categoryId = parseInt(categoryIdParam.toString(), 10);
+    }
+
+    // Validate pagination parameters
+    if (isNaN(page) || page < 1) {
+      return sendApiResponse(res, 400, false, "Page must be a valid number greater than 0");
+    }
+
+    if (isNaN(perPage) || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "PerPage must be a valid number between 1 and 100");
+    }
+    
+    // Additional validation to ensure no NaN values are passed
+    if (isNaN(Number(userId)) || Number(userId) <= 0) {
+      return sendApiResponse(res, 400, false, "Invalid user ID provided");
+    }
+    
+    if (loggedInUserId !== undefined && (isNaN(loggedInUserId) || loggedInUserId <= 0)) {
+      return sendApiResponse(res, 400, false, "Invalid loggedInUserId provided");
+    }
+
+    console.log("Debug - userId:", userId, "type:", typeof userId);
+    console.log("Debug - page:", page, "type:", typeof page);
+    console.log("Debug - perPage:", perPage, "type:", typeof perPage);
+    console.log("Debug - loggedInUserId:", loggedInUserId, "type:", typeof loggedInUserId);
+    
+    const result = await tradingcardService.getPublicProfileTradingCards(
+      Number(userId),
+      page,
+      perPage,
+      loggedInUserId,
+      categoryId
+    );
+
+    console.log("Service result:", result);
+
+    // Check if service returned an error
+    if (!result.status) {
+      return sendApiResponse(res, 400, false, result.message || "Failed to fetch trading cards", []);
+    }
+
+    // Transform the data and add canTradeOrOffer logic
+    const tradingCards = (result.data || []).map((card: any) => {
+      // Add canTradeOrOffer logic
+      let canTradeOrOffer = true;
+      
+      // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
+      if (loggedInUserId && card.trader_id === loggedInUserId) {
+        canTradeOrOffer = false;
+      }
+      
+      // If card is already traded, user can't trade
+      if (card.is_traded === '1') {
+        canTradeOrOffer = false;
+      }
+      
+      // If can_buy and can_trade are both 0, user can't trade or make offers
+      if (card.can_buy === 0 && card.can_trade === 0) {
+        canTradeOrOffer = false;
+      }
+
+             const baseResponse = {
+         id: card.id,
+         category_id: card.category_id,
+         trader_id: card.trader_id,
+         creator_id: card.creator_id,
+         trading_card_img: card.trading_card_img,
+         trading_card_img_back: card.trading_card_img_back,
+         trading_card_slug: card.trading_card_slug,
+         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+         trading_card_asking_price: card.trading_card_asking_price,
+         search_param: card.search_param || null,
+         sport_name: card.sport_name || null,
+         canTradeOrOffer: canTradeOrOffer
+       };
+
+      // Only add interested_in field if loggedInUserId is provided
+      if (loggedInUserId) {
+        return {
+          ...baseResponse,
+          interested_in: Boolean(card.interested_in)
+        };
+      }
+
+      return baseResponse;
+    });
+
+    return sendApiResponse(res, 200, true, "Public profile trading cards retrieved successfully", tradingCards, {
+      current_page: page,
+      per_page: perPage,
+      total: result.count,
+      total_pages: Math.ceil(result.count / perPage),
+      has_next_page: page < Math.ceil(result.count / perPage),
+      has_prev_page: page > 1
+    });
+
+  } catch (error: any) {
+    console.error(error);
+    return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
   }
 };

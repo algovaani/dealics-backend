@@ -48,6 +48,14 @@ export class CategoryField extends Model<CategoryField> {
   @Column(DataType.BOOLEAN)
   mark_as_title?: boolean;
 
+  @AllowNull
+  @Column(DataType.BOOLEAN)
+  mark_for_popup?: boolean;
+
+  @AllowNull
+  @Column(DataType.BOOLEAN)
+  show_on_detail?: boolean;
+
   @BelongsTo(() => Category)
   category?: Category;
 }

@@ -8,13 +8,14 @@ import { Category } from "./models/category.model.js";
 import { TradingCard } from "./models/tradingcard.model.js";
 import { CategoryField } from "./models/categoryField.model.js";
 import { CardCondition } from "./models/cardCondition.model.js";
+import { CardImage } from "./models/card_image.model.js";
 import { EmailTemplete } from "./models/emailTemplate.model.js";
 import { Setting } from "./models/setting.model.js";
 import { MailQueue } from "./models/mailQueue.model.js";
 import { InterestedIn } from "./models/interestedIn.model.js";
 
 // Add models to Sequelize instance
-sequelize.addModels([User, Category, TradingCard, CategoryField, CardCondition, EmailTemplete, Setting, MailQueue, InterestedIn]);
+sequelize.addModels([User, Category, TradingCard, CategoryField, CardCondition, CardImage, EmailTemplete, Setting, MailQueue, InterestedIn]);
 
 // Import routes
 import userRoutes from "./routes/user.routes.js";

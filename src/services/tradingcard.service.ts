@@ -4,6 +4,7 @@ import { Category } from "../models/category.model.js";
 import { User } from "../models/user.model.js";
 import { CategoryField } from "../models/categoryField.model.js";
 import { CardCondition } from "../models/cardCondition.model.js";
+import { CardImage } from "../models/card_image.model.js";
 import { HelperService } from "./helper.service.js";
 import { Sequelize, QueryTypes, Op } from "sequelize";
 import { sequelize } from "../config/db.js";
@@ -11,16 +12,22 @@ import { sequelize } from "../config/db.js";
 export class TradingCardService {
   // Get all TradingCard with pagination and category_name
     async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
-    const offset = (page - 1) * perPage;
+    // Validate and sanitize input parameters
+    const validPage = isNaN(page) || page < 1 ? 1 : page;
+    const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
+    const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
+    const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+    
+    const offset = (validPage - 1) * validPerPage;
     let whereClause = '';
-    if (categoryId) {
-      whereClause = `WHERE tc.category_id = ${categoryId}`;
+    if (validCategoryId) {
+      whereClause = `WHERE tc.category_id = ${validCategoryId}`;
     }
 
     // Use raw SQL to get data with sport_name and interested_in status
     let interestedJoin = '';
-    if (loggedInUserId && loggedInUserId > 0) {
-      interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${loggedInUserId}`;
+    if (validLoggedInUserId) {
+      interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${validLoggedInUserId}`;
     } else {
       interestedJoin = 'LEFT JOIN interested_in ii ON 1=0'; // This will never match, so interested_in will always be false
     }
@@ -36,13 +43,18 @@ export class TradingCardService {
         tc.trading_card_asking_price,
         tc.search_param,
         c.sport_name,
+        tc.trader_id,
+        tc.creator_id,
+        tc.is_traded,
+        tc.can_trade,
+        tc.can_buy,
         CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in
       FROM trading_cards tc
       LEFT JOIN categories c ON tc.category_id = c.id
       ${interestedJoin}
       ${whereClause}
       ORDER BY tc.created_at DESC
-      LIMIT ${perPage} OFFSET ${offset}
+      LIMIT ${validPerPage} OFFSET ${offset}
     `;
     
     const countQuery = `
@@ -67,8 +79,264 @@ export class TradingCardService {
       count: (countResults[0] as any)?.total ?? 0
     };
   }
-  async getTradingCardById(id: number) {
-    return await TradingCard.findByPk(id);
+  async getTradingCardById(id: number, loggedInUserId?: number) {
+    // Validate the id parameter
+    if (!id || isNaN(id) || id <= 0) {
+      console.log("getTradingCardById - Invalid id provided:", id);
+      return null;
+    }
+    
+    // Get the trading card with basic data
+    const tradingCard = await TradingCard.findByPk(id, {
+      attributes: [
+        'id',
+        'code',
+        'trading_card_status',
+        'category_id',
+        'search_param',
+        'trading_card_img',
+        'trading_card_img_back',
+        'trading_card_slug',
+        'is_traded',
+        'created_at',
+        'is_demo',
+        'trader_id',
+        'trading_card_asking_price',
+        'trading_card_estimated_value',
+        'trading_card_recent_sell_link',
+        'trading_card_recent_trade_value',
+        'can_trade',
+        'can_buy'
+      ],
+      include: [
+        {
+          model: User,
+          as: 'trader',
+          attributes: ['username'],
+          where: { user_status: '1' },
+          required: false
+        }
+      ]
+    });
+
+    if (!tradingCard) {
+      return null;
+    }
+
+    // Get card images for this trading card using the CardImage model
+    const cardImagesData = await CardImage.findAll({
+      where: { 
+        mainCardId: id,
+        cardImageStatus: '1'
+      },
+      order: [['id', 'ASC']],
+      attributes: [
+        'id',
+        'mainCardId',
+        'traderId',
+        'cardImage1',
+        'cardImage2', 
+        'cardImage3',
+        'cardImage4',
+        'cardImageStatus',
+        'createdAt',
+        'updatedAt'
+      ]
+    });
+
+    // Transform card images to a single object with images array
+    const cardImages: {
+      id: number | null;
+      mainCardId: number | null;
+      images: string[];
+    } = {
+      id: cardImagesData.length > 0 ? (cardImagesData[0] as any)?.id || null : null,
+      mainCardId: cardImagesData.length > 0 ? (cardImagesData[0] as any)?.mainCardId || null : null,
+      images: []
+    };
+
+    // Extract all non-null images from all card image records
+    cardImagesData.forEach(cardImage => {
+      if (cardImage.cardImage1) cardImages.images.push(cardImage.cardImage1);
+      if (cardImage.cardImage2) cardImages.images.push(cardImage.cardImage2);
+      if (cardImage.cardImage3) cardImages.images.push(cardImage.cardImage3);
+      if (cardImage.cardImage4) cardImages.images.push(cardImage.cardImage4);
+    });
+
+    // Get all trading card data to extract non-null fields
+    const allTradingCardData = await TradingCard.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: 'trader',
+          attributes: ['username'],
+          where: { user_status: '1' },
+          required: false
+        }
+      ]
+    });
+
+    // Extract all non-null fields from trading card with related data
+    const additionalFields: any[] = [];
+    if (allTradingCardData) {
+      const cardData = allTradingCardData.toJSON() as any;
+      
+      // Get all field names from the trading card model
+      const allFieldNames = Object.keys(cardData);
+      
+             // Filter out null/undefined values and exclude basic fields that are already in main response
+       const basicFields = ['id', 'code', 'trading_card_status', 'category_id', 'search_param', 
+                           'trading_card_img', 'trading_card_img_back', 'trading_card_slug', 
+                           'is_traded', 'created_at', 'is_demo', 'trader_id', 
+                           'trading_card_asking_price', 'trading_card_estimated_value', 
+                           'trading_card_recent_sell_link', 'trading_card_recent_trade_value', 
+                           'can_trade', 'can_buy', 'trader'];
+      
+      for (const fieldName of allFieldNames) {
+        if (!basicFields.includes(fieldName) && 
+            cardData[fieldName] !== null && 
+            cardData[fieldName] !== undefined && 
+            cardData[fieldName] !== '' &&
+            cardData[fieldName] !== 0 && cardData[fieldName] !== '0') {
+          
+                     // Get field label from item_columns table
+           const fieldLabel = await this.getFieldLabel(fieldName);
+           
+                       // Check if this field has a relationship (ends with _id)
+            if (fieldName.endsWith('_id')) {
+              let relatedTableName: string;
+              
+              if (fieldName === 'card_condition_id') {
+                relatedTableName = 'condition';
+              } else {
+                relatedTableName = fieldName.replace('_id', '');
+              }
+              
+              const relatedValue = await this.getRelatedValue(relatedTableName, cardData[fieldName]);
+              
+              additionalFields.push({
+                field_name: fieldName,
+                field_value: cardData[fieldName],
+                field_label: fieldLabel,
+                related_field_name: relatedTableName,
+                related_field_value: relatedValue
+              });
+            } else {
+              additionalFields.push({
+                field_name: fieldName,
+                field_value: cardData[fieldName],
+                field_label: fieldLabel
+              });
+            }
+        }
+      }
+    }
+
+    // Check if user can trade or make offers
+    let canTradeOrOffer = false;
+    console.log("loggedInUserId",loggedInUserId);
+    // If can_buy and can_trade are both 0 (as number) or '0' (as string), user can't trade or make offers
+    // But if is_traded is falsy (0 or '0'), user can trade or make offers
+    if(loggedInUserId && tradingCard.trader_id === loggedInUserId){
+      canTradeOrOffer = false;
+    }else if(tradingCard && (tradingCard.is_traded == '0') ) {
+      canTradeOrOffer = true;
+    }
+
+    return {
+      tradingCard,
+      additionalFields: additionalFields,
+      cardImages: cardImages,
+      canTradeOrOffer: canTradeOrOffer
+    };
+  }
+
+  // Helper method to load related data
+  private async loadRelatedData(
+    tradingCard: any,
+    relationFunction: string,
+    relationColumn: string,
+    categoryId: number
+  ) {
+    try {
+      // This is a simplified implementation
+      // You may need to implement specific relation loading logic based on your needs
+      const fieldValue = (tradingCard as any)[relationColumn];
+      
+      if (fieldValue) {
+        // Example: Load master data for the field
+        const masterData = await HelperService.getMasterDatas(relationFunction, categoryId);
+        return masterData.find((item: any) => item.id === fieldValue) || null;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error loading related data:', error);
+      return null;
+    }
+  }
+
+  // Helper method to get field label from item_columns table
+  private async getFieldLabel(fieldName: string): Promise<string | null> {
+    try {
+      const query = `
+        SELECT label
+        FROM item_columns
+        WHERE name = :fieldName
+        LIMIT 1
+      `;
+
+      const result = await sequelize.query(query, {
+        replacements: { fieldName },
+        type: QueryTypes.SELECT
+      });
+
+      return result.length > 0 && result[0] ? (result[0] as any).label : null;
+    } catch (error) {
+      console.error(`Error getting field label for ${fieldName}:`, error);
+      return null;
+    }
+  }
+
+  // Helper method to get related value from other tables
+  private async getRelatedValue(tableName: string, id: number): Promise<any> {
+    try {
+      // Define common table relationships and their display fields
+      const tableConfigs: { [key: string]: { table: string; displayField: string; idField?: string } } = {
+        'player': { table: 'players', displayField: 'player_name', idField: 'id' },
+        'team': { table: 'teams', displayField: 'team_name', idField: 'id' },
+        'brand': { table: 'brands', displayField: 'brand_name', idField: 'id' },
+        'year': { table: 'years', displayField: 'year_name', idField: 'id' },
+        'condition': { table: 'card_conditions', displayField: 'card_condition_name', idField: 'id' },
+        'grade': { table: 'grades', displayField: 'grade_name', idField: 'id' },
+        'sport': { table: 'sports', displayField: 'sport_name', idField: 'id' },
+        'league': { table: 'leagues', displayField: 'league_name', idField: 'id' },
+        'set': { table: 'sets', displayField: 'set_name', idField: 'id' },
+        'manufacturer': { table: 'manufacturers', displayField: 'manufacturer_name', idField: 'id' }
+      };
+
+      const config = tableConfigs[tableName];
+      if (!config) {
+        return null;
+      }
+
+      const query = `
+        SELECT ${config.displayField} as display_value
+        FROM ${config.table}
+        WHERE ${config.idField || 'id'} = :id
+        LIMIT 1
+      `;
+
+      const result = await sequelize.query(query, {
+        replacements: { id },
+        type: QueryTypes.SELECT
+      });
+
+      return result.length > 0 && result[0] ? (result[0] as any).display_value : null;
+    } catch (error) {
+      console.error(`Error getting related value for ${tableName} with id ${id}:`, error);
+      return null;
+    }
   }
 
   // Create new TradingCard
@@ -101,6 +369,12 @@ export class TradingCardService {
 
   // Delete Category
   async deleteTradingCard(id: number) {
+    // Validate the id parameter
+    if (!id || isNaN(id) || id <= 0) {
+      console.log("deleteTradingCard - Invalid id provided:", id);
+      return false;
+    }
+    
     const tradingCard = await TradingCard.findByPk(id);
     if (!tradingCard) return null;
     await TradingCard.destroy();
@@ -187,10 +461,147 @@ export class TradingCardService {
         "trading_card_slug",
         "trading_card_estimated_value",
         "updated_at",
+        "trader_id",
+        "is_traded"
       ],
     });
 
     return result;
+  }
+
+  // Get all trading cards for a category (by slug) with pagination - no authentication required
+  async getAllTradingCardsByCategorySlug(
+    categorySlug: string,
+    page: number = 1,
+    perPage: number = 9
+  ) {
+    let whereClause: any = {
+      trading_card_status: "1",
+      mark_as_deleted: { [Op.is]: null },
+    };
+
+    // If category is not "all", filter by specific category
+    if (categorySlug !== "all") {
+      const category = await Category.findOne({ where: { slug: categorySlug } });
+      if (!category) return { rows: [], count: 0 };
+      whereClause.category_id = category.id;
+    }
+
+    const offset = (page - 1) * perPage;
+
+    const result = await TradingCard.findAndCountAll({
+      where: whereClause,
+      include: [
+        { model: Category, attributes: ["id", "slug", "sport_name", "sport_icon"] },
+        { model: CardCondition, attributes: ["id", "card_condition_name", "card_condition_status"] },
+        { model: User, attributes: ["id", "username"], where: { user_status: '1' }, required: false }
+      ],
+      order: [["updated_at", "DESC"]],
+      limit: perPage,
+      offset,
+      attributes: [
+        "id",
+        "code",
+        "category_id",
+        "trading_card_img",
+        "trading_card_slug",
+        "trading_card_estimated_value",
+        "updated_at",
+        "trader_id",
+        "is_traded"
+      ],
+    });
+
+    return result;
+  }
+
+  // Get public profile trading cards for a specific user
+  async getPublicProfileTradingCards(
+    userId: number,
+    page: number = 1,
+    perPage: number = 10,
+    loggedInUserId?: number,
+    categoryId?: number
+  ) {
+    // Validate and sanitize input parameters
+    const validUserId = userId && !isNaN(userId) && userId > 0 ? userId : null;
+    const validPage = isNaN(page) || page < 1 ? 1 : page;
+    const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
+    const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+    const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
+    
+    if (!validUserId) {
+      return {
+        status: false,
+        message: "Valid user ID is required",
+        data: [],
+        count: 0
+      };
+    }
+    
+    const offset = (validPage - 1) * validPerPage;
+    
+    // Use raw SQL to get data with sport_name and interested_in status
+    let interestedJoin = '';
+    if (validLoggedInUserId) {
+      interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${validLoggedInUserId}`;
+    } else {
+      interestedJoin = 'LEFT JOIN interested_in ii ON 1=0'; // This will never match, so interested_in will always be false
+    }
+    
+    const rawQuery = `
+      SELECT 
+        tc.id,
+        tc.category_id,
+        tc.trading_card_img,
+        tc.trading_card_img_back,
+        tc.trading_card_slug,
+        tc.trading_card_recent_trade_value,
+        tc.trading_card_asking_price,
+        tc.search_param,
+        c.sport_name,
+        tc.trader_id,
+        tc.creator_id,
+        tc.is_traded,
+        tc.can_trade,
+        tc.can_buy,
+        CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in
+      FROM trading_cards tc
+      LEFT JOIN categories c ON tc.category_id = c.id
+      ${interestedJoin}
+      WHERE tc.creator_id = ${validUserId}
+        AND tc.trading_card_status = '1'
+        AND tc.mark_as_deleted IS NULL
+        AND tc.is_traded != '1'
+        ${validCategoryId ? `AND tc.category_id = ${validCategoryId}` : ''}
+      ORDER BY tc.created_at DESC
+      LIMIT ${validPerPage} OFFSET ${offset}
+    `;
+    
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM trading_cards tc
+      WHERE tc.creator_id = ${validUserId}
+        AND tc.trading_card_status = '1'
+        AND tc.mark_as_deleted IS NULL
+        AND tc.is_traded != '1'
+        ${validCategoryId ? `AND tc.category_id = ${validCategoryId}` : ''}
+    `;
+
+    const results = await sequelize.query(rawQuery, {
+      type: QueryTypes.SELECT
+    });
+    
+    const countResults = await sequelize.query(countQuery, {
+      type: QueryTypes.SELECT
+    });
+
+    return {
+      status: true,
+      message: "Public profile trading cards fetched successfully",
+      data: results as any[],
+      count: (countResults[0] as any)?.total ?? 0
+    };
   }
 
   // Helper-equivalent: get categories filtered by whether user has active cards
@@ -208,8 +619,13 @@ export class TradingCardService {
     }
 
     // With user filter: use a subquery to find categories that have user's active cards
+    const validUserId = userId && !isNaN(userId) && userId > 0 ? userId : null;
+    if (!validUserId) {
+      return [];
+    }
+    
     const subquery = `SELECT DISTINCT category_id FROM trading_cards 
-                      WHERE trader_id = ${userId} 
+                      WHERE trader_id = ${validUserId} 
                         AND trading_card_status = '1' 
                         AND COALESCE(is_traded, '0') != '1' 
                         AND mark_as_deleted IS NULL`;

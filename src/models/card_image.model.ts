@@ -75,14 +75,16 @@ import {
     })
     cardImageStatus!: '1' | '0';
   
-    @CreatedAt
+        @CreatedAt
     @Column({
+      type: DataType.DATE,
       field: 'created_at'
     })
     createdAt!: Date;
-  
+
     @UpdatedAt
     @Column({
+      type: DataType.DATE,
       field: 'updated_at'
     })
     updatedAt!: Date;

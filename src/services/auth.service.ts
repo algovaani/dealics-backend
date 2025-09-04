@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { Op } from "sequelize";
 import { User } from "../models/index.js";
 import { sequelize } from "../config/db.js";
+import crypto from "crypto";
 
 export class AuthService {
   async validateUser(identifier: string, password: string) {
@@ -42,13 +43,22 @@ export class AuthService {
     phone_number: string;
     password: string;
     country_code?: string;
+    profile_image?: string;
   }) {
     // Basic validations mirroring Laravel rules
     if (!input.first_name?.trim()) throw new Error("Please enter your first name.");
     if (!input.last_name?.trim()) throw new Error("Please enter your last name.");
     if (!input.username?.trim()) throw new Error("Please enter your username.");
     if (!input.email?.trim()) throw new Error("Please enter your email address.");
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email)) throw new Error("Please enter a valid email address.");
+    
+    // Clean email and validate
+    const cleanEmail = input.email.trim().toLowerCase();
+    console.log('🔍 Email validation:', { original: input.email, cleaned: cleanEmail });
+    
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
+      console.log('❌ Invalid email format:', cleanEmail);
+      throw new Error("Please enter a valid email address.");
+    }
     if (!input.phone_number?.trim()) throw new Error("Please enter your mobile number.");
     if (input.phone_number.length < 3) throw new Error("Mobile number must be at least 3 digits.");
     if (input.phone_number.length > 12) throw new Error("Mobile number should not exceed 12 digits.");
@@ -74,6 +84,7 @@ export class AuthService {
           username: input.username,
           email: input.email,
           country_code: input.country_code ?? null,
+          profile_picture: input.profile_image ?? null,
           cxp_coins: 50,
           phone_number: input.phone_number,
           password: hashed,
@@ -98,22 +109,37 @@ export class AuthService {
   }
 
   /**
-   * Generate recovery token (equivalent to Laravel encrypt)
+   * Generate recovery token (simple without expiration for testing)
    */
   generateRecoveryToken(userId: number): string {
-    const data = `${userId}|${new Date().toISOString()}`;
-    const secret = process.env.JWT_SECRET || "dev-secret-change";
-    return jwt.sign({ data }, secret, { expiresIn: "1h" });
+    const randomBytes = crypto.randomBytes(32);
+    return randomBytes.toString('hex');
   }
 
   /**
    * Update user with recovery token
    */
   async updateUserRecoveryToken(userId: number, token: string) {
-    return await User.update(
-      { recover_password_token: token },
-      { where: { id: userId } }
-    );
+    try {
+      console.log('🔧 Updating recovery token for user ID:', userId);
+      console.log('🔧 Token to save:', token);
+      
+      const result = await User.update(
+        { recover_password_token: token },
+        { where: { id: userId } }
+      );
+      
+      console.log('🔧 Update result:', result);
+      
+      // Verify the token was saved
+      const updatedUser = await User.findByPk(userId);
+      console.log('🔧 Token in database after update:', updatedUser?.recover_password_token);
+      
+      return result;
+    } catch (error) {
+      console.error('❌ Error updating recovery token:', error);
+      throw error;
+    }
   }
 
   /**
@@ -121,24 +147,32 @@ export class AuthService {
    */
   async verifyRecoveryToken(token: string) {
     try {
-      const secret = process.env.JWT_SECRET || "dev-secret-change";
-      const decoded = jwt.verify(token, secret) as any;
+      console.log('🔍 Verifying token:', token);
       
-      if (!decoded || !decoded.data) {
-        return null;
-      }
-
-      const [userId] = decoded.data.split('|');
+      // Find user by token
       const user = await User.findOne({
         where: { 
-          id: parseInt(userId),
           recover_password_token: token 
         }
       });
 
+      console.log('🔍 User found:', user ? 'Yes' : 'No');
+
+      if (!user) {
+        console.log('❌ No user found with this token');
+        return null;
+      }
+
+      // Check if token is not empty
+      if (!user.recover_password_token || user.recover_password_token.trim() === '') {
+        console.log('❌ Token is empty in database');
+        return null;
+      }
+
+      console.log('✅ Token verified successfully');
       return user;
     } catch (error) {
-      console.error('Token verification error:', error);
+      console.error('❌ Token verification error:', error);
       return null;
     }
   }
@@ -173,7 +207,7 @@ export class AuthService {
       
       const name = this.setName(user.first_name || '', user.last_name || '');
       
-      const emailSent = await EmailHelperService.sendCustomEmail('forgot-password-notification', {
+      const emailSent = await EmailHelperService.sendCustomEmail('reset-password-request', {
         to: user.email || '',
         name: name,
         username: user.username || ''

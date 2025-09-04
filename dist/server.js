@@ -1,6 +1,16 @@
 import "reflect-metadata";
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
+// Load environment variables
+dotenv.config();
+// Debug: Check if email environment variables are loaded
+console.log('🔧 Email Configuration Check:');
+console.log('MAIL_HOST:', process.env.MAIL_HOST);
+console.log('MAIL_PORT:', process.env.MAIL_PORT);
+console.log('MAIL_USERNAME:', process.env.MAIL_USERNAME);
+console.log('MAIL_PASSWORD:', process.env.MAIL_PASSWORD ? '***SET***' : '***NOT SET***');
+console.log('MAIL_FROM_ADDRESS:', process.env.MAIL_FROM_ADDRESS);
 import { sequelize } from "./config/db.js";
 import { fixDatabaseSchema } from "./config/fixDatabaseSchema.js";
 import { models, setupAssociations } from "./models/index.js";

@@ -57,7 +57,7 @@ export const getTradingCards = async (req: Request, res: Response) => {
     // Get pagination parameters from query
     const pageParam = req.query.page as string;
     const perPageParam = req.query.perPage as string;
-    const categoryIdParam = req.query.category_id as string;
+    const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
     const loggedInUserIdParam = req.query.loggedInUserId as string;
     
     const page = pageParam ? parseInt(pageParam, 10) : 1;

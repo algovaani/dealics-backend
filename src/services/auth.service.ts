@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { Op } from "sequelize";
-import { User } from "../models/user.model.js";
+import { User } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 
 export class AuthService {

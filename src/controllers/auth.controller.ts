@@ -25,7 +25,7 @@ export const login = async (req: Request, res: Response) => {
     }
     
     const token = authService.issueToken(user);
-    return sendApiResponse(res, 200, true, "Login successful", [{ token, user }]);
+    return sendApiResponse(res, 200, true, "Login successful", [{ token }]);
   } catch (error: any) {
     console.error("Login error:", error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
@@ -36,7 +36,7 @@ export const register = async (req: Request, res: Response) => {
   try {
     const user = await authService.register(req.body);
     const token = authService.issueToken(user);
-    return sendApiResponse(res, 201, true, "Registration successful", [{ token, user }]);
+    return sendApiResponse(res, 201, true, "Registration successful", [{ token }]);
   } catch (err: any) {
     console.error("Registration error:", err);
     return sendApiResponse(res, 400, false, err.message ?? "Registration failed", []);

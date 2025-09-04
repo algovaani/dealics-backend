@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { TradingCard } from "../models/tradingcard.model.js";
+import { TradingCard } from "../models/index.js";
 
 // Helper function to send standardized API responses
 const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any) => {

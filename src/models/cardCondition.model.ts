@@ -7,9 +7,7 @@ import {
     AutoIncrement,
     CreatedAt,
     UpdatedAt,
-    HasMany,
   } from 'sequelize-typescript';
-  import { TradingCard } from './tradingcard.model.js';
   
   @Table({
     tableName: 'card_conditions',
@@ -52,7 +50,5 @@ import {
     @Column({ field: 'updated_at', type: DataType.DATE })
     updated_at?: Date;
 
-    @HasMany(() => TradingCard)
-    tradingCards?: TradingCard[];
   }
   

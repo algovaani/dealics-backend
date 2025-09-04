@@ -7,9 +7,7 @@ import {
   AutoIncrement,
   AllowNull,
   ForeignKey,
-  BelongsTo,
 } from "sequelize-typescript";
-import { Category } from "./category.model.js";
 
 @Table({
   tableName: "category_fields",
@@ -23,7 +21,6 @@ export class CategoryField extends Model<CategoryField> {
   @Column(DataType.INTEGER)
   id!: number;
 
-  @ForeignKey(() => Category)
   @AllowNull
   @Column(DataType.INTEGER)
   category_id?: number;
@@ -56,6 +53,8 @@ export class CategoryField extends Model<CategoryField> {
   @Column(DataType.BOOLEAN)
   show_on_detail?: boolean;
 
-  @BelongsTo(() => Category)
-  category?: Category;
+  // Virtual properties for associations (will be populated by Sequelize)
+  fieldCategory?: any;
 }
+
+

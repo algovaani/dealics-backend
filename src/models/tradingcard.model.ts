@@ -7,12 +7,8 @@ import {
   AutoIncrement,
   AllowNull,
   Default,
-  ForeignKey,
-  BelongsTo
+  ForeignKey
 } from "sequelize-typescript";
-  import { Category } from "../models/category.model.js";
-  import { User } from "../models/user.model.js";
-  import { CardCondition } from "../models/cardCondition.model.js";
   
   @Table({
     tableName: "trading_cards",
@@ -38,7 +34,6 @@ import {
     @Column(DataType.INTEGER)
     creator_id?: number;
   
-  @ForeignKey(() => User)
   @AllowNull
   @Column(DataType.INTEGER)
   trader_id?: number;
@@ -51,7 +46,6 @@ import {
     @Column(DataType.INTEGER)
     sport_id?: number;
   
-  @ForeignKey(() => Category)
   @AllowNull
   @Column(DataType.INTEGER)
   category_id?: number;
@@ -112,7 +106,6 @@ import {
     @Column(DataType.INTEGER)
     grade_rating_id?: number;
   
-    @ForeignKey(() => CardCondition)
     @AllowNull
     @Column(DataType.INTEGER)
     card_condition_id?: number;
@@ -919,17 +912,15 @@ import {
     @Column(DataType.TEXT)
     canada_shipping_flat_rate?: string;
   
-    @AllowNull
-    @Column(DataType.TEXT)
-    canada_add_product_flat_rate?: string;
+      @AllowNull
+  @Column(DataType.TEXT)
+  canada_add_product_flat_rate?: string;
 
-    @BelongsTo(() => Category)
-    category?: Category;
-
-    @BelongsTo(() => User)
-     trader?: User;
-
-    @BelongsTo(() => CardCondition)
-    cardCondition?: CardCondition;
+  // Virtual properties for associations (will be populated by Sequelize)
+  trader?: any;
+  creatorUser?: any;
+  parentCategory?: any;
+  cardCondition?: any;
+  cardImages?: any[];
   } 
   

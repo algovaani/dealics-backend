@@ -7,9 +7,7 @@ import {
     AutoIncrement,
     AllowNull,
     Default,
-    HasMany,
   } from "sequelize-typescript";
-  import { TradingCard } from "./tradingcard.model.js";
   
   @Table({
     tableName: "categories",
@@ -59,7 +57,5 @@ import {
     @Column(DataType.DATE)
     updated_at?: Date;
 
-    @HasMany(() => TradingCard)
-    tradingCards?: TradingCard[];
   }
   

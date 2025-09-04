@@ -1,10 +1,5 @@
 
-import { TradingCard } from "../models/tradingcard.model.js";
-import { Category } from "../models/category.model.js";
-import { User } from "../models/user.model.js";
-import { CategoryField } from "../models/categoryField.model.js";
-import { CardCondition } from "../models/cardCondition.model.js";
-import { CardImage } from "../models/card_image.model.js";
+import { TradingCard, Category, User, CategoryField, CardCondition, CardImage } from "../models/index.js";
 import { HelperService } from "./helper.service.js";
 import { Sequelize, QueryTypes, Op } from "sequelize";
 import { sequelize } from "../config/db.js";

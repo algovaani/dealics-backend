@@ -1,9 +1,14 @@
-import { Category } from "../models/category.model.js";
+import { Category } from "../models/index.js";
 
 export class CategoryService {
   // Get all Category
   async getAllCategories() {
-    return await Category.findAll();
+    return await Category.findAll({
+      where: {
+        sport_status: '1'
+      },
+      order: [['sport_name', 'ASC']]
+    });
   }
 
   // Get Category by ID

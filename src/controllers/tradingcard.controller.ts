@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { TradingCardService } from "../services/tradingcard.service.js";
-import { Category } from "../models/category.model.js";
-import { TradingCard } from "../models/tradingcard.model.js";
+import { Category, TradingCard } from "../models/index.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";

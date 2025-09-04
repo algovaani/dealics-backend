@@ -1,4 +1,4 @@
-import { User } from "../models/user.model.js";
+import { User } from "../models/index.js";
 export declare class UserService {
     getAllUsers(): Promise<User[]>;
     getUserById(id: number): Promise<User | null>;

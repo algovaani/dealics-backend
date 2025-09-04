@@ -63,6 +63,11 @@ __decorate([
 ], User.prototype, "password", void 0);
 __decorate([
     AllowNull,
+    Column(DataType.STRING),
+    __metadata("design:type", String)
+], User.prototype, "recover_password_token", void 0);
+__decorate([
+    AllowNull,
     Column(DataType.TEXT),
     __metadata("design:type", String)
 ], User.prototype, "two_factor_secret", void 0);
@@ -191,11 +196,6 @@ __decorate([
     Column(DataType.INTEGER),
     __metadata("design:type", Number)
 ], User.prototype, "trading_cards", void 0);
-__decorate([
-    AllowNull,
-    Column(DataType.STRING),
-    __metadata("design:type", String)
-], User.prototype, "recover_password_token", void 0);
 __decorate([
     AllowNull,
     Column(DataType.STRING(100)),

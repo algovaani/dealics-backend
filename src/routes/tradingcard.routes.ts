@@ -8,13 +8,16 @@ import {
   updateSearchParams,
   populateSearchParams,
   interestedInCard,
-  getPublicProfileTradingCards
+  getPublicProfileTradingCards,
+  getPopularTradingCards,
+  mainSearch
 } from "../controllers/tradingcard.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
 router.get("/", getTradingCards);
+router.get("/popularTradingCards", getPopularTradingCards);
 router.get("/by-category/:categoryName", getTradingCardsByCategoryName);
 router.get("/public-profile", getPublicProfileTradingCards);
 router.get("/card-conditions", getAllCardConditions);
@@ -22,6 +25,7 @@ router.get("/card-conditions/:id", getCardConditionById);
 router.post("/update-search-params", updateSearchParams);
 router.post("/populate-search-params", populateSearchParams);
 router.post("/interested-in-card", userAuth, interestedInCard);
+router.post("/main-search", mainSearch);
 router.get("/:id", getTradingCard);
 // router.post("/", createTradingCard);
 // router.put("/:id", updateTradingCard);

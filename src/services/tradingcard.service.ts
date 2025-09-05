@@ -1177,4 +1177,113 @@ export class TradingCardService {
       throw error;
     }
   }
+
+  /**
+   * Get popular trading cards based on interested_in count and is_traded = 0
+   */
+  static async getPopularTradingCards(limit: number = 10) {
+    try {
+      const query = `
+        SELECT
+          tc.id,
+          tc.trading_card_img,
+          tc.trading_card_img_back,
+          tc.trading_card_slug,
+          tc.trading_card_recent_trade_value,
+          tc.trading_card_asking_price,
+          tc.search_param,
+          tc.is_traded,
+          c.sport_name,
+          CASE 
+            WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
+            WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
+            WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
+            WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
+            ELSE NULL
+          END as card_condition
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
+        LEFT JOIN (
+          SELECT
+            trading_card_id,
+            COUNT(*) as interested_count
+          FROM interested_in
+          GROUP BY trading_card_id
+        ) interest_count ON tc.id = interest_count.trading_card_id
+        WHERE tc.trading_card_status = '1'
+        AND tc.mark_as_deleted IS NULL
+        AND tc.is_traded = '0'
+        AND tc.is_demo = '0'
+        AND c.sport_status = '1'
+        AND (tc.can_trade = 1 OR tc.can_buy = 1)
+        ORDER BY
+          interested_count DESC,
+          tc.created_at DESC
+        LIMIT :limit
+      `;
+
+      const result = await sequelize.query(query, {
+        replacements: { limit },
+        type: QueryTypes.SELECT
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error getting popular trading cards:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Main search API - supports both image upload and text search
+   */
+  static async mainSearch(searchText: string, limit: number = 10) {
+    try {
+      const query = `
+        SELECT
+          tc.id,
+          tc.trading_card_img,
+          tc.trading_card_img_back,
+          tc.trading_card_slug,
+          tc.trading_card_recent_trade_value,
+          tc.trading_card_asking_price,
+          tc.search_param,
+          tc.is_traded,
+          c.sport_name,
+          CASE 
+            WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
+            WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
+            WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
+            WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
+            ELSE NULL
+          END as card_condition
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
+        WHERE tc.trading_card_status = '1'
+        AND tc.mark_as_deleted IS NULL
+        AND tc.is_traded = '0'
+        AND tc.is_demo = '0'
+        AND c.sport_status = '1'
+        AND (tc.can_trade = 1 OR tc.can_buy = 1)
+        AND tc.search_param LIKE :searchText
+        ORDER BY tc.created_at DESC
+        LIMIT :limit
+      `;
+
+      const result = await sequelize.query(query, {
+        replacements: { 
+          searchText: `%${searchText}%`,
+          limit 
+        },
+        type: QueryTypes.SELECT
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error in main search:', error);
+      return [];
+    }
+  }
 }

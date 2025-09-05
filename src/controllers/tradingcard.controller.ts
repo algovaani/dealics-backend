@@ -791,3 +791,137 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
     return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
   }
 };
+
+// GET /api/tradingCards/popular - Get popular trading cards based on interested_in count
+export const getPopularTradingCards = async (req: Request, res: Response) => {
+  try {
+    const limitParam = req.query.limit as string;
+    const limit = limitParam && !isNaN(Number(limitParam)) ? parseInt(limitParam) : 10;
+
+    // Validate limit
+    if (limit < 1 || limit > 100) {
+      return sendApiResponse(res, 400, false, "Limit must be between 1 and 100", []);
+    }
+
+    const popularCards = await TradingCardService.getPopularTradingCards(limit);
+
+    if (!popularCards || popularCards.length === 0) {
+      return sendApiResponse(res, 200, true, "No popular trading cards found", []);
+    }
+
+    // Transform the response to include only necessary fields
+    const response = popularCards.map((card: any) => ({
+      id: card.id,
+      trading_card_img: card.trading_card_img,
+      trading_card_img_back: card.trading_card_img_back,
+      title: card.trading_card_slug,
+      trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+      trading_card_asking_price: card.trading_card_asking_price,
+      search_param: card.search_param,
+      sport_name: card.sport_name,
+      is_traded: card.is_traded,
+      interestedin: true,
+      card_condition: card.card_condition
+    }));
+
+    return sendApiResponse(res, 200, true, "Popular trading cards retrieved successfully", response);
+
+  } catch (error: any) {
+    console.error("Get popular trading cards error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// POST /api/tradingCards/main-search - Main search API with image upload and text search
+export const mainSearch = async (req: Request, res: Response) => {
+  try {
+    const limitParam = req.query.limit as string;
+    const limit = limitParam && !isNaN(Number(limitParam)) ? parseInt(limitParam) : 10;
+
+    // Validate limit
+    if (limit < 1 || limit > 100) {
+      return sendApiResponse(res, 400, false, "Limit must be between 1 and 100", []);
+    }
+
+    let searchText = '';
+
+    // Check if image is uploaded
+    if ((req as any).files && (req as any).files.searchProductImage && (req as any).files.searchProductImage[0]) {
+      try {
+        const imageFile = (req as any).files.searchProductImage[0];
+        
+        // Create FormData for third-party API call
+        const formData = new FormData();
+        formData.append('searchProductImage', imageFile.buffer, imageFile.originalname);
+
+        // Call third-party image search API
+        const response = await fetch('https://magical2.elswap.com/nodered/image-search', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error(`Image search API failed with status: ${response.status}`);
+        }
+
+        const imageSearchResult = await response.json();
+        
+        // Extract search text from the response
+        if (imageSearchResult && imageSearchResult.text) {
+          searchText = imageSearchResult.text;
+        } else if (imageSearchResult && imageSearchResult.searchText) {
+          searchText = imageSearchResult.searchText;
+        } else {
+          return sendApiResponse(res, 400, false, "No search text found in image search response", []);
+        }
+
+      } catch (imageError: any) {
+        console.error("Image search error:", imageError);
+        return sendApiResponse(res, 500, false, "Image search failed: " + imageError.message, []);
+      }
+    } 
+    // Check if text search is provided
+    else if (req.body.searchText && req.body.searchText.trim()) {
+      searchText = req.body.searchText.trim();
+    }
+    // Check if text search is provided in query params
+    else if (req.query.searchText && typeof req.query.searchText === 'string' && req.query.searchText.trim()) {
+      searchText = req.query.searchText.trim();
+    }
+    else {
+      return sendApiResponse(res, 400, false, "Either image file or search text is required", []);
+    }
+
+    if (!searchText) {
+      return sendApiResponse(res, 400, false, "Search text cannot be empty", []);
+    }
+
+    // Perform search using the extracted or provided text
+    const searchResults = await TradingCardService.mainSearch(searchText, limit);
+
+    if (!searchResults || searchResults.length === 0) {
+      return sendApiResponse(res, 200, true, "No trading cards found for the search", []);
+    }
+
+    // Transform the response to include only necessary fields
+    const response = searchResults.map((card: any) => ({
+      id: card.id,
+      trading_card_img: card.trading_card_img,
+      trading_card_img_back: card.trading_card_img_back,
+      title: card.trading_card_slug,
+      trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+      trading_card_asking_price: card.trading_card_asking_price,
+      search_param: card.search_param,
+      sport_name: card.sport_name,
+      is_traded: card.is_traded,
+      interestedin: true,
+      card_condition: card.card_condition
+    }));
+
+    return sendApiResponse(res, 200, true, "Search completed successfully", response);
+
+  } catch (error: any) {
+    console.error("Main search error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};

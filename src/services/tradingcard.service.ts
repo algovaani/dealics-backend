@@ -14,9 +14,9 @@ export class TradingCardService {
     const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
     
     const offset = (validPage - 1) * validPerPage;
-    let whereClause = '';
+    let whereClause = 'WHERE tc.trading_card_status = 1 AND tc.mark_as_deleted IS NULL AND c.sport_status = 1 AND tc.is_demo=0 AND tc.is_traded!=1';
     if (validCategoryId) {
-      whereClause = `WHERE tc.category_id = ${validCategoryId}`;
+      whereClause += ` AND tc.category_id = ${validCategoryId}`;
     }
 
     // Use raw SQL to get data with sport_name and interested_in status

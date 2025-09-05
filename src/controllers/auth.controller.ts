@@ -34,7 +34,19 @@ export const login = async (req: Request, res: Response) => {
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const user = await authService.register(req.body);
+    // Handle profile image upload - save only filename
+    let profileImageName = '';
+    if (req.file) {
+      profileImageName = req.file.filename; // Save only filename, not full URL
+    }
+
+    // Prepare registration data
+    const registrationData = {
+      ...req.body,
+      profile_image: profileImageName
+    };
+
+    const user = await authService.register(registrationData);
     const token = authService.issueToken(user);
     return sendApiResponse(res, 201, true, "Registration successful", [{ token }]);
   } catch (err: any) {
@@ -49,11 +61,15 @@ export const register = async (req: Request, res: Response) => {
  */
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    const { email, resetLink } = req.body;
 
     // Validation
     if (!email) {
       return sendApiResponse(res, 400, false, "Please enter email.", []);
+    }
+
+    if (!resetLink) {
+      return sendApiResponse(res, 400, false, "Reset link is required.", []);
     }
 
     // Validate email format
@@ -69,8 +85,15 @@ export const forgotPassword = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "Email not found in our records. Please create an account", []);
     }
 
-    // Send simple email notification (frontend will handle reset link)
-    const emailSent = await authService.sendSimpleForgotPasswordEmail(user);
+    // Generate recovery token and update user
+    const token = authService.generateRecoveryToken(user.id);
+    await authService.updateUserRecoveryToken(user.id, token);
+
+    // Create reset link with token and screen parameter
+    const resetLinkWithToken = `${resetLink}?token=${token}&screen=forgot`;
+
+    // Send email with reset link
+    const emailSent = await authService.sendForgotPasswordEmail(user, resetLinkWithToken);
     
     if (!emailSent) {
       return sendApiResponse(res, 500, false, "Email not sent. Please try again later or contact support.", []);

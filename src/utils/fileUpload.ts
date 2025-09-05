@@ -4,9 +4,14 @@ import fs from 'fs';
 
 // Ensure upload directory exists
 const uploadDir = path.join(process.cwd(), 'public', 'user', 'assets', 'images', 'trading_cards_img');
+const profileUploadDir = path.join(process.cwd(), 'public', 'user', 'assets', 'images', 'profile_images');
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+if (!fs.existsSync(profileUploadDir)) {
+  fs.mkdirSync(profileUploadDir, { recursive: true });
 }
 
 // Configure multer for file uploads
@@ -32,9 +37,30 @@ const fileFilter = (req: any, file: any, cb: any) => {
   }
 };
 
-// Configure multer
+// Configure multer for trading cards
 export const upload = multer({
   storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB limit
+  }
+});
+
+// Configure multer for profile images
+const profileStorage = multer.diskStorage({
+  destination: (req: any, file: any, cb: any) => {
+    cb(null, profileUploadDir);
+  },
+  filename: (req: any, file: any, cb: any) => {
+    // Generate unique filename for profile images
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, 'profile-' + uniqueSuffix + ext);
+  }
+});
+
+export const uploadProfile = multer({
+  storage: profileStorage,
   fileFilter: fileFilter,
   limits: {
     fileSize: 2 * 1024 * 1024, // 2MB limit
@@ -74,4 +100,10 @@ export const deleteFile = (filePath: string): boolean => {
 export const getFileUrl = (filename: string): string => {
   if (!filename) return '';
   return `/user/assets/images/trading_cards_img/${filename}`;
+};
+
+// Helper function to get profile image URL
+export const getProfileImageUrl = (filename: string): string => {
+  if (!filename) return '';
+  return `/user/assets/images/profile_images/${filename}`;
 };

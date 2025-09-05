@@ -1,11 +1,13 @@
 import { Router } from "express";
-import { getUsers, getUser, createUser, updateUser, deleteUser } from "../controllers/user.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser } from "../controllers/user.controller.js";
 
 const router = Router();
 
-router.get("/", getUsers);
-router.get("/:id", getUser);
-router.post("/", createUser);
+// Public profile API (no authentication required)
+router.get("/profile/:userId", getUserProfile);
+
+// Other user routes
+router.get("/:id", getUserById);
 router.put("/:id", updateUser);
 router.delete("/:id", deleteUser);
 

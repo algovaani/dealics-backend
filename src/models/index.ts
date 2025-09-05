@@ -5,6 +5,7 @@ import { TradingCard } from './tradingcard.model.js';
 import { CardCondition } from './cardCondition.model.js';
 import { CardImage } from './card_image.model.js';
 import { CategoryField } from './categoryField.model.js';
+import { Follower } from './follower.model.js';
 
 // Import all models here
 export const models = [
@@ -13,7 +14,8 @@ export const models = [
   TradingCard,
   CardCondition,
   CardImage,
-  CategoryField
+  CategoryField,
+  Follower
 ];
 
 // Function to set up all associations
@@ -92,5 +94,6 @@ export {
   TradingCard,
   CardCondition,
   CardImage,
-  CategoryField
+  CategoryField,
+  Follower
 };

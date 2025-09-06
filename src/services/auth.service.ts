@@ -1,11 +1,22 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { Op } from "sequelize";
-import { User } from "../models/index.js";
+import { User, CreditPurchaseLog } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 import crypto from "crypto";
 
 export class AuthService {
+  // Helper function to generate invoice number and transaction ID
+  private generateInvoiceAndTransactionId() {
+    const randomNum = Math.floor(Math.random() * 900) + 100; // 100-999
+    const randomStr = Math.random().toString(36).substring(2, 5).toUpperCase(); // 3 random chars
+    
+    const invoiceNumber = `INV${randomNum}${randomStr}`;
+    const transactionId = `TXN${randomNum}${randomStr}`;
+    
+    return { invoiceNumber, transactionId };
+  }
+
   async validateUser(identifier: string, password: string) {
     const foundUser = await User.findOne({
       where: {
@@ -94,6 +105,26 @@ export class AuthService {
         } as any,
         { transaction: t }
       );
+
+      // Add coin reward entry to CreditPurchaseLog
+      const { invoiceNumber, transactionId } = this.generateInvoiceAndTransactionId();
+      
+      await CreditPurchaseLog.create({
+        invoice_number: invoiceNumber,
+        user_id: user.id,
+        amount: 0,
+        coins: 50, // reward coins
+        transaction_id: transactionId,
+        payment_status: "Success",
+        payee_email_address: "Reward",
+        merchant_id: "N/A",
+        payment_source: "Reward",
+        payer_id: "N/A",
+        payer_full_name: "N/A",
+        payer_email_address: "N/A",
+        payer_address: "N/A",
+        payer_country_code: "N/A"
+      } as any, { transaction: t });
 
       return user;
     });

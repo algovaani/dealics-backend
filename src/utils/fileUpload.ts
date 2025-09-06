@@ -6,11 +6,20 @@ import fs from 'fs';
 const uploadDir = path.join(process.cwd(), 'public', 'user', 'assets', 'images', 'trading_cards_img');
 const profileUploadDir = path.join(process.cwd(), 'public', 'user', 'assets', 'images', 'profile_images');
 
+console.log('📁 Upload directories:', {
+  uploadDir: uploadDir,
+  profileUploadDir: profileUploadDir,
+  uploadDirExists: fs.existsSync(uploadDir),
+  profileUploadDirExists: fs.existsSync(profileUploadDir)
+});
+
 if (!fs.existsSync(uploadDir)) {
+  console.log('📁 Creating upload directory:', uploadDir);
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 if (!fs.existsSync(profileUploadDir)) {
+  console.log('📁 Creating profile upload directory:', profileUploadDir);
   fs.mkdirSync(profileUploadDir, { recursive: true });
 }
 
@@ -68,18 +77,42 @@ export const uploadProfile = multer({
 });
 
 // Helper function to upload a single file
-export const uploadOne = (file: any, uploadPath: string): string => {
+export const uploadOne = (file: any, uploadType: string): string => {
   if (!file) return '';
   
-  const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-  const ext = path.extname(file.originalname);
-  const filename = file.fieldname + '-' + uniqueSuffix + ext;
-  const fullPath = path.join(uploadPath, filename);
-  
-  // Move file to destination
-  fs.renameSync(file.path, fullPath);
-  
-  return filename;
+  try {
+    // Determine the correct upload directory based on type
+    let targetDir: string;
+    if (uploadType === 'users' || uploadType === 'profile') {
+      targetDir = profileUploadDir;
+    } else {
+      targetDir = uploadDir;
+    }
+    
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const filename = uploadType === 'users' || uploadType === 'profile' 
+      ? 'profile-' + uniqueSuffix + ext 
+      : file.fieldname + '-' + uniqueSuffix + ext;
+    
+    const fullPath = path.join(targetDir, filename);
+    
+    console.log('📁 Upload details:', {
+      originalPath: file.path,
+      targetPath: fullPath,
+      filename: filename,
+      uploadType: uploadType
+    });
+    
+    // Move file to destination
+    fs.renameSync(file.path, fullPath);
+    
+    console.log('✅ File uploaded successfully:', filename);
+    return filename;
+  } catch (error: any) {
+    console.error('❌ Error in uploadOne:', error);
+    return '';
+  }
 };
 
 // Helper function to delete a file

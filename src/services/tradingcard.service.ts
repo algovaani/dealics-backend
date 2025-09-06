@@ -18,6 +18,12 @@ export class TradingCardService {
     if (validCategoryId) {
       whereClause += ` AND tc.category_id = ${validCategoryId}`;
     }
+    
+    // Filter by creator_id if loggedInUserId is provided (from JWT token)
+    if (validLoggedInUserId) {
+      whereClause += ` AND tc.creator_id = ${validLoggedInUserId}`;
+    }
+    
 
     // Use raw SQL to get data with sport_name and interested_in status
     let interestedJoin = '';
@@ -38,12 +44,22 @@ export class TradingCardService {
         tc.trading_card_asking_price,
         tc.search_param,
         c.sport_name,
+        c.sport_icon,
         tc.trader_id,
         tc.creator_id,
         tc.is_traded,
         tc.can_trade,
         tc.can_buy,
-        CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in
+        tc.trading_card_status,
+        CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
+        CASE 
+          WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+          WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+          WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+          WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+          WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+          ELSE 'Not Available'
+        END as trade_card_status
       FROM trading_cards tc
       LEFT JOIN categories c ON tc.category_id = c.id
       ${interestedJoin}
@@ -58,7 +74,6 @@ export class TradingCardService {
       LEFT JOIN categories c ON tc.category_id = c.id
       ${whereClause}
     `;
-
     const results = await sequelize.query(rawQuery, {
       type: QueryTypes.SELECT
     });
@@ -229,7 +244,6 @@ export class TradingCardService {
 
     // Check if user can trade or make offers
     let canTradeOrOffer = false;
-    console.log("loggedInUserId",loggedInUserId);
     // If can_buy and can_trade are both 0 (as number) or '0' (as string), user can't trade or make offers
     // But if is_traded is falsy (0 or '0'), user can trade or make offers
     if(loggedInUserId && tradingCard.trader_id === loggedInUserId){
@@ -371,9 +385,18 @@ export class TradingCardService {
     }
     
     const tradingCard = await TradingCard.findByPk(id);
-    if (!tradingCard) return null;
-    await TradingCard.destroy();
-    return true;
+    if (!tradingCard) {
+      console.log("deleteTradingCard - Trading card not found with id:", id);
+      return false;
+    }
+    // Set mark_as_deleted = true instead of actually deleting
+    await tradingCard.update({ mark_as_deleted: 1 });
+    console.log("deleteTradingCard - Trading card marked as deleted:", id);
+    return {
+      status: true,
+      message: "Trading card marked as deleted successfully.",
+      data: []
+    };
   }
 
    // Get TradingCards by Category ID
@@ -555,6 +578,7 @@ export class TradingCardService {
         tc.trading_card_asking_price,
         tc.search_param,
         c.sport_name,
+        c.sport_icon,
         tc.trader_id,
         tc.creator_id,
         tc.is_traded,
@@ -644,7 +668,7 @@ export class TradingCardService {
     // Get category with sport_name as label
     const category = await Category.findOne({ 
       where: { slug: categorySlug },
-      attributes: ["id", [Sequelize.col("sport_name"), "label"], "slug"]
+      attributes: ["id", [Sequelize.col("sport_name"), "label"], "slug", "sport_icon"]
     });
     
     if (!category) return null;
@@ -662,7 +686,7 @@ export class TradingCardService {
     const categories = await Category.findAll({
       where: { sport_status: "1" },
       order: [["sport_name", "ASC"]],
-      attributes: ["id", [Sequelize.col("sport_name"), "label"], "slug"],
+      attributes: ["id", [Sequelize.col("sport_name"), "label"], "slug", "sport_icon"],
     });
 
     // Process category fields according to Laravel logic
@@ -1194,6 +1218,7 @@ export class TradingCardService {
           tc.search_param,
           tc.is_traded,
           c.sport_name,
+        c.sport_icon,
           CASE 
             WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
             WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
@@ -1251,6 +1276,7 @@ export class TradingCardService {
           tc.search_param,
           tc.is_traded,
           c.sport_name,
+        c.sport_icon,
           CASE 
             WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
             WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
@@ -1283,6 +1309,79 @@ export class TradingCardService {
       return result;
     } catch (error) {
       console.error('Error in main search:', error);
+      return [];
+    }
+  }
+
+  // Get similar trading cards based on categories
+  static async getSimilarTradingCards(categoryIds: number[], limit: number = 10, loggedInUserId?: number, excludeTradingCardId?: number) {
+    try {
+      if (!categoryIds || categoryIds.length === 0) {
+        return [];
+      }
+
+      // Add interested_in join if loggedInUserId is provided
+      let interestedJoin = '';
+      if (loggedInUserId) {
+        interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${loggedInUserId}`;
+      }
+
+      // Build the SELECT clause based on whether loggedInUserId is provided
+      let selectClause = `
+        SELECT DISTINCT
+          tc.id,
+          tc.category_id,
+          tc.trading_card_img,
+          tc.trading_card_img_back,
+          tc.trading_card_slug,
+          tc.trading_card_recent_trade_value,
+          tc.trading_card_asking_price,
+          tc.search_param,
+          c.sport_name,
+        c.sport_icon,
+          tc.trader_id,
+          tc.creator_id,
+          tc.is_traded,
+          tc.can_trade,
+          tc.can_buy
+      `;
+
+      if (loggedInUserId) {
+        selectClause += `,
+          CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in
+        `;
+      }
+
+      // Add exclusion condition if tradingCardId is provided
+      let excludeCondition = '';
+      if (excludeTradingCardId) {
+        excludeCondition = `AND tc.id != ${excludeTradingCardId}`;
+      }
+
+      const query = `
+        ${selectClause}
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        ${interestedJoin}
+        WHERE tc.category_id IN (:categoryIds)
+        AND tc.mark_as_deleted IS NULL
+        AND tc.trading_card_status = '1'
+        AND c.sport_status = '1'
+        AND tc.is_demo = '0'
+        AND tc.is_traded != '1'
+        ${excludeCondition}
+        ORDER BY tc.created_at DESC
+        LIMIT :limit
+      `;     
+
+      const result = await sequelize.query(query, {
+        replacements: { categoryIds, limit },
+        type: QueryTypes.SELECT
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error getting similar trading cards:', error);
       return [];
     }
   }

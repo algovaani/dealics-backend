@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { UserService } from "../services/user.service.js";
 import { sendApiResponse } from "../utils/apiResponse.js";
+import { uploadOne } from "../utils/fileUpload.js";
 import jwt from "jsonwebtoken";
 
 // Extend Request interface to include user property
@@ -38,6 +39,8 @@ export const getMyProfile = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "User profile not found", []);
     }
 
+    console.log('Profile data received:', JSON.stringify(profileData, null, 2));
+
     // Transform the response to include only required user details
     const response = {
       id: profileData.user.id,
@@ -55,7 +58,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
       cxp_coins: profileData.user.cxp_coins,
       joined_date: profileData.user.createdAt,
       updated_at: profileData.user.updatedAt,
-      social_links: null, // Field doesn't exist in current schema - can be added later
+      social_links: profileData.socialLinks,
       interestedCardsCount: profileData.interestedCardsCount,
       interested_categories: profileData.interestedCategories
     };
@@ -345,18 +348,40 @@ export const toggleFollow = async (req: Request, res: Response) => {
       return sendApiResponse(res, 400, false, "Trader ID is required", []);
     }
 
-    // Get user ID from middleware (already verified by userAuth)
-    const userId = (req as any).user?.id;
-    
-    if (!userId) {
-      return sendApiResponse(res, 401, false, "Valid user ID is required", []);
+    // Extract user ID directly from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let userId: number | undefined;
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+      
+      // Try different possible field names for user ID
+      userId = decoded.user_id || decoded.sub || decoded.id;
+      
+      if (!userId) {
+        return sendApiResponse(res, 401, false, "Invalid token - no user ID found", []);
+      }
+    } catch (error: any) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
     }
 
     // Call service method
     const result = await UserService.toggleFollow(parseInt(trader_id), userId);
 
-    // Return response in Laravel format
-    return res.status(200).json(result);
+    // Return response in standardized API format
+    const responseData = [{
+      sub_status: result.sub_status
+    }];
+
+    // Set message based on action
+    const message = result.sub_status ? "Followed successfully" : "Unfollowed successfully";
+
+    return sendApiResponse(res, 200, true, message, responseData);
 
   } catch (error: any) {
     console.error('Error in toggleFollow controller:', error);
@@ -369,6 +394,428 @@ export const toggleFollow = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "Trader not found", []);
     }
 
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get user's dashboard data (favorite products + following users)
+export const getUserDashboard = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Parse pagination parameters (optional)
+    const page = req.query.page ? parseInt(String(req.query.page)) : undefined;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : undefined;
+
+    // Validate pagination parameters only if they are provided
+    if (page !== undefined && (page < 1 || isNaN(page))) {
+      return sendApiResponse(res, 400, false, "Invalid page parameter", []);
+    }
+    if (perPage !== undefined && (perPage < 1 || perPage > 100 || isNaN(perPage))) {
+      return sendApiResponse(res, 400, false, "Invalid perPage parameter", []);
+    }
+
+    // Call service method
+    const result = await UserService.getUserDashboard(userId, page, perPage);
+
+    // Structure the response data
+    const responseData = {
+      favoriteProducts: result.favoriteProducts,
+      followingUsers: result.followingUsers
+    };
+
+    return sendApiResponse(res, 200, true, "Dashboard data retrieved successfully", responseData, result.pagination);
+
+  } catch (error: any) {
+    console.error("Get favorite products error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get user's coin purchase history
+export const getCoinPurchaseHistory = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Parse pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
+
+    // Validate pagination parameters
+    if (page < 1 || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters", []);
+    }
+
+    // Call service method
+    const result = await UserService.getCoinPurchaseHistory(userId, page, perPage);
+
+    return sendApiResponse(res, 200, true, "Coin purchase history retrieved successfully", result.purchases, result.pagination);
+
+  } catch (error: any) {
+    console.error("Get coin purchase history error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get user's coin deduction history
+export const getCoinDeductionHistory = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Parse pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
+
+    // Validate pagination parameters
+    if (page < 1 || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters", []);
+    }
+
+    // Call service method
+    const result = await UserService.getCoinDeductionHistory(userId, page, perPage);
+
+    return sendApiResponse(res, 200, true, "Coin deduction history retrieved successfully", result.deductions, result.pagination);
+
+  } catch (error: any) {
+    console.error("Get coin deduction history error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get user's PayPal transactions (coin purchase + deduction history)
+export const getPayPalTransactions = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Parse pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
+
+    // Validate pagination parameters
+    if (page < 1 || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters", []);
+    }
+
+    // Call service method
+    const result = await UserService.getPayPalTransactions(userId, page, perPage);
+
+    // Structure the response data
+    const responseData = {
+      coinPurchaseHistory: result.coinPurchaseHistory,
+      coinDeductionHistory: result.coinDeductionHistory
+    };
+
+    return sendApiResponse(res, 200, true, "PayPal transactions retrieved successfully", responseData, result.pagination);
+
+  } catch (error: any) {
+    console.error("Get PayPal transactions error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// PUT /api/users/profile - Update user profile (email and username not editable)
+export const updateUserProfile = async (req: Request, res: Response) => {
+  try {
+    // Get user ID from authenticated token
+    const userId = req.user?.id || req.user?.user_id || req.user?.sub;
+    
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Get profile data from request body (FormData)
+    const profileData = req.body;
+
+    if (!profileData || Object.keys(profileData).length === 0) {
+      return sendApiResponse(res, 400, false, "Profile data is required", []);
+    }
+
+    console.log('📝 Update profile request for user:', userId);
+    console.log('📋 Request data:', profileData);
+    console.log('📋 Request data type:', typeof profileData);
+    console.log('📋 Request data keys:', Object.keys(profileData));
+    console.log('📋 Request body raw:', req.body);
+    console.log('📋 Request files:', req.file);
+
+    // Handle profile picture update
+    console.log('📸 Profile picture handling - req.file:', req.file);
+    console.log('📸 Profile picture handling - profileData.profile_picture:', profileData.profile_picture);
+    
+    if (req.file) {
+      // File upload - validate and upload new image
+      console.log('📸 Profile picture file received:', req.file.originalname);
+      console.log('📏 File size:', req.file.size, 'bytes');
+      
+      // Validate file size (2MB = 2 * 1024 * 1024 bytes)
+      const maxSize = 2 * 1024 * 1024; // 2MB in bytes
+      if (req.file.size > maxSize) {
+        console.log('❌ File size exceeds 2MB limit');
+        return sendApiResponse(res, 400, false, "Profile picture size must not exceed 2MB", []);
+      }
+      
+      // Validate file type (only images)
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/jpg', 
+        'image/png',
+        'image/gif',
+        'image/webp'
+      ];
+      
+      if (!allowedMimeTypes.includes(req.file.mimetype)) {
+        console.log('❌ Invalid file type:', req.file.mimetype);
+        return sendApiResponse(res, 400, false, "Profile picture must be a valid image file (JPEG, PNG, GIF, WebP)", []);
+      }
+      
+      // Validate file extension
+      const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+      const fileExtension = req.file.originalname.toLowerCase().substring(req.file.originalname.lastIndexOf('.'));
+      
+      if (!allowedExtensions.includes(fileExtension)) {
+        console.log('❌ Invalid file extension:', fileExtension);
+        return sendApiResponse(res, 400, false, "Profile picture must have a valid image extension (.jpg, .jpeg, .png, .gif, .webp)", []);
+      }
+      
+      console.log('✅ File validation passed - Size:', req.file.size, 'bytes, Type:', req.file.mimetype, 'Extension:', fileExtension);
+      
+      // Upload the profile picture
+      try {
+        console.log('📸 Attempting to upload file...');
+        console.log('📸 File details:', {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+          path: req.file.path
+        });
+        
+        const filename = uploadOne(req.file, 'users');
+        console.log('📸 Upload result:', filename);
+        
+        if (filename) {
+          profileData.profile_picture = filename;
+          console.log('✅ Profile picture uploaded successfully:', filename);
+        } else {
+          console.log('❌ Profile picture upload failed - no filename returned');
+          return sendApiResponse(res, 400, false, "Failed to upload profile picture - no filename generated", []);
+        }
+      } catch (uploadError: any) {
+        console.error('❌ File upload error:', uploadError);
+        console.error('❌ Upload error details:', {
+          message: uploadError.message,
+          code: uploadError.code,
+          errno: uploadError.errno
+        });
+        return sendApiResponse(res, 500, false, `Error uploading profile picture: ${uploadError.message}`, []);
+      }
+    } else if (profileData.profile_picture !== undefined) {
+      // Handle profile_picture field from form data (for blank/empty updates)
+      console.log('📸 Profile picture field received:', profileData.profile_picture);
+      
+      if (profileData.profile_picture === '' || profileData.profile_picture === null || profileData.profile_picture === 'null') {
+        // Set profile picture to blank/null
+        profileData.profile_picture = null;
+        console.log('✅ Profile picture set to blank');
+      } else if (profileData.profile_picture && typeof profileData.profile_picture === 'string') {
+        // Keep existing profile picture (just a string value)
+        console.log('✅ Profile picture kept as:', profileData.profile_picture);
+      }
+    }
+    
+    console.log('📸 Final profile_picture value:', profileData.profile_picture);
+
+    // Extract social media data from FormData (dynamic approach)
+    console.log('📱 Checking for social media fields:');
+    console.log('📱 All profileData keys:', Object.keys(profileData));
+    
+    // Common social media platforms
+    const socialMediaPlatforms = ['facebook', 'instagram', 'whatsapp', 'twitter', 'linkedin', 'youtube', 'tiktok', 'snapchat'];
+    
+    const socialMediaData: any = {};
+    
+    // Extract social media URLs dynamically
+    socialMediaPlatforms.forEach(platform => {
+      const urlField = `${platform}_url`;
+      const directField = platform;
+      
+      const url = profileData[urlField] || profileData[directField] || '';
+      
+      if (url) {
+        console.log(`📱 Found ${platform}:`, url);
+        socialMediaData[platform] = { url };
+      }
+    });
+    
+    // Also check for any other fields that might be social media URLs
+    Object.keys(profileData).forEach(key => {
+      if (key.includes('_url') || key.includes('url')) {
+        const platform = key.replace('_url', '').replace('url', '');
+        if (!socialMediaData[platform] && profileData[key]) {
+          console.log(`📱 Found additional social media ${platform}:`, profileData[key]);
+          socialMediaData[platform] = { url: profileData[key] };
+        }
+      }
+    });
+
+    console.log('📱 Social media data extracted:', socialMediaData);
+    console.log('📱 Original profileData keys:', Object.keys(profileData));
+
+    // Update user profile (excluding social media fields)
+    const socialMediaFields = [
+      'facebook_url', 'instagram_url', 'whatsapp_url', 'twitter_url', 'linkedin_url', 'youtube_url', 'tiktok_url', 'snapchat_url',
+      'facebook', 'instagram', 'whatsapp', 'twitter', 'linkedin', 'youtube', 'tiktok', 'snapchat'
+    ];
+    
+    const userProfileData = { ...profileData };
+    socialMediaFields.forEach(field => {
+      delete userProfileData[field];
+    });
+
+    try {
+      const profileResult = await UserService.updateUserProfile(userId, userProfileData);
+
+      if (!profileResult.success) {
+        // If there are validation errors, return them
+        if (profileResult.errors && profileResult.errors.length > 0) {
+          return sendApiResponse(res, 400, false, profileResult.message, profileResult.errors);
+        }
+        return sendApiResponse(res, 400, false, profileResult.message, []);
+      }
+
+      // Update social media links
+      console.log('📱 Calling updateUserSocialMedia with:', socialMediaData);
+      
+      // Check if there are any social media URLs to update
+      const hasSocialMediaUrls = Object.values(socialMediaData).some((platform: any) => 
+        platform.url && platform.url.trim() !== ''
+      );
+      
+      console.log('📱 Has social media URLs to update:', hasSocialMediaUrls);
+      
+      let socialMediaResult = null;
+      if (hasSocialMediaUrls) {
+        socialMediaResult = await UserService.updateUserSocialMedia(userId, socialMediaData);
+        console.log('📱 Social media update result:', socialMediaResult);
+        
+        if (!socialMediaResult.success) {
+          console.log('⚠️ Social media update failed, but profile updated successfully');
+          console.log('⚠️ Social media error:', socialMediaResult.error);
+        } else {
+          console.log('✅ Social media updated successfully:', socialMediaResult.data);
+        }
+      } else {
+        console.log('📱 No social media URLs provided, skipping social media update');
+      }
+
+      // Get updated profile data with social media links
+      const updatedProfileData = await UserService.getMyProfile(userId);
+
+      if (!updatedProfileData) {
+        return sendApiResponse(res, 404, false, "Updated profile not found", []);
+      }
+
+      // Transform the response to include only required user details
+      const response = {
+        id: updatedProfileData.user.id,
+        first_name: updatedProfileData.user.first_name,
+        last_name: updatedProfileData.user.last_name,
+        username: updatedProfileData.user.username,
+        profile_picture: updatedProfileData.user.profile_picture,
+        email: updatedProfileData.user.email,
+        phone_number: updatedProfileData.user.phone_number,
+        country_code: updatedProfileData.user.country_code,
+        about_user: updatedProfileData.user.about_user,
+        bio: updatedProfileData.user.bio,
+        ratings: updatedProfileData.user.ratings,
+        ebay_store_url: updatedProfileData.user.ebay_store_url,
+        cxp_coins: updatedProfileData.user.cxp_coins,
+        joined_date: updatedProfileData.user.createdAt,
+        updated_at: updatedProfileData.user.updatedAt,
+        social_links: updatedProfileData.socialLinks,
+        interestedCardsCount: updatedProfileData.interestedCardsCount,
+        interested_categories: updatedProfileData.interestedCategories
+      };
+
+      return sendApiResponse(res, 200, true, "Profile updated successfully", [response]);
+
+    } catch (serviceError: any) {
+      console.error('❌ Service error in updateUserProfile:', serviceError);
+      return sendApiResponse(res, 500, false, "Failed to update profile", []);
+    }
+
+  } catch (error: any) {
+    console.error("Update user profile error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };

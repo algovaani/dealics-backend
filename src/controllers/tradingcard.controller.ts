@@ -4,6 +4,7 @@ import { Category, TradingCard } from "../models/index.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
+import jwt from "jsonwebtoken";
 
 // Extend Request interface to include files property
 interface RequestWithFiles extends Request {
@@ -60,10 +61,25 @@ export const getTradingCards = async (req: Request, res: Response) => {
     const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
     const loggedInUserIdParam = req.query.loggedInUserId as string;
     
+    // Extract user ID from JWT token if available
+    let authenticatedUserId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
+        console.log('JWT Token decoded - User ID:', authenticatedUserId);
+      } catch (jwtError) {
+        // Token is invalid, but we'll continue without authentication
+        console.log('Invalid token in trading cards API:', jwtError);
+      }
+    }
+    
     const page = pageParam ? parseInt(pageParam, 10) : 1;
     const perPage = perPageParam ? parseInt(perPageParam, 10) : 100;
     const categoryId: number | undefined = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
-    const loggedInUserId: number | undefined = loggedInUserIdParam ? parseInt(loggedInUserIdParam, 10) : undefined;
+    const loggedInUserId: number | undefined = loggedInUserIdParam ? parseInt(loggedInUserIdParam, 10) : authenticatedUserId;
 
     // Validate pagination parameters
     if (isNaN(page) || page < 1) {
@@ -131,6 +147,8 @@ export const getTradingCards = async (req: Request, res: Response) => {
         trading_card_asking_price: card.trading_card_asking_price,
         search_param: card.search_param || null,
         sport_name: card.sport_name || null,
+        sport_icon: card.sport_icon || null,
+        trade_card_status: card.trade_card_status || null,
         canTradeOrOffer: canTradeOrOffer
       };
 
@@ -240,22 +258,40 @@ export const createTradingCard = async (req: Request, res: Response) => {
 
 export const deleteTradingCard = async (req: Request, res: Response) => {
   try {
+    // Get user ID from authenticated token
+    const userId = req.user?.id || req.user?.user_id || req.user?.sub;
+    
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
     // Validate the ID parameter
     const cardId = Number(req.params.id);
     if (!req.params.id || isNaN(cardId) || cardId <= 0) {
-      return sendApiResponse(res, 400, false, "Valid trading card ID is required");
+      return sendApiResponse(res, 400, false, "Valid trading card ID is required", []);
+    }
+    
+    // Check if the trading card belongs to the authenticated user
+    const tradingCard = await TradingCard.findByPk(cardId);
+    if (!tradingCard) {
+      return sendApiResponse(res, 404, false, "Trading Card not found", []);
+    }
+    
+    // Check if user owns this trading card (either as creator or trader)
+    if (tradingCard.creator_id !== userId && tradingCard.trader_id !== userId) {
+      return sendApiResponse(res, 403, false, "You can only delete your own trading cards", []);
     }
     
     const success = await tradingcardService.deleteTradingCard(cardId);
     
     if (!success) {
-      return sendApiResponse(res, 404, false, "Trading Card not found");
+      return sendApiResponse(res, 500, false, "Failed to delete trading card", []);
     }
     
-    return sendApiResponse(res, 200, true, "Trading Card deleted successfully");
+    return sendApiResponse(res, 200, true, "Trading Card deleted successfully", []);
   } catch (error: any) {
-    console.error(error);
-    return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
+    console.error("Delete trading card error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };
 
@@ -763,6 +799,7 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
          trading_card_asking_price: card.trading_card_asking_price,
          search_param: card.search_param || null,
          sport_name: card.sport_name || null,
+        sport_icon: card.sport_icon || null,
          canTradeOrOffer: canTradeOrOffer
        };
 
@@ -819,6 +856,7 @@ export const getPopularTradingCards = async (req: Request, res: Response) => {
       trading_card_asking_price: card.trading_card_asking_price,
       search_param: card.search_param,
       sport_name: card.sport_name,
+      sport_icon: card.sport_icon,
       is_traded: card.is_traded,
       interestedin: true,
       card_condition: card.card_condition
@@ -922,6 +960,95 @@ export const mainSearch = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Main search error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get similar trading cards based on categories
+export const getSimilarTradingCards = async (req: Request, res: Response) => {
+  try {
+    const { categories, limit, loggedInUserId, tradingCardId } = req.query;
+
+    // Validate categories parameter
+    if (!categories) {
+      return sendApiResponse(res, 400, false, "Categories parameter is required", []);
+    }
+
+    // Parse categories (can be comma-separated string or array)
+    let categoryIds: number[];
+    try {
+      if (typeof categories === 'string') {
+        categoryIds = categories.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      } else if (Array.isArray(categories)) {
+        categoryIds = categories.map(id => parseInt(String(id))).filter(id => !isNaN(id));
+      } else {
+        return sendApiResponse(res, 400, false, "Invalid categories format", []);
+      }
+    } catch (error) {
+      return sendApiResponse(res, 400, false, "Invalid categories format", []);
+    }
+
+    if (categoryIds.length === 0) {
+      return sendApiResponse(res, 400, false, "No valid category IDs provided", []);
+    }
+
+    // Set default limit and parse parameters
+    const limitNumber = limit ? parseInt(String(limit)) : 10;
+    const loggedInUserIdNumber = loggedInUserId ? parseInt(String(loggedInUserId)) : undefined;
+    const tradingCardIdNumber = tradingCardId ? parseInt(String(tradingCardId)) : undefined;
+
+    // Call service method
+    const result = await TradingCardService.getSimilarTradingCards(categoryIds, limitNumber, loggedInUserIdNumber, tradingCardIdNumber);
+
+    // Transform response to match /api/tradingCards format
+    const response = result.map((card: any) => {
+      // Add canTradeOrOffer logic (same as /api/tradingCards)
+      let canTradeOrOffer = true;
+      
+      // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
+      if (loggedInUserIdNumber && card.trader_id === loggedInUserIdNumber) {
+        canTradeOrOffer = false;
+      }
+      
+      // If card is already traded, user can't trade
+      if (card.is_traded === '1') {
+        canTradeOrOffer = false;
+      }
+      
+      // If can_buy and can_trade are both 0, user can't trade or make offers
+      if (card.can_buy === 0 && card.can_trade === 0) {
+        canTradeOrOffer = false;
+      }
+
+      const baseResponse = {
+        id: card.id,
+        category_id: card.category_id,
+        trading_card_img: card.trading_card_img,
+        trading_card_img_back: card.trading_card_img_back,
+        trading_card_slug: card.trading_card_slug,
+        trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+        trading_card_asking_price: card.trading_card_asking_price,
+        search_param: card.search_param || null,
+        sport_name: card.sport_name || null,
+        sport_icon: card.sport_icon || null,
+        canTradeOrOffer: canTradeOrOffer
+      };
+
+      // Only add interested_in field if loggedInUserId is provided
+      if (loggedInUserIdNumber) {
+        return {
+          ...baseResponse,
+          interested_in: Boolean(card.interested_in)
+        };
+      }
+
+      return baseResponse;
+    });
+
+    return sendApiResponse(res, 200, true, "Similar trading cards retrieved successfully", response);
+
+  } catch (error: any) {
+    console.error("Similar trading cards error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };

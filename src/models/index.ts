@@ -6,6 +6,11 @@ import { CardCondition } from './cardCondition.model.js';
 import { CardImage } from './card_image.model.js';
 import { CategoryField } from './categoryField.model.js';
 import { Follower } from './follower.model.js';
+import { CreditPurchaseLog } from './creditPurchaseLog.model.js';
+import { CreditDeductionLog } from './creditDeductionLog.model.js';
+import { InterestedIn } from './interestedIn.model.js';
+import { UserSocialMedia } from './userSocialMedia.model.js';
+import { SocialMedia } from './socialMedia.model.js';
 
 // Import all models here
 export const models = [
@@ -15,7 +20,12 @@ export const models = [
   CardCondition,
   CardImage,
   CategoryField,
-  Follower
+  Follower,
+  CreditPurchaseLog,
+  CreditDeductionLog,
+  InterestedIn,
+  UserSocialMedia,
+  SocialMedia
 ];
 
 // Function to set up all associations
@@ -85,6 +95,29 @@ export function setupAssociations() {
     foreignKey: 'category_id',
     as: 'categoryFields'
   });
+
+  // UserSocialMedia associations
+  UserSocialMedia.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'user'
+  });
+
+  UserSocialMedia.belongsTo(SocialMedia, {
+    foreignKey: 'social_media_id',
+    as: 'SocialMedia'
+  });
+
+  // SocialMedia associations
+  SocialMedia.hasMany(UserSocialMedia, {
+    foreignKey: 'social_media_id',
+    as: 'socialMediaUsers'
+  });
+
+  // User associations for social media
+  User.hasMany(UserSocialMedia, {
+    foreignKey: 'user_id',
+    as: 'userSocialMedias'
+  });
 }
 
 // Export all models for easy importing
@@ -95,5 +128,10 @@ export {
   CardCondition,
   CardImage,
   CategoryField,
-  Follower
+  Follower,
+  CreditPurchaseLog,
+  CreditDeductionLog,
+  InterestedIn,
+  UserSocialMedia,
+  SocialMedia
 };

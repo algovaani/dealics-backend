@@ -295,6 +295,125 @@ export const deleteTradingCard = async (req: Request, res: Response) => {
   }
 };
 
+// GET /api/user/tradingcards/deleted - Get deleted trading cards for authenticated user
+export const getDeletedTradingCards = async (req: Request, res: Response) => {
+  try {
+    // Get user ID from authenticated token
+    const userId = req.user?.id || req.user?.user_id || req.user?.sub;
+    
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Get pagination parameters from query
+    const pageParam = req.query.page as string;
+    const perPageParam = req.query.perPage as string;
+    const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
+    
+    const page = pageParam ? parseInt(pageParam, 10) : 1;
+    const perPage = perPageParam ? parseInt(perPageParam, 10) : 100;
+    const categoryId: number | undefined = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
+
+    // Validate pagination parameters
+    if (isNaN(page) || page < 1) {
+      return sendApiResponse(res, 400, false, "Page must be a valid number greater than 0", [], { 
+        current_page: 1, 
+        per_page: 100, 
+        total: 0, 
+        total_pages: 0, 
+        has_next_page: false, 
+        has_prev_page: false 
+      });
+    }
+
+    if (isNaN(perPage) || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "PerPage must be a valid number between 1 and 100", [], { 
+        current_page: 1, 
+        per_page: 100, 
+        total: 0, 
+        total_pages: 0, 
+        has_next_page: false, 
+        has_prev_page: false 
+      });
+    }
+
+    if (categoryIdParam) {
+      if (categoryId === undefined || isNaN(categoryId) || categoryId < 1) {
+        return sendApiResponse(
+          res,
+          400,
+          false,
+          "Category ID must be a valid positive number",
+          [],
+          {
+            current_page: 1,
+            per_page: 100,
+            total: 0,
+            total_pages: 0,
+            has_next_page: false,
+            has_prev_page: false
+          }
+        );
+      }
+    }
+
+    const result = await tradingcardService.getDeletedTradingCards(
+      userId,
+      page,
+      perPage,
+      categoryId
+    );
+
+    // Transform the data
+    const deletedTradingCards = (result.data || []).map((card: any) => {
+      const baseResponse = {
+        id: card.id,
+        category_id: card.category_id,
+        trading_card_img: card.trading_card_img,
+        trading_card_img_back: card.trading_card_img_back,
+        trading_card_slug: card.trading_card_slug,
+        trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+        trading_card_asking_price: card.trading_card_asking_price,
+        search_param: card.search_param || null,
+        sport_name: card.sport_name || null,
+        sport_icon: card.sport_icon || null,
+        trade_card_status: card.trade_card_status || null,
+        is_deleted: Boolean(card.mark_as_deleted),
+        created_at: card.created_at,
+        updated_at: card.updated_at
+      };
+
+      return baseResponse;
+    });
+
+    // Only include pagination if pagination parameters were provided
+    const hasPaginationParams = pageParam || perPageParam;
+    
+    if (hasPaginationParams) {
+      return sendApiResponse(res, 200, true, "Deleted trading cards retrieved successfully", deletedTradingCards, {
+        current_page: page,
+        per_page: perPage,
+        total: result.count,
+        total_pages: Math.ceil(result.count / perPage),
+        has_next_page: page < Math.ceil(result.count / perPage),
+        has_prev_page: page > 1
+      });
+    } else {
+      return sendApiResponse(res, 200, true, "Deleted trading cards retrieved successfully", deletedTradingCards);
+    }
+  } catch (error: any) {
+    console.error("Get deleted trading cards error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", [], { 
+      current_page: 1, 
+      per_page: 100, 
+      total: 0, 
+      total_pages: 0, 
+      has_next_page: false, 
+      has_prev_page: false 
+    });
+  }
+};
+
 // GET /user/tradingcards/my-products/:categoryName?page=1&perPage=9&loggedInUserId=123
 export const getMyTradingCardsByCategory = async (req: Request, res: Response) => {
   try {

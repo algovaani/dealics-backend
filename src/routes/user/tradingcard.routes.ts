@@ -7,7 +7,8 @@ import {
   getFormFieldsByCategory, 
   saveTradingCard,
   updateTradingCard,
-  deleteTradingCard
+  deleteTradingCard,
+  getDeletedTradingCards
 } from "../../controllers/tradingcard.controller.js";
 import { userAuth } from "../../middlewares/auth.middleware.js";
 import { upload } from "../../utils/fileUpload.js";
@@ -20,6 +21,7 @@ router.use(userAuth);
 
 // Define specific routes first (before catch-all)
 router.get("/", getTradingCards);
+router.get("/deleted", getDeletedTradingCards);
 router.get("/by-category/:categoryName", getTradingCardsByCategoryName);
 router.get("/my-products/:categoryName", getMyTradingCardsByCategory);
 router.get("/form-fields/:categorySlug", getFormFieldsByCategory);

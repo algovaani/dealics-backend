@@ -43,6 +43,7 @@ export const register = async (req: Request, res: Response) => {
     // Prepare registration data
     const registrationData = {
       ...req.body,
+      cxp_coins:50,
       profile_image: profileImageName
     };
 

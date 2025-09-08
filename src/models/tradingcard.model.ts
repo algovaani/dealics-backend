@@ -147,8 +147,12 @@ import {
     trading_card_img_back?: string;
   
     @AllowNull
-    @Column(DataType.BOOLEAN)
-    mark_as_deleted?: boolean;
+    @Column({
+      type: DataType.TINYINT,
+      allowNull: true,
+      defaultValue: null,  // optional, remove भी कर सकते हो
+    })
+    mark_as_deleted?: number | null;
   
     @AllowNull
     @Column(DataType.TEXT)

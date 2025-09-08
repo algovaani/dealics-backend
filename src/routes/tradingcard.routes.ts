@@ -10,7 +10,9 @@ import {
   interestedInCard,
   getPublicProfileTradingCards,
   getPopularTradingCards,
-  mainSearch
+  mainSearch,
+  getSimilarTradingCards,
+  deleteTradingCard
 } from "../controllers/tradingcard.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 
@@ -18,6 +20,7 @@ const router = Router();
 
 router.get("/", getTradingCards);
 router.get("/popularTradingCards", getPopularTradingCards);
+router.get("/similar-trading-cards", getSimilarTradingCards);
 router.get("/by-category/:categoryName", getTradingCardsByCategoryName);
 router.get("/public-profile", getPublicProfileTradingCards);
 router.get("/card-conditions", getAllCardConditions);
@@ -29,6 +32,6 @@ router.post("/main-search", mainSearch);
 router.get("/:id", getTradingCard);
 // router.post("/", createTradingCard);
 // router.put("/:id", updateTradingCard);
-// router.delete("/:id", deleteTradingCard);
+router.delete("/:id", userAuth, deleteTradingCard);
 
 export default router;

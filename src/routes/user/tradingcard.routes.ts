@@ -6,7 +6,8 @@ import {
   getMyTradingCardsByCategory, 
   getFormFieldsByCategory, 
   saveTradingCard,
-  updateTradingCard
+  updateTradingCard,
+  deleteTradingCard
 } from "../../controllers/tradingcard.controller.js";
 import { userAuth } from "../../middlewares/auth.middleware.js";
 import { upload } from "../../utils/fileUpload.js";
@@ -32,6 +33,8 @@ router.patch("/:cardId", upload.fields([
   { name: 'icon3', maxCount: 1 },
   { name: 'icon4', maxCount: 1 }
 ]), (req: any, res: any) => updateTradingCard(req, res));
+
+router.delete("/:id", deleteTradingCard);
 
 // Catch-all route must be last
 router.get("/:id", getTradingCard);

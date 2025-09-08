@@ -56,8 +56,13 @@ else
 fi
 
 # Build the TypeScript application
-echo "Building TypeScript application..."
-npm run build
+# Check if build artifacts exist (they should be transferred from CI)
+if [ -d ".next" ]; then
+    echo "Build artifacts found, skipping build step..."
+else
+    echo "Build artifacts not found, building application..."
+    npm run build
+fi
 
 # Verify build output
 if [ ! -f "dist/server.js" ]; then

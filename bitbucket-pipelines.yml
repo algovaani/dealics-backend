@@ -1,5 +1,4 @@
 image: node:20-bullseye
-
 definitions:
   caches:
     npm: ~/.npm-store
@@ -21,7 +20,6 @@ definitions:
           - ecosystem.config.cjs
           - deploy.sh
           - env.example
-
 pipelines:
   branches:
     dev:
@@ -36,9 +34,9 @@ pipelines:
             - echo "$SERVER_PRIVATE_KEY" > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
             - ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
-            - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
+            - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env.local" --exclude ".next/cache" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
             - chmod +x deploy.sh
-            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && export NODE_ENV=development && chmod +x deploy.sh && ./deploy.sh"
+            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deploy.sh && ./deploy.sh"
     master:
       - step: *build-step
       - step:
@@ -54,4 +52,3 @@ pipelines:
             - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
             - chmod +x deploy.sh
             - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && export NODE_ENV=production && chmod +x deploy.sh && ./deploy.sh"
-

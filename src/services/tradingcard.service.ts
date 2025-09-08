@@ -89,6 +89,89 @@ export class TradingCardService {
       count: (countResults[0] as any)?.total ?? 0
     };
   }
+
+  // Get deleted trading cards for a specific user
+  async getDeletedTradingCards(userId: number, page: number = 1, perPage: number = 10, categoryId?: number) {
+    // Validate and sanitize input parameters
+    const validPage = isNaN(page) || page < 1 ? 1 : page;
+    const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
+    const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
+    
+    if (!userId || isNaN(userId) || userId <= 0) {
+      throw new Error("Valid user ID is required");
+    }
+    
+    const offset = (validPage - 1) * validPerPage;
+    
+    // Base where clause for deleted cards
+    let whereClause = 'WHERE tc.mark_as_deleted = 1 AND c.sport_status = 1 AND tc.is_demo=0';
+    
+    // Filter by user (creator_id)
+    whereClause += ` AND tc.creator_id = ${userId}`;
+    
+    if (validCategoryId) {
+      whereClause += ` AND tc.category_id = ${validCategoryId}`;
+    }
+
+    // Use raw SQL to get deleted trading cards
+    const rawQuery = `
+      SELECT 
+        tc.id,
+        tc.category_id,
+        tc.trading_card_img,
+        tc.trading_card_img_back,
+        tc.trading_card_slug,
+        tc.trading_card_recent_trade_value,
+        tc.trading_card_asking_price,
+        tc.search_param,
+        c.sport_name,
+        c.sport_icon,
+        tc.trader_id,
+        tc.creator_id,
+        tc.is_traded,
+        tc.can_trade,
+        tc.can_buy,
+        tc.trading_card_status,
+        tc.mark_as_deleted,
+        tc.created_at,
+        tc.updated_at,
+        CASE 
+          WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+          WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+          WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+          WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+          WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+          ELSE 'Not Available'
+        END as trade_card_status
+      FROM trading_cards tc
+      LEFT JOIN categories c ON tc.category_id = c.id
+      ${whereClause}
+      ORDER BY tc.updated_at DESC
+      LIMIT ${validPerPage} OFFSET ${offset}
+    `;
+    
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM trading_cards tc
+      LEFT JOIN categories c ON tc.category_id = c.id
+      ${whereClause}
+    `;
+    
+    const results = await sequelize.query(rawQuery, {
+      type: QueryTypes.SELECT
+    });
+    
+    const countResults = await sequelize.query(countQuery, {
+      type: QueryTypes.SELECT
+    });
+
+    return {
+      status: true,
+      message: "Deleted trading cards fetched successfully",
+      data: results as any[],
+      count: (countResults[0] as any)?.total ?? 0
+    };
+  }
   async getTradingCardById(id: number, loggedInUserId?: number) {
     // Validate the id parameter
     if (!id || isNaN(id) || id <= 0) {

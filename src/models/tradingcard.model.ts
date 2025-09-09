@@ -920,6 +920,8 @@ import {
   @Column(DataType.TEXT)
   canada_add_product_flat_rate?: string;
 
+ 
+
   // Virtual properties for associations (will be populated by Sequelize)
   trader?: any;
   creatorUser?: any;

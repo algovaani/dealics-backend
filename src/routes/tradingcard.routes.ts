@@ -12,7 +12,8 @@ import {
   getPopularTradingCards,
   mainSearch,
   getSimilarTradingCards,
-  deleteTradingCard
+  deleteTradingCard,
+  toggleTradingCardDeleteStatus
 } from "../controllers/tradingcard.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 
@@ -33,5 +34,6 @@ router.get("/:id", getTradingCard);
 // router.post("/", createTradingCard);
 // router.put("/:id", updateTradingCard);
 router.delete("/:id", userAuth, deleteTradingCard);
+router.patch("/:id", userAuth, toggleTradingCardDeleteStatus);
 
 export default router;

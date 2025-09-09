@@ -292,7 +292,8 @@ export const getTradersList = async (req: Request, res: Response) => {
         followers: trader.followers,
         successful_trades: trader.completed_trades_count || 0,
         products_count: trader.active_cards_count || 0,
-        joined_date: joinedDateFormatted
+        joined_date: joinedDateFormatted,
+        following: trader.following === 1 ? true : false
       };
     });
 
@@ -536,6 +537,73 @@ export const getCoinDeductionHistory = async (req: Request, res: Response) => {
   }
 };
 
+// Get unified coin transaction history (purchase, deduction, or all)
+export const getCoinTransactionHistory = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get query parameters
+    const typeParam = req.query.type as string;
+    const pageParam = req.query.page as string;
+    const perPageParam = req.query.perPage as string;
+
+    // Validate type parameter
+    const type = typeParam && ['purchase', 'deduction', 'all'].includes(typeParam) 
+      ? typeParam as 'purchase' | 'deduction' | 'all' 
+      : 'all'; // Default to 'all' if not specified or invalid
+
+    // Parse pagination parameters
+    const page = pageParam ? parseInt(String(pageParam)) : 1;
+    const perPage = perPageParam ? parseInt(String(perPageParam)) : 10;
+
+    // Validate pagination parameters
+    if (page < 1 || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters", []);
+    }
+
+    // Call service method
+    const result = await UserService.getCoinTransactionHistory(userId, type, page, perPage);
+
+    // Transform pagination to match API response format
+    const pagination = result.pagination ? {
+      current_page: result.pagination.currentPage,
+      per_page: result.pagination.perPage,
+      total: result.pagination.total,
+      total_pages: result.pagination.totalPages,
+      has_next_page: result.pagination.hasNextPage,
+      has_prev_page: result.pagination.hasPrevPage
+    } : null;
+
+    const message = type === 'all' 
+      ? "Coin transaction history retrieved successfully" 
+      : `Coin ${type} history retrieved successfully`;
+
+    return sendApiResponse(res, 200, true, message, result.transactions, pagination);
+
+  } catch (error: any) {
+    console.error("Get coin transaction history error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
 // Get user's PayPal transactions (coin purchase + deduction history)
 export const getPayPalTransactions = async (req: Request, res: Response) => {
   try {
@@ -618,11 +686,11 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       console.log('📸 Profile picture file received:', req.file.originalname);
       console.log('📏 File size:', req.file.size, 'bytes');
       
-      // Validate file size (2MB = 2 * 1024 * 1024 bytes)
-      const maxSize = 2 * 1024 * 1024; // 2MB in bytes
+      // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+      const maxSize = 10 * 1024 * 1024; // 10MB in bytes
       if (req.file.size > maxSize) {
-        console.log('❌ File size exceeds 2MB limit');
-        return sendApiResponse(res, 400, false, "Profile picture size must not exceed 2MB", []);
+        console.log('❌ File size exceeds 10MB limit');
+        return sendApiResponse(res, 400, false, "Profile picture size must not exceed 10MB", []);
       }
       
       // Validate file type (only images)

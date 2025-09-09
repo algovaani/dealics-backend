@@ -26,7 +26,11 @@ router.get("/by-category/:categoryName", getTradingCardsByCategoryName);
 router.get("/my-products/:categoryName", getMyTradingCardsByCategory);
 router.get("/form-fields/:categorySlug", getFormFieldsByCategory);
 router.get("/form-fields/trading-cards", getFormFieldsByCategory);
-router.post("/save/:categoryId", saveTradingCard);
+router.post("/save/:categoryId", upload.fields([
+  { name: 'trading_card_img', maxCount: 1 },
+  { name: 'trading_card_img_back', maxCount: 1 },
+  { name: 'additional_images', maxCount: 10 }
+]), (req: any, res: any) => saveTradingCard(req, res));
 router.patch("/:cardId", upload.fields([
   { name: 'trading_card_img', maxCount: 1 },
   { name: 'trading_card_img_back', maxCount: 1 },

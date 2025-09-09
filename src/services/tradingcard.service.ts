@@ -1,5 +1,5 @@
 
-import { TradingCard, Category, User, CategoryField, CardCondition, CardImage } from "../models/index.js";
+import { TradingCard, Category, User, CategoryField, CardCondition, CardImage, InterestedIn } from "../models/index.js";
 import { HelperService } from "./helper.service.js";
 import { Sequelize, QueryTypes, Op } from "sequelize";
 import { sequelize } from "../config/db.js";
@@ -19,9 +19,9 @@ export class TradingCardService {
       whereClause += ` AND tc.category_id = ${validCategoryId}`;
     }
     
-    // Filter by creator_id if loggedInUserId is provided (from JWT token)
+    // Include only user's own cards if loggedInUserId is provided (from JWT token)
     if (validLoggedInUserId) {
-      whereClause += ` AND tc.creator_id = ${validLoggedInUserId}`;
+      whereClause += ` AND tc.trader_id = ${validLoggedInUserId}`;
     }
     
 
@@ -335,11 +335,24 @@ export class TradingCardService {
       canTradeOrOffer = true;
     }
 
+    // Check if user is interested in this trading card
+    let interested_in = false;
+    if (loggedInUserId) {
+      const interestedRecord = await InterestedIn.findOne({
+        where: {
+          tradingCardId: id,
+          userId: loggedInUserId
+        }
+      });
+      interested_in = !!interestedRecord;
+    }
+
     return {
       tradingCard,
       additionalFields: additionalFields,
       cardImages: cardImages,
-      canTradeOrOffer: canTradeOrOffer
+      canTradeOrOffer: canTradeOrOffer,
+      interested_in: interested_in
     };
   }
 
@@ -838,19 +851,139 @@ export class TradingCardService {
       }
       
       // Process field categorization logic if item_column data is found
+      console.log(`\n--- Processing field: ${field.fields} ---`);
+      console.log(`ItemColumn found:`, !!itemColumn);
+      if (itemColumn) {
+        console.log(`ItemColumn details:`, {
+          name: itemColumn.name,
+          type: itemColumn.type,
+          rel_master_table: itemColumn.rel_master_table,
+          rel_model_col: itemColumn.rel_model_col,
+          is_loop: itemColumn.is_loop
+        });
+      }
+      
       if (itemColumn && itemColumn.rel_master_table) {
         if (itemColumn.is_js_load === 1) {
           categoryJSFieldCollection.push(itemColumn.name || '');
         } else if (itemColumn.is_ajax_load === 0) {
           // Get master data for non-ajax fields
-          const masterData = await HelperService.getMasterDatas(
-            itemColumn.rel_master_table, 
-            categoryId
-          );
+          // Special handling for grade_ratings and professional_graders - use dynamic category ID
+          let masterData;
+          // Tables that need special category filtering
+          const specialTables = [
+            'grade_ratings', 'professional_graders', 'packages', 'publishers',
+            'brands', 'Brand', 'certifications', 'circulateds', 'coin_names', 'countries',
+            'denominations', 'coin_stamp_grade_ratings', 'mint_marks', 'item_types', 'ItemType', 'ItemTypes',
+            'sports', 'Sports', 'console_models', 'ConsoleModel', 'consolemodels',
+            'region_codes', 'RegionCode', 'regioncodes', 'storage_capacities', 'StorageCapacity', 'storagecapacities',
+            'platform_consoles', 'PlatformConsole', 'platformconsoles', 'record_grade_ratings', 'RecordGradeRating', 'recordgraderatings',
+            'record_graders', 'RecordGrader', 'recordgraders', 'record_sizes', 'RecordSize', 'recordsizes',
+            'sleeve_grade_ratings', 'SleeveGradeRating', 'sleevegraderatings', 'sleeve_graders', 'SleeveGrader', 'sleevegraders',
+            'types', 'Type', 'Types'
+          ];
+          
+          if (specialTables.includes(itemColumn.rel_master_table)) {
+            // For these tables, use the dynamic categoryId from the form field
+            masterData = await HelperService.getMasterDatas(
+              itemColumn.rel_master_table, 
+              categoryId // Use the dynamic category ID from the form field
+            );
+          } else {
+            masterData = await HelperService.getMasterDatas(
+              itemColumn.rel_master_table, 
+              categoryId
+            );
+          }
           categoryFieldCollection[itemColumn.rel_master_table] = masterData;
         } else if (itemColumn.is_ajax_load === 1) {
           categoryAjaxFieldCollection.push(itemColumn.name || '');
         }
+        
+        // Handle select fields - populate is_loop with table data for all select type fields
+        if (itemColumn && itemColumn.type === 'select' && itemColumn.rel_master_table) {
+          console.log(`\n=== PROCESSING SELECT FIELD ===`);
+          console.log(`Field Name: ${itemColumn.name}`);
+          console.log(`Field Type: ${itemColumn.type}`);
+          console.log(`Rel Master Table: ${itemColumn.rel_master_table}`);
+          console.log(`Rel Model Column: ${itemColumn.rel_model_col}`);
+          console.log(`Category ID: ${categoryId}`);
+          
+          try {
+            // Special handling for grade_ratings and professional_graders - use dynamic category ID
+            let loopData;
+            // Tables that need special category filtering
+            const specialTables = [
+              'grade_ratings', 'professional_graders', 'packages', 'publishers', 'Publisher',
+              'brands', 'Brand', 'certifications', 'circulateds', 'coin_names', 'countries',
+              'denominations', 'coin_stamp_grade_ratings', 'mint_marks', 'item_types', 'ItemType', 'ItemTypes',
+              'sports', 'Sports', 'console_models', 'ConsoleModel', 'consolemodels',
+              'region_codes', 'RegionCode', 'regioncodes', 'storage_capacities', 'StorageCapacity', 'storagecapacities',
+              'platform_consoles', 'PlatformConsole', 'platformconsoles', 'record_grade_ratings', 'RecordGradeRating', 'recordgraderatings',
+              'record_graders', 'RecordGrader', 'recordgraders', 'record_sizes', 'RecordSize', 'recordsizes',
+              'sleeve_grade_ratings', 'SleeveGradeRating', 'sleevegraderatings', 'sleeve_graders', 'SleeveGrader', 'sleevegraders',
+              'types', 'Type', 'Types'
+            ];
+            
+            if (specialTables.includes(itemColumn.rel_master_table)) {
+              // For these tables, use the dynamic categoryId from the form field
+              loopData = await HelperService.getMasterDatas(
+                itemColumn.rel_master_table, 
+                categoryId // Use the dynamic category ID from the form field
+              );
+            } else {
+              loopData = await HelperService.getMasterDatas(
+                itemColumn.rel_master_table, 
+                categoryId
+              );
+            }
+            
+            console.log(`Raw data retrieved:`, loopData);
+            
+            if (loopData && loopData.length > 0) {
+              // Transform data to include id and label for select box
+              const selectOptions = loopData.map((item: any) => {
+                const label = item[itemColumn.rel_model_col] || item.label || item.name || `Option ${item.id}`;
+                return {
+                  id: item.id,
+                  label: label,
+                  value: item.id
+                };
+              });
+              
+              console.log(`Transformed select options:`, selectOptions);
+              
+              // Store the select options in the field collection
+              categoryFieldCollection[`${itemColumn.name}_options`] = selectOptions;
+              
+              // Add to JS field collection so frontend knows this field has loop data
+              categoryJSFieldCollection.push(itemColumn.name || '');
+              
+              // Update the itemColumn to include is_loop data
+              itemColumn.is_loop = selectOptions;
+              
+              console.log(`Successfully set is_loop for ${itemColumn.name} with ${selectOptions.length} options`);
+            } else {
+              console.log(`No data found for ${itemColumn.name} in table ${itemColumn.rel_master_table}`);
+            }
+          } catch (error) {
+            console.error(`Error getting loop data for field ${itemColumn.name}:`, error);
+          }
+          console.log(`=== END SELECT FIELD PROCESSING ===\n`);
+        } else {
+          if (itemColumn) {
+            console.log(`Field ${itemColumn.name} - Type: ${itemColumn.type}, Has rel_master_table: ${!!itemColumn.rel_master_table}`);
+          }
+        }
+      }
+      
+      // Debug: Log the final itemColumn state
+      if (itemColumn && itemColumn.type === 'select') {
+        console.log(`\n=== FINAL ITEM COLUMN STATE FOR ${itemColumn.name} ===`);
+        console.log(`is_loop value:`, itemColumn.is_loop);
+        console.log(`is_loop type:`, typeof itemColumn.is_loop);
+        console.log(`is_loop length:`, Array.isArray(itemColumn.is_loop) ? itemColumn.is_loop.length : 'not array');
+        console.log(`=== END FINAL STATE ===\n`);
       }
       
       return {
@@ -861,6 +994,16 @@ export class TradingCardService {
         item_column: itemColumn
       };
     }));
+
+    // Debug: Log the final response structure
+    console.log(`\n=== FINAL RESPONSE DEBUG ===`);
+    console.log(`Total fields processed: ${transformedCategoryFields.length}`);
+    transformedCategoryFields.forEach((field: any) => {
+      if (field.item_column && field.item_column.type === 'select') {
+        console.log(`Field ${field.item_column.name} - is_loop:`, field.item_column.is_loop);
+      }
+    });
+    console.log(`=== END FINAL RESPONSE DEBUG ===\n`);
 
     return {
       category_id: categoryId,
@@ -916,6 +1059,44 @@ export class TradingCardService {
         trader_id: userId,
         category_id: categoryId,
       };
+
+      // Generate trading_card_slug and search_param from series_set, issue_number, story_title, variant
+      const slugParts: string[] = [];
+      const searchParts: string[] = [];
+      
+      // Add series_set
+      if (requestData.series_set && requestData.series_set.trim()) {
+        const seriesSet = requestData.series_set.trim();
+        slugParts.push(seriesSet.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
+        searchParts.push(seriesSet);
+      }
+      
+      // Add issue_number
+      if (requestData.issue_number && requestData.issue_number.trim()) {
+        const issueNumber = requestData.issue_number.trim();
+        slugParts.push(issueNumber);
+        searchParts.push(`#${issueNumber}`);
+      }
+      
+      // Add story_title
+      if (requestData.story_title && requestData.story_title.trim()) {
+        const storyTitle = requestData.story_title.trim();
+        slugParts.push(storyTitle.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
+        searchParts.push(storyTitle);
+      }
+      
+      // Add variant
+      if (requestData.variant && requestData.variant.trim()) {
+        const variant = requestData.variant.trim();
+        slugParts.push(variant.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
+        searchParts.push(variant);
+      }
+      
+      // Generate final strings
+      if (slugParts.length > 0) {
+        saveData.trading_card_slug = slugParts.join('-');
+        saveData.search_param = searchParts.join(' ');
+      }
 
       // Get category fields with priority
       const categoryFields = await CategoryField.findAll({
@@ -997,11 +1178,42 @@ export class TradingCardService {
         }
       }
 
+      // Handle image fields
+      if (requestData.trading_card_img) {
+        saveData.trading_card_img = requestData.trading_card_img;
+      }
+      if (requestData.trading_card_img_back) {
+        saveData.trading_card_img_back = requestData.trading_card_img_back;
+      }
+      
+      // Handle additional images array - will be stored in card_images table after trading card creation
+
       // Create trading card
       const tradingCard = await TradingCard.create(saveData);
 
       if (!tradingCard.id) {
         throw new Error("Failed to create TradingCard record");
+      }
+
+      // Handle additional images - store in card_images table
+      if (requestData.additional_images && Array.isArray(requestData.additional_images) && requestData.additional_images.length > 0) {
+        const { CardImage } = await import('../models/index.js');
+        
+        // Create card image record with additional images
+        const cardImageData: any = {
+          mainCardId: tradingCard.id,
+          traderId: userId,
+          cardImageStatus: '1'
+        };
+
+        // Map additional images to card_image_1, card_image_2, etc.
+        requestData.additional_images.forEach((imagePath: string, index: number) => {
+          if (index < 4) { // Only support up to 4 additional images
+            cardImageData[`cardImage${index + 1}`] = imagePath;
+          }
+        });
+
+        await CardImage.create(cardImageData);
       }
 
       // Store additional data for response

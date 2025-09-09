@@ -798,7 +798,11 @@ export class UserService {
           u.updated_at,
           COALESCE(tc_stats.trading_cards_count, 0) as trading_cards_count,
           COALESCE(tc_stats.active_cards_count, 0) as active_cards_count,
-          COALESCE(tc_stats.completed_trades_count, 0) as completed_trades_count
+          COALESCE(tc_stats.completed_trades_count, 0) as completed_trades_count,
+          CASE 
+            WHEN f.id IS NOT NULL AND f.follower_status = '1' THEN 1 
+            ELSE 0 
+          END as following
         FROM users u
         INNER JOIN (
           SELECT
@@ -813,6 +817,7 @@ export class UserService {
           AND (can_trade = 1 OR can_buy = 1)
           GROUP BY trader_id
         ) tc_stats ON u.id = tc_stats.trader_id
+        LEFT JOIN followers f ON u.id = f.trader_id AND f.user_id = ${excludeUserId || 'NULL'} AND f.follower_status = '1'
         WHERE u.user_status = '1'
         AND u.user_role = 'user'
         ${excludeUserId ? `AND u.id != ${excludeUserId}` : ''}
@@ -833,6 +838,7 @@ export class UserService {
           AND is_traded = '0'
           AND (can_trade = 1 OR can_buy = 1)
         ) tc_stats ON u.id = tc_stats.trader_id
+        LEFT JOIN followers f ON u.id = f.trader_id AND f.user_id = ${excludeUserId || 'NULL'} AND f.follower_status = '1'
         WHERE u.user_status = '1'
         AND u.user_role = 'user'
         ${excludeUserId ? `AND u.id != ${excludeUserId}` : ''}
@@ -1261,6 +1267,143 @@ export class UserService {
       return { deductions: transformedDeductions, pagination };
     } catch (error: any) {
       console.error('Error getting coin deduction history:', error);
+      throw error;
+    }
+  }
+
+  // Get unified coin transaction history (purchase or deduction based on type parameter)
+  static async getCoinTransactionHistory(userId: number, type: 'purchase' | 'deduction' | 'all', page: number = 1, perPage: number = 10) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return { transactions: [], pagination: null };
+      }
+
+      // Validate type parameter
+      if (!['purchase', 'deduction', 'all'].includes(type)) {
+        throw new Error('Invalid type parameter. Must be "purchase", "deduction", or "all"');
+      }
+
+      // Calculate offset for pagination
+      const offset = (page - 1) * perPage;
+
+      let transactions: any[] = [];
+      let totalCount = 0;
+
+      if (type === 'purchase' || type === 'all') {
+        // Get coin purchase history
+        const purchaseCount = await CreditPurchaseLog.count({
+          where: { user_id: userId }
+        });
+
+        const purchases = await CreditPurchaseLog.findAll({
+          where: { user_id: userId },
+          order: [['created_at', 'DESC']],
+          limit: type === 'all' ? perPage : perPage,
+          offset: type === 'all' ? offset : offset
+        });
+
+        const transformedPurchases = purchases.map((purchase: any) => ({
+          id: purchase.id,
+          type: 'purchase',
+          invoice_number: purchase.invoice_number,
+          amount: purchase.amount,
+          coins: purchase.coins,
+          transaction_id: purchase.transaction_id,
+          payment_status: purchase.payment_status,
+          payee_email_address: purchase.payee_email_address,
+          merchant_id: purchase.merchant_id,
+          payment_source: purchase.payment_source,
+          payer_id: purchase.payer_id,
+          payer_full_name: purchase.payer_full_name,
+          payer_email_address: purchase.payer_email_address,
+          payer_address: purchase.payer_address,
+          payer_country_code: purchase.payer_country_code,
+          created_at: purchase.created_at,
+          updated_at: purchase.updated_at
+        }));
+
+        if (type === 'purchase') {
+          transactions = transformedPurchases;
+          totalCount = purchaseCount;
+        } else {
+          transactions = [...transformedPurchases];
+          totalCount += purchaseCount;
+        }
+      }
+
+      if (type === 'deduction' || type === 'all') {
+        // Get coin deduction history
+        const deductionCount = await CreditDeductionLog.count({
+          where: { 
+            [Op.or]: [
+              { sent_to: userId },
+              { sent_by: userId }
+            ]
+          }
+        });
+
+        const deductions = await CreditDeductionLog.findAll({
+          where: { 
+            [Op.or]: [
+              { sent_to: userId },
+              { sent_by: userId }
+            ]
+          },
+          order: [['created_at', 'DESC']],
+          limit: type === 'all' ? perPage : perPage,
+          offset: type === 'all' ? offset : offset
+        });
+
+        const transformedDeductions = deductions.map((deduction: any) => ({
+          id: deduction.id,
+          type: 'deduction',
+          trade_id: deduction.trade_id,
+          buy_sell_id: deduction.buy_sell_id,
+          cart_detail_id: deduction.cart_detail_id,
+          trade_status: deduction.trade_status,
+          sent_to: deduction.sent_to,
+          sent_by: deduction.sent_by,
+          coin: deduction.coin,
+          status: deduction.status,
+          deduction_from: deduction.deduction_from,
+          created_at: deduction.created_at,
+          updated_at: deduction.updated_at
+        }));
+
+        if (type === 'deduction') {
+          transactions = transformedDeductions;
+          totalCount = deductionCount;
+        } else {
+          transactions = [...transactions, ...transformedDeductions];
+          totalCount += deductionCount;
+        }
+      }
+
+      // Sort by created_at if type is 'all'
+      if (type === 'all') {
+        transactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        // Apply pagination to the combined results
+        transactions = transactions.slice(offset, offset + perPage);
+      }
+
+      // Calculate pagination info
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      const pagination = {
+        currentPage: page,
+        perPage: perPage,
+        total: totalCount,
+        totalPages: totalPages,
+        hasNextPage: hasNextPage,
+        hasPrevPage: hasPrevPage
+      };
+
+      return { transactions, pagination };
+    } catch (error: any) {
+      console.error('Error getting coin transaction history:', error);
       throw error;
     }
   }

@@ -33,14 +33,28 @@ const sendApiResponse = (res: Response, statusCode: number, status: boolean, mes
 export const getTradingCardsByCategoryName = async (req: Request, res: Response) => {
   try {
     const { categoryName } = req.params;
-    const loggedInUserId = req.user?.id;
+    
+    // Extract user ID from JWT token if available
+    let authenticatedUserId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
+        console.log('JWT Token decoded - User ID:', authenticatedUserId);
+      } catch (jwtError) {
+        // Token is invalid, but we'll continue without authentication
+        console.log('Invalid token in getTradingCardsByCategoryName API:', jwtError);
+      }
+    }
 
     if (!categoryName) {
       return sendApiResponse(res, 400, false, "Category name (slug) is required");
     }
 
     // Use slug for category lookup
-    const cards = await tradingcardService.getTradingCardsByCategoryId(categoryName, loggedInUserId);
+    const cards = await tradingcardService.getTradingCardsByCategoryId(categoryName, authenticatedUserId);
     
     if (!cards || cards.length === 0) {
       return sendApiResponse(res, 404, false, "Category not found or no trading cards");
@@ -59,7 +73,6 @@ export const getTradingCards = async (req: Request, res: Response) => {
     const pageParam = req.query.page as string;
     const perPageParam = req.query.perPage as string;
     const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
-    const loggedInUserIdParam = req.query.loggedInUserId as string;
     
     // Extract user ID from JWT token if available
     let authenticatedUserId: number | undefined;
@@ -79,7 +92,7 @@ export const getTradingCards = async (req: Request, res: Response) => {
     const page = pageParam ? parseInt(pageParam, 10) : 1;
     const perPage = perPageParam ? parseInt(perPageParam, 10) : 100;
     const categoryId: number | undefined = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
-    const loggedInUserId: number | undefined = loggedInUserIdParam ? parseInt(loggedInUserIdParam, 10) : authenticatedUserId;
+    const loggedInUserId: number | undefined = authenticatedUserId;
 
     // Validate pagination parameters
     if (isNaN(page) || page < 1) {
@@ -192,21 +205,31 @@ export const getTradingCard = async (req: Request, res: Response) => {
       return sendApiResponse(res, 400, false, "Valid trading card ID is required");
     }
     
-    // Get logged in user ID from request (from auth middleware or query parameter)
-    const loggedInUserId = (req as any).user?.id || (req.query.loggedInUserId ? Number(req.query.loggedInUserId) : undefined);
+    // Extract user ID from JWT token if available
+    let authenticatedUserId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
+        console.log('JWT Token decoded - User ID:', authenticatedUserId);
+      } catch (jwtError) {
+        // Token is invalid, but we'll continue without authentication
+        console.log('Invalid token in getTradingCard API:', jwtError);
+      }
+    }
     
     console.log("Controller - cardId:", cardId);
-    console.log("Controller - loggedInUserId:", loggedInUserId);
-    console.log("Controller - req.query.loggedInUserId:", req.query.loggedInUserId);
-    console.log("Controller - req.user?.id:", (req as any).user?.id);
+    console.log("Controller - authenticatedUserId:", authenticatedUserId);
     
-    const result = await tradingcardService.getTradingCardById(cardId, loggedInUserId);
+    const result = await tradingcardService.getTradingCardById(cardId, authenticatedUserId);
     
     if (!result) {
       return sendApiResponse(res, 404, false, "Trading Card not found");
     }
     
-    const { tradingCard, additionalFields, cardImages, canTradeOrOffer } = result;
+    const { tradingCard, additionalFields, cardImages, canTradeOrOffer, interested_in } = result;
     
     // Transform the response to include trader_name
     const transformedCard = {
@@ -219,7 +242,7 @@ export const getTradingCard = async (req: Request, res: Response) => {
       trading_card_img_back: tradingCard.trading_card_img_back,
       trading_card_slug: tradingCard.trading_card_slug,
       is_traded: tradingCard.is_traded,
-      created_at: tradingCard.created_at,
+      created_at: tradingCard.createdAt,
       is_demo: tradingCard.is_demo,
       trader_id: tradingCard.trader_id,
       trader_name: tradingCard.trader ? tradingCard.trader.username : null,
@@ -234,7 +257,9 @@ export const getTradingCard = async (req: Request, res: Response) => {
       // Add card images data
       cardImages: cardImages,
       // Add can trade or offer parameter
-      canTradeOrOffer: canTradeOrOffer
+      canTradeOrOffer: canTradeOrOffer,
+      // Add interested_in status
+      interested_in: interested_in
     };
     
     return sendApiResponse(res, 200, true, "Trading card retrieved successfully", transformedCard);
@@ -291,6 +316,54 @@ export const deleteTradingCard = async (req: Request, res: Response) => {
     return sendApiResponse(res, 200, true, "Trading Card deleted successfully", []);
   } catch (error: any) {
     console.error("Delete trading card error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// DELETE/RESTORE Trading Card - Toggle delete status based on query parameter
+export const toggleTradingCardDeleteStatus = async (req: Request, res: Response) => {
+  try {
+    // Get user ID from authenticated token
+    const userId = req.user?.id || req.user?.user_id || req.user?.sub;
+    
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Validate the ID parameter
+    const cardId = Number(req.params.id);
+    if (!req.params.id || isNaN(cardId) || cardId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid trading card ID is required", []);
+    }
+
+    // Get action parameter from query
+    const action = req.query.action as string;
+    if (!action || !['delete', 'restore'].includes(action)) {
+      return sendApiResponse(res, 400, false, "Action parameter is required. Use 'delete' or 'restore'", []);
+    }
+    
+    // Check if the trading card exists
+    const tradingCard = await TradingCard.findByPk(cardId);
+    if (!tradingCard) {
+      return sendApiResponse(res, 404, false, "Trading Card not found", []);
+    }
+    
+    // Check if user owns this trading card (either as creator or trader)
+    if (tradingCard.creator_id !== userId && tradingCard.trader_id !== userId) {
+      return sendApiResponse(res, 403, false, "You can only modify your own trading cards", []);
+    }
+    
+    // Update the mark_as_deleted status based on action
+    if (action === 'delete') {
+      await tradingCard.update({ mark_as_deleted: 1 });
+      return sendApiResponse(res, 200, true, "Trading Card deleted successfully", []);
+    } else if (action === 'restore') {
+      await tradingCard.update({ mark_as_deleted: 0 });
+      return sendApiResponse(res, 200, true, "Trading Card restored successfully", []);
+    }
+    
+  } catch (error: any) {
+    console.error("Toggle trading card delete status error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };
@@ -566,12 +639,12 @@ export const getCardConditionById = async (req: Request, res: Response) => {
  * Save trading card with master data processing (equivalent to Laravel saveProductData)
  * POST /api/user/tradingcards/save/:categoryId
  */
-export const saveTradingCard = async (req: Request, res: Response) => {
+export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
   try {
     const { categoryId } = req.params;
     const requestData = req.body;
     
-    // Get user from auth middleware (assuming you have auth middleware)
+    // Get user from auth middleware
     const user = (req as any).user;
     if (!user || !user.id) {
       return sendApiResponse(res, 401, false, "User not authenticated");
@@ -584,6 +657,41 @@ export const saveTradingCard = async (req: Request, res: Response) => {
 
     const categoryIdNum = parseInt(categoryId);
     const userId = user.id;
+
+    // Handle file uploads
+    const uploadPath = process.cwd() + '/public/user/assets/images/trading_cards_img/';
+    
+    // Process main card images
+    if (req.files) {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      
+      if (files.trading_card_img && files.trading_card_img[0]) {
+        requestData.trading_card_img = uploadOne(files.trading_card_img[0] as any, uploadPath);
+      }
+      
+      if (files.trading_card_img_back && files.trading_card_img_back[0]) {
+        requestData.trading_card_img_back = uploadOne(files.trading_card_img_back[0] as any, uploadPath);
+      }
+      
+      // Process additional images (multiple files in one field)
+      if (files.additional_images && files.additional_images.length > 0) {
+        const additionalImagePaths: string[] = [];
+        for (const file of files.additional_images) {
+          const uploadedPath = uploadOne(file as any, uploadPath);
+          additionalImagePaths.push(uploadedPath);
+        }
+        requestData.additional_images = additionalImagePaths;
+      }
+    }
+
+    // Validate that both front and back images are provided (mandatory)
+    if (!requestData.trading_card_img) {
+      return sendApiResponse(res, 400, false, "Front image is required");
+    }
+    
+    if (!requestData.trading_card_img_back) {
+      return sendApiResponse(res, 400, false, "Back image is required");
+    }
 
     // Call service to save trading card
     const result = await tradingcardService.saveTradingCard(requestData, categoryIdNum, userId);
@@ -827,7 +935,6 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
     const userId = req.query.userId as string;
     const pageParam = req.query.page as string;
     const perPageParam = req.query.perPage as string;
-    const loggedInUserIdParam = req.query.loggedInUserId as string;
     const categoryIdParam = req.query.categoryId as string;
     
     // Validate required parameters
@@ -837,15 +944,25 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
 
     const page = pageParam ? parseInt(pageParam.toString(), 10) : 1;
     const perPage = perPageParam ? parseInt(perPageParam.toString(), 10) : 10;
-    let loggedInUserId: number | undefined = undefined;
     let categoryId: number | undefined = undefined;
-    
-    if (loggedInUserIdParam && !isNaN(Number(loggedInUserIdParam)) && Number(loggedInUserIdParam) > 0) {
-      loggedInUserId = parseInt(loggedInUserIdParam.toString(), 10);
-    }
     
     if (categoryIdParam && !isNaN(Number(categoryIdParam)) && Number(categoryIdParam) > 0) {
       categoryId = parseInt(categoryIdParam.toString(), 10);
+    }
+
+    // Extract user ID from JWT token if available
+    let authenticatedUserId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
+        console.log('JWT Token decoded - User ID:', authenticatedUserId);
+      } catch (jwtError) {
+        // Token is invalid, but we'll continue without authentication
+        console.log('Invalid token in public profile API:', jwtError);
+      }
     }
 
     // Validate pagination parameters
@@ -861,21 +978,17 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
     if (isNaN(Number(userId)) || Number(userId) <= 0) {
       return sendApiResponse(res, 400, false, "Invalid user ID provided");
     }
-    
-    if (loggedInUserId !== undefined && (isNaN(loggedInUserId) || loggedInUserId <= 0)) {
-      return sendApiResponse(res, 400, false, "Invalid loggedInUserId provided");
-    }
 
     console.log("Debug - userId:", userId, "type:", typeof userId);
     console.log("Debug - page:", page, "type:", typeof page);
     console.log("Debug - perPage:", perPage, "type:", typeof perPage);
-    console.log("Debug - loggedInUserId:", loggedInUserId, "type:", typeof loggedInUserId);
+    console.log("Debug - authenticatedUserId:", authenticatedUserId, "type:", typeof authenticatedUserId);
     
     const result = await tradingcardService.getPublicProfileTradingCards(
       Number(userId),
       page,
       perPage,
-      loggedInUserId,
+      authenticatedUserId,
       categoryId
     );
 
@@ -891,8 +1004,8 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
       // Add canTradeOrOffer logic
       let canTradeOrOffer = true;
       
-      // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
-      if (loggedInUserId && card.trader_id === loggedInUserId) {
+      // If authenticatedUserId is provided and matches the card's trader_id, user can't trade with themselves
+      if (authenticatedUserId && card.trader_id === authenticatedUserId) {
         canTradeOrOffer = false;
       }
       
@@ -922,8 +1035,8 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
          canTradeOrOffer: canTradeOrOffer
        };
 
-      // Only add interested_in field if loggedInUserId is provided
-      if (loggedInUserId) {
+      // Only add interested_in field if authenticatedUserId is provided
+      if (authenticatedUserId) {
         return {
           ...baseResponse,
           interested_in: Boolean(card.interested_in)
@@ -1086,7 +1199,7 @@ export const mainSearch = async (req: Request, res: Response) => {
 // Get similar trading cards based on categories
 export const getSimilarTradingCards = async (req: Request, res: Response) => {
   try {
-    const { categories, limit, loggedInUserId, tradingCardId } = req.query;
+    const { categories, limit, tradingCardId } = req.query;
 
     // Validate categories parameter
     if (!categories) {
@@ -1113,19 +1226,33 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
 
     // Set default limit and parse parameters
     const limitNumber = limit ? parseInt(String(limit)) : 10;
-    const loggedInUserIdNumber = loggedInUserId ? parseInt(String(loggedInUserId)) : undefined;
     const tradingCardIdNumber = tradingCardId ? parseInt(String(tradingCardId)) : undefined;
 
+    // Extract user ID from JWT token if available
+    let authenticatedUserId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
+        console.log('JWT Token decoded - User ID:', authenticatedUserId);
+      } catch (jwtError) {
+        // Token is invalid, but we'll continue without authentication
+        console.log('Invalid token in similar trading cards API:', jwtError);
+      }
+    }
+
     // Call service method
-    const result = await TradingCardService.getSimilarTradingCards(categoryIds, limitNumber, loggedInUserIdNumber, tradingCardIdNumber);
+    const result = await TradingCardService.getSimilarTradingCards(categoryIds, limitNumber, authenticatedUserId, tradingCardIdNumber);
 
     // Transform response to match /api/tradingCards format
     const response = result.map((card: any) => {
       // Add canTradeOrOffer logic (same as /api/tradingCards)
       let canTradeOrOffer = true;
       
-      // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
-      if (loggedInUserIdNumber && card.trader_id === loggedInUserIdNumber) {
+      // If authenticatedUserId is provided and matches the card's trader_id, user can't trade with themselves
+      if (authenticatedUserId && card.trader_id === authenticatedUserId) {
         canTradeOrOffer = false;
       }
       
@@ -1153,8 +1280,8 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
         canTradeOrOffer: canTradeOrOffer
       };
 
-      // Only add interested_in field if loggedInUserId is provided
-      if (loggedInUserIdNumber) {
+      // Only add interested_in field if authenticatedUserId is provided
+      if (authenticatedUserId) {
         return {
           ...baseResponse,
           interested_in: Boolean(card.interested_in)

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getUserDashboard, getCoinPurchaseHistory, getCoinDeductionHistory, getPayPalTransactions, updateUserProfile } from "../controllers/user.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getUserDashboard, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile } from "../controllers/user.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -31,6 +31,9 @@ router.get("/coin-purchase-history", getCoinPurchaseHistory);
 
 // Coin deduction history API (requires authentication - handled in controller)
 router.get("/coin-deduction-history", getCoinDeductionHistory);
+
+// Unified coin transaction history API (requires authentication - handled in controller)
+router.get("/coin-transaction-history", getCoinTransactionHistory);
 
 // PayPal transactions API (requires authentication - handled in controller)
 router.get("/paypal-transactions", getPayPalTransactions);

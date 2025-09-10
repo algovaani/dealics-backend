@@ -90,6 +90,23 @@ export const getUserProfile = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "User not found");
     }
 
+    // Format joined_date to 'Aug, 2025' format
+    let formattedJoinedDate = '';
+    if (profileData.user.createdAt) {
+      const date = new Date(profileData.user.createdAt);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[date.getMonth()];
+      const year = date.getFullYear();
+      formattedJoinedDate = `${month}, ${year}`;
+    } else {
+      // Fallback to current date if createdAt is missing
+      const currentDate = new Date();
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[currentDate.getMonth()];
+      const year = currentDate.getFullYear();
+      formattedJoinedDate = `${month}, ${year}`;
+    }
+
     // Transform the response to match the Laravel structure
     const response = {
       id: profileData.user.id,
@@ -102,7 +119,8 @@ export const getUserProfile = async (req: Request, res: Response) => {
       trade_transactions: profileData.user.trade_transactions,
       trading_cards: profileData.user.trading_cards,
       ratings: profileData.user.ratings,
-      joined_date: profileData.user.createdAt,
+      ebay_url: profileData.user.ebay_store_url,
+      joined_date: formattedJoinedDate,
       updated_at: profileData.user.updatedAt,
       cardStats: profileData.cardStats,
       reviews: profileData.reviews,
@@ -884,6 +902,178 @@ export const updateUserProfile = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Update user profile error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get user's shipment log
+export const getShipmentLog = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Call service method
+    const result = await UserService.getShipmentLog(userId);
+
+    return sendApiResponse(res, 200, true, "Shipment log retrieved successfully", result.shipments);
+
+  } catch (error: any) {
+    console.error("Get shipment log error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Track shipment using EasyPost API
+export const trackShipment = async (req: Request, res: Response) => {
+  try {
+    const { tracking_id } = req.params;
+
+    // Validate tracking ID
+    if (!tracking_id || tracking_id.trim() === '') {
+      return sendApiResponse(res, 400, false, "Tracking ID is required", []);
+    }
+
+    // Call service method
+    const result = await UserService.trackShipment(tracking_id.trim());
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Shipment tracked successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to track shipment", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Track shipment error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get shipping label using EasyPost API
+export const getShippingLabel = async (req: Request, res: Response) => {
+  try {
+    const { tracking_id } = req.params;
+
+    // Validate tracking ID
+    if (!tracking_id || tracking_id.trim() === '') {
+      return sendApiResponse(res, 400, false, "Tracking ID is required", []);
+    }
+
+    // Call service method
+    const result = await UserService.getShippingLabel(tracking_id.trim());
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Shipping label retrieved successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get shipping label", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Get shipping label error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get category shipping rate history for authenticated user
+export const getCategoryShippingRateHistory = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get query parameters
+    const categoryId = req.query.category_id ? parseInt(String(req.query.category_id)) : undefined;
+    const specificId = req.params.id ? parseInt(req.params.id) : undefined;
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
+
+    // Call service method
+    const result = await UserService.getCategoryShippingRateHistory(userId, categoryId, specificId, page, perPage);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Category shipping rate history retrieved successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get category shipping rate history", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Get category shipping rate history error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Delete category shipping rate for authenticated user
+export const deleteCategoryShippingRate = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get shipping rate ID from params
+    const shippingRateId = req.params.id ? parseInt(req.params.id) : undefined;
+    if (!shippingRateId || isNaN(shippingRateId) || shippingRateId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid shipping rate ID is required", []);
+    }
+
+    // Call service method
+    const result = await UserService.deleteCategoryShippingRate(userId, shippingRateId);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, result.message || "Category deleted successfully", []);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to delete category", []);
+    }
+
+  } catch (error: any) {
+    console.error("Delete category shipping rate error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };

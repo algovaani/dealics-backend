@@ -11,6 +11,9 @@ import { CreditDeductionLog } from './creditDeductionLog.model.js';
 import { InterestedIn } from './interestedIn.model.js';
 import { UserSocialMedia } from './userSocialMedia.model.js';
 import { SocialMedia } from './socialMedia.model.js';
+import { Shipment } from './shipment.model.js';
+import { Address } from './address.model.js';
+import { CategoryShippingRate } from './categoryShippingRates.model.js';
 
 // Import all models here
 export const models = [
@@ -25,7 +28,10 @@ export const models = [
   CreditDeductionLog,
   InterestedIn,
   UserSocialMedia,
-  SocialMedia
+  SocialMedia,
+  Shipment,
+  Address,
+  CategoryShippingRate
 ];
 
 // Function to set up all associations
@@ -118,6 +124,61 @@ export function setupAssociations() {
     foreignKey: 'user_id',
     as: 'userSocialMedias'
   });
+
+  // Shipment associations
+  Shipment.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'user'
+  });
+
+  Shipment.belongsTo(Address, {
+    foreignKey: 'to_address',
+    as: 'toAddress'
+  });
+
+  Shipment.belongsTo(Address, {
+    foreignKey: 'from_address',
+    as: 'fromAddress'
+  });
+
+  // Address associations
+  Address.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'user'
+  });
+
+  Address.hasMany(Shipment, {
+    foreignKey: 'to_address',
+    as: 'toShipments'
+  });
+
+  Address.hasMany(Shipment, {
+    foreignKey: 'from_address',
+    as: 'fromShipments'
+  });
+
+  // CategoryShippingRate associations
+  CategoryShippingRate.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'user'
+  });
+
+  CategoryShippingRate.belongsTo(Category, {
+    foreignKey: 'category_id',
+    as: 'category'
+  });
+
+  // User associations for shipping rates
+  User.hasMany(CategoryShippingRate, {
+    foreignKey: 'user_id',
+    as: 'shippingRates'
+  });
+
+  // Category associations for shipping rates
+  Category.hasMany(CategoryShippingRate, {
+    foreignKey: 'category_id',
+    as: 'shippingRates'
+  });
 }
 
 // Export all models for easy importing
@@ -133,5 +194,8 @@ export {
   CreditDeductionLog,
   InterestedIn,
   UserSocialMedia,
-  SocialMedia
+  SocialMedia,
+  Shipment,
+  Address,
+  CategoryShippingRate
 };

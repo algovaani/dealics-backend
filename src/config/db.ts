@@ -4,7 +4,7 @@ import mysql from "mysql2";   // ✅ add this
 export const sequelize = new Sequelize({
   database: "stagingtradeblock",
   username: "root",
-  password: "RockyLinux@DB1",
+  password: "",
   host: "localhost",
   port: 3306,
   dialect: "mysql",

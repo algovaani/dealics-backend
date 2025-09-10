@@ -12,4 +12,5 @@ export const sequelize = new Sequelize({
   logging: false,
 });
 
+
 // We'll add models after they're imported in the main server file

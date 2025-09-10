@@ -1,4 +1,5 @@
 import { User } from "../models/user.model.js";
+import { Category } from "../models/category.model.js";
 import { TradingCard } from "../models/tradingcard.model.js";
 import { Follower } from "../models/follower.model.js";
 import { InterestedIn } from "../models/interestedIn.model.js";
@@ -6,6 +7,9 @@ import { CreditPurchaseLog } from "../models/creditPurchaseLog.model.js";
 import { CreditDeductionLog } from "../models/creditDeductionLog.model.js";
 import { UserSocialMedia } from "../models/userSocialMedia.model.js";
 import { SocialMedia } from "../models/socialMedia.model.js";
+import { Shipment } from "../models/shipment.model.js";
+import { Address } from "../models/address.model.js";
+import { CategoryShippingRate } from "../models/categoryShippingRates.model.js";
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 
@@ -187,7 +191,7 @@ export class UserService {
         attributes: [
           'id', 'first_name', 'last_name', 'username', 'profile_picture', 
           'email', 'followers', 'trade_transactions', 'trading_cards', 'ratings',
-          'created_at', 'updated_at'
+          'ebay_store_url', 'created_at', 'updated_at'
         ]
       });
 
@@ -265,19 +269,19 @@ export class UserService {
       const productsBought = 0;
 
       return {
-        'All Products': (allProducts[0] as any)?.count || 0,
-        'Ongoing Deals': (ongoingDeals[0] as any)?.count || 0,
-        'Successful Trades': user?.trade_transactions || 0,
-        'Products Sold': productsSold,
-        'Products Bought': productsBought
+        'all_products': (allProducts[0] as any)?.count || 0,
+        'ongoing_deals': (ongoingDeals[0] as any)?.count || 0,
+        'successful_trades': user?.trade_transactions || 0,
+        'products_sold': productsSold,
+        'products_bought': productsBought
       };
     } catch (error) {
       return {
-        'All Products': 0,
-        'Ongoing Deals': 0,
-        'Successful Trades': 0,
-        'Products Sold': 0,
-        'Products Bought': 0
+        'all_products': 0,
+        'ongoing_deals': 0,
+        'successful_trades': 0,
+        'products_sold': 0,
+        'products_bought': 0
       };
     }
   }
@@ -1304,23 +1308,13 @@ export class UserService {
         });
 
         const transformedPurchases = purchases.map((purchase: any) => ({
-          id: purchase.id,
-          type: 'purchase',
-          invoice_number: purchase.invoice_number,
-          amount: purchase.amount,
-          coins: purchase.coins,
           transaction_id: purchase.transaction_id,
-          payment_status: purchase.payment_status,
-          payee_email_address: purchase.payee_email_address,
           merchant_id: purchase.merchant_id,
+          coins: purchase.coins,
+          amount: purchase.amount,
+          payment_status: purchase.payment_status,
           payment_source: purchase.payment_source,
-          payer_id: purchase.payer_id,
-          payer_full_name: purchase.payer_full_name,
-          payer_email_address: purchase.payer_email_address,
-          payer_address: purchase.payer_address,
-          payer_country_code: purchase.payer_country_code,
-          created_at: purchase.created_at,
-          updated_at: purchase.updated_at
+          created_at: purchase.created_at
         }));
 
         if (type === 'purchase') {
@@ -1510,6 +1504,699 @@ export class UserService {
     } catch (error: any) {
       console.error('Error getting PayPal transactions:', error);
       throw error;
+    }
+  }
+
+  // Get user's shipment log
+  static async getShipmentLog(userId: number) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return { shipments: [] };
+      }
+
+      // Get shipments with tracking_id and include address relationships
+      const shipments = await Shipment.findAll({
+        where: {
+          user_id: userId,
+          tracking_id: {
+            [Op.ne]: null // whereNotNull equivalent
+          }
+        },
+        include: [
+          {
+            model: Address,
+            as: 'toAddress',
+            attributes: ['id', 'name', 'phone', 'email', 'street1', 'street2', 'city', 'state', 'country', 'zip']
+          },
+          {
+            model: Address,
+            as: 'fromAddress',
+            attributes: ['id', 'name', 'phone', 'email', 'street1', 'street2', 'city', 'state', 'country', 'zip']
+          }
+        ],
+        order: [['updated_at', 'DESC']]
+      });
+
+      // Transform shipments to include rate condition and final rate
+      const transformedShipments = shipments.map((shipment: any) => {
+        const shipmentData = shipment.toJSON();
+        
+        // Initialize rate condition, final rate, item label, and insured status
+        let rateCondition = null;
+        let finalRate = null;
+        let itemLabel = null;
+        let insured = false;
+        
+        // Check if selected_rate and shipment_response exist
+        if (shipmentData.selected_rate && shipmentData.shipment_response) {
+          try {
+            let shipmentResponse;
+            
+            if (typeof shipmentData.shipment_response === 'string') {
+              // Check if the string looks like valid JSON
+              const trimmedResponse = shipmentData.shipment_response.trim();
+              if (trimmedResponse.startsWith('{') || trimmedResponse.startsWith('[')) {
+                shipmentResponse = JSON.parse(shipmentData.shipment_response);
+              } else {
+                // If it's not JSON, skip processing
+                shipmentResponse = null;
+              }
+            } else {
+              shipmentResponse = shipmentData.shipment_response;
+            }
+            
+            // Check if rates array exists in the response
+            if (shipmentResponse && shipmentResponse.rates && Array.isArray(shipmentResponse.rates)) {
+              // Find the desired rate based on selected_rate
+              const desiredRate = shipmentResponse.rates.find((rate: any) => rate.id === shipmentData.selected_rate);
+              
+              if (desiredRate) {
+                rateCondition = {
+                  id: desiredRate.id,
+                  service: desiredRate.service || null,
+                  service_code: desiredRate.service_code || null,
+                  rate: desiredRate.rate || null,
+                  currency: desiredRate.currency || null,
+                  retail_rate: desiredRate.retail_rate || null,
+                  list_rate: desiredRate.list_rate || null,
+                  delivery_days: desiredRate.delivery_days || null,
+                  delivery_date: desiredRate.delivery_date || null,
+                  delivery_date_guaranteed: desiredRate.delivery_date_guaranteed || null,
+                  estimated_delivery_date: desiredRate.estimated_delivery_date || null
+                };
+                
+                // Set final rate (you can customize this logic based on your needs)
+                finalRate = desiredRate.rate || desiredRate.retail_rate || desiredRate.list_rate || null;
+              }
+            }
+          } catch (error) {
+            console.error('Error parsing shipment_response:', error);
+            console.error('Shipment response content:', shipmentData.shipment_response);
+            // Keep rateCondition and finalRate as null if parsing fails
+          }
+        }
+        
+        // Process item_label from postage_label
+        if (shipmentData.postage_label) {
+          try {
+            let postageLabel;
+            
+            if (typeof shipmentData.postage_label === 'string') {
+              // Check if the string looks like valid JSON
+              const trimmedLabel = shipmentData.postage_label.trim();
+              if (trimmedLabel.startsWith('{') || trimmedLabel.startsWith('[')) {
+                postageLabel = JSON.parse(shipmentData.postage_label);
+              } else {
+                // If it's not JSON, treat it as a plain string
+                itemLabel = shipmentData.postage_label;
+                postageLabel = null;
+              }
+            } else {
+              postageLabel = shipmentData.postage_label;
+            }
+            
+            if (postageLabel) {
+              if (Array.isArray(postageLabel)) {
+                if (postageLabel.length > 0 && postageLabel[0] && postageLabel[0].object) {
+                  // Multiple objects (buy/sell) - join with ' | '
+                  itemLabel = postageLabel.map(item => item.object).join(' | ');
+                }
+              } else if (postageLabel && postageLabel.object) {
+                // Single object structure (trade)
+                itemLabel = postageLabel.object;
+              }
+            }
+          } catch (error) {
+            console.error('Error parsing postage_label:', error);
+            console.error('Postage label content:', shipmentData.postage_label);
+            // If JSON parsing fails, use the raw string as itemLabel
+            itemLabel = typeof shipmentData.postage_label === 'string' 
+              ? shipmentData.postage_label 
+              : null;
+          }
+        }
+        
+        // Determine insured status
+        if (shipmentData.is_insured === 1) {
+          insured = true;
+        } else if (shipmentData.is_insured === 0 || shipmentData.is_insured === null) {
+          // Check if current user is the recipient (to_address user_id matches current user)
+          // This would require additional logic to compare with current user ID
+          // For now, we'll set it based on the is_insured field
+          insured = false;
+        }
+        
+        // Format created_at to 'Y-m-d H:i:s' format
+        let formattedCreatedAt = null;
+        if (shipmentData.created_at) {
+          const date = new Date(shipmentData.created_at);
+          if (!isNaN(date.getTime())) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            formattedCreatedAt = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+          }
+        }
+
+        return {
+          parcel: shipmentData.parcel,
+          parcel_weight_unit: shipmentData.parcel_weight_unit,
+          postage_label: shipmentData.postage_label,
+          tracking_id: shipmentData.tracking_id,
+          is_completed: shipmentData.is_completed,
+          shipment_status: shipmentData.shipment_status,
+          is_insured: shipmentData.is_insured,
+          toAddress: shipmentData.toAddress,
+          fromAddress: shipmentData.fromAddress,
+          final_rate: finalRate,
+          created_at: formattedCreatedAt
+        };
+      });
+
+      return { shipments: transformedShipments };
+
+    } catch (error: any) {
+      console.error('Error getting shipment log:', error);
+      throw error;
+    }
+  }
+
+  // Track shipment using EasyPost API
+  static async trackShipment(trackingId: string) {
+    try {
+      // Get API credentials from environment
+      const apiKey = process.env.EASYPOST_API_KEY;
+      const apiMode = process.env.EASYPOST_MODE;
+      
+      if (!apiKey) {
+        throw new Error('EasyPost API key not configured');
+      }
+
+      // Use test tracking ID if in test mode
+      let finalTrackingId = trackingId;
+      if (apiMode === 'test') {
+        finalTrackingId = 'EZ2000000002';
+      }
+
+      // Make request to EasyPost API
+      const response = await fetch('https://api.easypost.com/v2/trackers', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          tracker: {
+            tracking_code: finalTrackingId,
+            carrier: 'USPS'
+          }
+        })
+      });
+
+      const responseData = await response.json();
+
+      if (response.status === 200 || response.status === 201) {
+        // Process tracking details
+        let trackingData: any = {};
+        
+        if (responseData.tracking_details && responseData.tracking_details.length > 0) {
+          responseData.tracking_details.forEach((details: any) => {
+            const trackingLocation: string[] = [];
+            
+            // Build location string
+            if (details.tracking_location?.city) {
+              trackingLocation.push(details.tracking_location.city);
+            }
+            if (details.tracking_location?.state) {
+              trackingLocation.push(details.tracking_location.state);
+            }
+            if (details.tracking_location?.country) {
+              trackingLocation.push(details.tracking_location.country);
+            }
+            if (details.tracking_location?.zip) {
+              trackingLocation.push(details.tracking_location.zip);
+            }
+
+            const locationString = trackingLocation.join(', ');
+            
+            // Format date and time
+            const date = new Date(details.datetime);
+            const dateKey = date.toLocaleDateString('en-US', { 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric', 
+              weekday: 'long' 
+            });
+            const timeKey = date.toLocaleTimeString('en-US', { 
+              hour: 'numeric', 
+              minute: '2-digit', 
+              hour12: true 
+            });
+
+            // Initialize nested structure if not exists
+            if (!trackingData[dateKey]) {
+              trackingData[dateKey] = {};
+            }
+
+            trackingData[dateKey][timeKey] = {
+              message: details.message,
+              tracking_location: locationString
+            };
+          });
+        }
+
+        return {
+          success: true,
+          data: {
+            ...responseData,
+            TrackingData: trackingData
+          }
+        };
+      } else {
+        return {
+          success: false,
+          error: responseData
+        };
+      }
+
+    } catch (error: any) {
+      console.error('Error tracking shipment:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to track shipment'
+        }
+      };
+    }
+  }
+
+  // Get shipping label using EasyPost API
+  static async getShippingLabel(trackingId: string) {
+    try {
+      // Get API credentials from environment
+      const apiKey = process.env.EASYPOST_API_KEY;
+      
+      if (!apiKey) {
+        throw new Error('EasyPost API key not configured');
+      }
+
+      // Find shipment by tracking_id
+      const shipment = await Shipment.findOne({
+        where: {
+          tracking_id: trackingId
+        },
+        attributes: ['id', 'shipment_response']
+      });
+
+      if (!shipment) {
+        return {
+          success: false,
+          error: {
+            message: 'Shipment not found with this tracking ID'
+          }
+        };
+      }
+
+      // Check if shipment_response exists and is valid
+      if (!shipment.shipment_response) {
+        return {
+          success: false,
+          error: {
+            message: 'Shipment response not available'
+          }
+        };
+      }
+
+      // Parse shipment_response to get shipment ID
+      let shipmentResponse;
+      try {
+        shipmentResponse = typeof shipment.shipment_response === 'string' 
+          ? JSON.parse(shipment.shipment_response) 
+          : shipment.shipment_response;
+      } catch (parseError) {
+        return {
+          success: false,
+          error: {
+            message: 'Invalid shipment response data'
+          }
+        };
+      }
+
+      if (!shipmentResponse || !shipmentResponse.id) {
+        return {
+          success: false,
+          error: {
+            message: 'Shipment ID not found in response'
+          }
+        };
+      }
+
+      // Make request to EasyPost API to get shipping label
+      const response = await fetch(`https://api.easypost.com/v2/shipments/${shipmentResponse.id}/label?file_format=ZPL`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const responseData = await response.json();
+
+      if (response.ok) {
+        return {
+          success: true,
+          data: responseData
+        };
+      } else {
+        return {
+          success: false,
+          error: responseData
+        };
+      }
+
+    } catch (error: any) {
+      console.error('Error getting shipping label:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get shipping label'
+        }
+      };
+    }
+  }
+
+  // Get category log (shipping rates) for authenticated user
+  static async getCategoryLog(userId: number, categoryId?: number, specificId?: number) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Get categories with grades_ungraded_status = true
+      const categories = await Category.findAll({
+        where: {
+          grades_ungraded_status: true
+        },
+        attributes: ['id', 'category_name', 'grades_ungraded_status']
+      });
+
+      // Build query for shipping rates
+      let whereClause: any = {
+        user_id: userId
+      };
+
+      // Add category filter if provided
+      if (categoryId && !isNaN(categoryId) && categoryId > 0) {
+        whereClause.category_id = categoryId;
+      }
+
+      // Get shipping rates with user relationship
+      const shippingRates = await CategoryShippingRate.findAll({
+        where: whereClause,
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'first_name', 'last_name', 'username', 'email']
+          },
+          {
+            model: Category,
+            as: 'category',
+            attributes: ['id', 'category_name']
+          }
+        ],
+        order: [['created_at', 'DESC']]
+      });
+
+      // Get specific shipping rate if ID is provided
+      let specificShippingRate = null;
+      if (specificId && !isNaN(specificId) && specificId > 0) {
+        specificShippingRate = await CategoryShippingRate.findByPk(specificId, {
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'first_name', 'last_name', 'username', 'email']
+            },
+            {
+              model: Category,
+              as: 'category',
+              attributes: ['id', 'category_name']
+            }
+          ]
+        });
+
+        if (!specificShippingRate) {
+          return {
+            success: false,
+            error: {
+              message: 'Shipping Category not found'
+            }
+          };
+        }
+      }
+
+      return {
+        success: true,
+        data: {
+          categories,
+          shippingRates,
+          specificShippingRate,
+          filterData: {
+            category_id: categoryId || null
+          }
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting category log:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get category log'
+        }
+      };
+    }
+  }
+
+  // Get category shipping rate history for authenticated user
+  static async getCategoryShippingRateHistory(userId: number, categoryId?: number, specificId?: number, page: number = 1, perPage: number = 10) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Get categories with grades_ungraded_status = true
+      const categories = await Category.findAll({
+        where: {
+          grades_ungraded_status: true
+        },
+        attributes: ['id', 'sport_name']
+      });
+
+      // Build query for shipping rates
+      let whereClause: any = {
+        user_id: userId
+      };
+
+      // Add category filter if provided
+      if (categoryId && !isNaN(categoryId) && categoryId > 0) {
+        whereClause.category_id = categoryId;
+      }
+
+      // Initialize variables
+      let shippingRates: any[] = [];
+      let flattenedShippingRates: any[] = [];
+      let totalCount = 0;
+      let totalPages = 0;
+      let hasNextPage = false;
+      let hasPrevPage = false;
+
+      // Only get paginated list if no specific ID is provided
+      if (!specificId || isNaN(specificId) || specificId <= 0) {
+        // Calculate pagination
+        const offset = (page - 1) * perPage;
+        const limit = perPage;
+
+        // Get total count for pagination
+        totalCount = await CategoryShippingRate.count({
+          where: whereClause
+        });
+
+        // Get shipping rates with pagination (no user relationship)
+        shippingRates = await CategoryShippingRate.findAll({
+          where: whereClause,
+          include: [
+            {
+              model: Category,
+              as: 'category',
+              attributes: ['sport_name']
+            }
+          ],
+          order: [['created_at', 'DESC']],
+          limit: limit,
+          offset: offset,
+          attributes: ['id', 'category_id', 'user_id', 'usa_rate', 'canada_rate']
+        });
+
+        // Flatten category relationship to only include category_name
+        flattenedShippingRates = shippingRates.map((rate: any) => {
+          const rateData = rate.toJSON();
+          return {
+            id: rateData.id,
+            category_id: rateData.category_id,
+            user_id: rateData.user_id,
+            usa_rate: rateData.usa_rate,
+            canada_rate: rateData.canada_rate,
+            category_name: rateData.category?.sport_name || null
+          };
+        });
+
+        // Calculate pagination metadata
+        totalPages = Math.ceil(totalCount / perPage);
+        hasNextPage = page < totalPages;
+        hasPrevPage = page > 1;
+      }
+
+      // Get specific shipping rate if ID is provided
+      let specificShippingRate = null;
+      if (specificId && !isNaN(specificId) && specificId > 0) {
+        const specificRate = await CategoryShippingRate.findOne({
+          where: {
+            id: specificId,
+            user_id: userId
+          },
+          include: [
+            {
+              model: Category,
+              as: 'category',
+              attributes: ['sport_name']
+            }
+          ],
+          attributes: ['id', 'category_id', 'user_id', 'usa_rate', 'canada_rate']
+        });
+
+        if (!specificRate) {
+          return {
+            success: false,
+            error: {
+              message: 'Shipping Category not found'
+            }
+          };
+        }
+
+        // Flatten category relationship for specific rate
+        const rateData = specificRate.toJSON() as any;
+        specificShippingRate = {
+          id: rateData.id,
+          category_id: rateData.category_id,
+          user_id: rateData.user_id,
+          usa_rate: rateData.usa_rate,
+          canada_rate: rateData.canada_rate,
+          category_name: rateData.category?.sport_name || null
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          categories,
+          shippingRates: flattenedShippingRates,
+          specificShippingRate,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting category shipping rate history:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get category shipping rate history'
+        }
+      };
+    }
+  }
+
+  // Delete category shipping rate for authenticated user
+  static async deleteCategoryShippingRate(userId: number, shippingRateId: number) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate shippingRateId
+      if (!shippingRateId || isNaN(shippingRateId) || shippingRateId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid shipping rate ID is required'
+          }
+        };
+      }
+
+      // Find the shipping rate belonging to the user
+      const shippingCategory = await CategoryShippingRate.findOne({
+        where: {
+          user_id: userId,
+          id: shippingRateId
+        }
+      });
+
+      if (!shippingCategory) {
+        return {
+          success: false,
+          error: {
+            message: 'Category not found or you do not have permission to delete this Category'
+          }
+        };
+      }
+
+      // Delete the shipping rate
+      await shippingCategory.destroy();
+
+      return {
+        success: true,
+        message: 'Category deleted successfully'
+      };
+
+    } catch (error: any) {
+      console.error('Error deleting category shipping rate:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to delete category shipping rate'
+        }
+      };
     }
   }
 }

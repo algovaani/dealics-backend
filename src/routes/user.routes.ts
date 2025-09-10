@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getUserDashboard, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile } from "../controllers/user.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getUserDashboard, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, deleteCategoryShippingRate } from "../controllers/user.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -37,6 +37,22 @@ router.get("/coin-transaction-history", getCoinTransactionHistory);
 
 // PayPal transactions API (requires authentication - handled in controller)
 router.get("/paypal-transactions", getPayPalTransactions);
+
+// Shipment log API (requires authentication - handled in controller)
+router.get("/shipment-log", getShipmentLog);
+
+// Track shipment API (public - no authentication required)
+router.get("/track-shipment/:tracking_id", trackShipment);
+
+// Get shipping label API (public - no authentication required)
+router.get("/shipping-label/:tracking_id", getShippingLabel);
+
+// Category shipping rate history API (requires authentication - handled in controller)
+router.get("/category-shipping-rate-history", getCategoryShippingRateHistory);
+router.get("/category-shipping-rate-history/:id", getCategoryShippingRateHistory);
+
+// Delete category shipping rate API (requires authentication - handled in controller)
+router.delete("/category-shipping-rate-history/:id", deleteCategoryShippingRate);
 
 // Other user routes (must be after specific routes to avoid conflicts)
 router.get("/:id", getUserById);

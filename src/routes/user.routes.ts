@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getUserDashboard, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, deleteCategoryShippingRate } from "../controllers/user.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault } from "../controllers/user.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -23,8 +23,8 @@ router.get("/traders-list", getTradersList);
 // Follow/Unfollow API (requires authentication - handled in controller)
 router.post("/follow", toggleFollow);
 
-// User dashboard API (requires authentication - handled in controller)
-router.get("/mydashboard", getUserDashboard);
+// Likes and following API (requires authentication - handled in controller)
+router.get("/likes-and-following", getLikesAndFollowing);
 
 // Coin purchase history API (requires authentication - handled in controller)
 router.get("/coin-purchase-history", getCoinPurchaseHistory);
@@ -51,8 +51,26 @@ router.get("/shipping-label/:tracking_id", getShippingLabel);
 router.get("/category-shipping-rate-history", getCategoryShippingRateHistory);
 router.get("/category-shipping-rate-history/:id", getCategoryShippingRateHistory);
 
+// Create category shipping rate API (requires authentication - handled in controller)
+router.post("/category-shipping-rate-history", createCategoryShippingRate);
+
+// Update category shipping rate API (requires authentication - handled in controller)
+router.put("/category-shipping-rate-history/:id", updateCategoryShippingRate);
+
 // Delete category shipping rate API (requires authentication - handled in controller)
 router.delete("/category-shipping-rate-history/:id", deleteCategoryShippingRate);
+
+// Bought and sold products API (requires authentication - handled in controller)
+router.get("/bought-and-sold-products", getBoughtAndSoldProducts);
+router.get("/bought-and-sold-products/:id", getBoughtAndSoldProducts);
+
+// Address management APIs (requires authentication - handled in controller)
+router.get("/addresses", getAddresses);
+router.get("/addresses/:id", getAddressById);
+router.post("/addresses", createAddress);
+router.put("/addresses/:id", updateAddress);
+router.delete("/addresses/:id", deleteAddress);
+router.patch("/addresses/:id/mark-default", markAddressAsDefault);
 
 // Other user routes (must be after specific routes to avoid conflicts)
 router.get("/:id", getUserById);

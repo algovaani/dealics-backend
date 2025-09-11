@@ -40,6 +40,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
     }
 
     console.log('Profile data received:', JSON.stringify(profileData, null, 2));
+    console.log('profileData.user.joined_date:', profileData.user.joined_date);
 
     // Transform the response to include only required user details
     const response = {
@@ -56,7 +57,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
       ratings: profileData.user.ratings,
       ebay_store_url: profileData.user.ebay_store_url,
       cxp_coins: profileData.user.cxp_coins,
-      joined_date: profileData.user.createdAt,
+      joined_date: profileData.user.joined_date,
       updated_at: profileData.user.updatedAt,
       social_links: profileData.socialLinks,
       interestedCardsCount: profileData.interestedCardsCount,
@@ -417,8 +418,8 @@ export const toggleFollow = async (req: Request, res: Response) => {
   }
 };
 
-// Get user's dashboard data (favorite products + following users)
-export const getUserDashboard = async (req: Request, res: Response) => {
+// Get user's likes and following data (favorite products + following users)
+export const getLikesAndFollowing = async (req: Request, res: Response) => {
   try {
     // Extract user ID from JWT token
     const authHeader = req.headers.authorization;
@@ -453,7 +454,7 @@ export const getUserDashboard = async (req: Request, res: Response) => {
     }
 
     // Call service method
-    const result = await UserService.getUserDashboard(userId, page, perPage);
+    const result = await UserService.getLikesAndFollowing(userId, page, perPage);
 
     // Structure the response data
     const responseData = {
@@ -461,7 +462,7 @@ export const getUserDashboard = async (req: Request, res: Response) => {
       followingUsers: result.followingUsers
     };
 
-    return sendApiResponse(res, 200, true, "Dashboard data retrieved successfully", responseData, result.pagination);
+    return sendApiResponse(res, 200, true, "Likes and following data retrieved successfully", responseData, result.pagination);
 
   } catch (error: any) {
     console.error("Get favorite products error:", error);
@@ -906,7 +907,7 @@ export const updateUserProfile = async (req: Request, res: Response) => {
   }
 };
 
-// Get user's shipment log
+// Get user's shipment log with pagination
 export const getShipmentLog = async (req: Request, res: Response) => {
   try {
     // Extract user ID from JWT token
@@ -929,10 +930,18 @@ export const getShipmentLog = async (req: Request, res: Response) => {
       return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
     }
 
-    // Call service method
-    const result = await UserService.getShipmentLog(userId);
+    // Get pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
 
-    return sendApiResponse(res, 200, true, "Shipment log retrieved successfully", result.shipments);
+    // Call service method
+    const result = await UserService.getShipmentLog(userId, page, perPage);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Shipment log retrieved successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get shipment log", result.error);
+    }
 
   } catch (error: any) {
     console.error("Get shipment log error:", error);
@@ -1034,6 +1043,356 @@ export const getCategoryShippingRateHistory = async (req: Request, res: Response
   }
 };
 
+// Update category shipping rate for authenticated user
+export const updateCategoryShippingRate = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get rate ID from params
+    const rateId = req.params.id ? parseInt(req.params.id) : undefined;
+    if (!rateId || isNaN(rateId) || rateId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid rate ID is required", []);
+    }
+
+    // Get update data from request body
+    const updateData = req.body;
+
+    // Call service method
+    const result = await UserService.updateCategoryShippingRate(userId, rateId, updateData);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Category shipping rate updated successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to update category shipping rate", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Update category shipping rate error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Create category shipping rate for authenticated user
+export const createCategoryShippingRate = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get create data from request body
+    const createData = req.body;
+
+    // Call service method
+    const result = await UserService.createCategoryShippingRate(userId, createData);
+
+    if (result.success) {
+      return sendApiResponse(res, 201, true, "Category shipping rate created successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to create category shipping rate", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Create category shipping rate error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get all addresses for authenticated user
+export const getAddresses = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
+
+    // Call service method
+    const result = await UserService.getAddresses(userId, page, perPage);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Addresses retrieved successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get addresses", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Get addresses error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get address by ID for authenticated user
+export const getAddressById = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get address ID from params
+    const addressId = req.params.id ? parseInt(req.params.id) : undefined;
+    if (!addressId || isNaN(addressId) || addressId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid address ID is required", []);
+    }
+
+    // Call service method
+    const result = await UserService.getAddressById(userId, addressId);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Address retrieved successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get address", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Get address by ID error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Create address for authenticated user
+export const createAddress = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get address data from request body
+    const addressData = req.body;
+
+    // Call service method
+    const result = await UserService.createAddress(userId, addressData);
+
+    if (result.success) {
+      return sendApiResponse(res, 201, true, "Address created successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to create address", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Create address error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Update address for authenticated user
+export const updateAddress = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get address ID from params
+    const addressId = req.params.id ? parseInt(req.params.id) : undefined;
+    if (!addressId || isNaN(addressId) || addressId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid address ID is required", []);
+    }
+
+    // Get update data from request body
+    const updateData = req.body;
+
+    // Call service method
+    const result = await UserService.updateAddress(userId, addressId, updateData);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Address updated successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to update address", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Update address error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Delete address for authenticated user
+export const deleteAddress = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get address ID from params
+    const addressId = req.params.id ? parseInt(req.params.id) : undefined;
+    if (!addressId || isNaN(addressId) || addressId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid address ID is required", []);
+    }
+
+    // Call service method
+    const result = await UserService.deleteAddress(userId, addressId);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Address deleted successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to delete address", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Delete address error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Mark address as default for authenticated user
+export const markAddressAsDefault = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get address ID from params
+    const addressId = req.params.id ? parseInt(req.params.id) : undefined;
+    if (!addressId || isNaN(addressId) || addressId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid address ID is required", []);
+    }
+
+    // Call service method
+    const result = await UserService.markAddressAsDefault(userId, addressId);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Address marked as default successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to mark address as default", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Mark address as default error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
 // Delete category shipping rate for authenticated user
 export const deleteCategoryShippingRate = async (req: Request, res: Response) => {
   try {
@@ -1074,6 +1433,58 @@ export const deleteCategoryShippingRate = async (req: Request, res: Response) =>
 
   } catch (error: any) {
     console.error("Delete category shipping rate error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get bought and sold products for authenticated user
+export const getBoughtAndSoldProducts = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Get query parameters
+    const filters = {
+      trade_type: req.query.trade_type as string,
+      trade_with: req.query.trade_with as string,
+      code: req.query.code as string,
+      status_id: req.query.status_id ? parseInt(String(req.query.status_id)) : undefined,
+      from_date: req.query.from_date as string,
+      to_date: req.query.to_date as string,
+      id: req.params.id ? parseInt(req.params.id) : undefined
+    };
+
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 5;
+
+    // Call service method
+    const result = await UserService.getBoughtAndSoldProducts(userId, filters, page, perPage);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Bought and sold products retrieved successfully", result.data);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get bought and sold products", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Get bought and sold products error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };

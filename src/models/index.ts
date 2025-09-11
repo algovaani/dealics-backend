@@ -14,6 +14,7 @@ import { SocialMedia } from './socialMedia.model.js';
 import { Shipment } from './shipment.model.js';
 import { Address } from './address.model.js';
 import { CategoryShippingRate } from './categoryShippingRates.model.js';
+import { BuySellCard } from './buySellCard.model.js';
 
 // Import all models here
 export const models = [
@@ -31,7 +32,8 @@ export const models = [
   SocialMedia,
   Shipment,
   Address,
-  CategoryShippingRate
+  CategoryShippingRate,
+  BuySellCard
 ];
 
 // Function to set up all associations
@@ -179,6 +181,39 @@ export function setupAssociations() {
     foreignKey: 'category_id',
     as: 'shippingRates'
   });
+
+  // BuySellCard associations
+  BuySellCard.belongsTo(User, {
+    foreignKey: 'seller',
+    as: 'sellerUser'
+  });
+
+  BuySellCard.belongsTo(User, {
+    foreignKey: 'buyer',
+    as: 'buyerUser'
+  });
+
+  BuySellCard.belongsTo(TradingCard, {
+    foreignKey: 'trading_card_id',
+    as: 'tradingCard'
+  });
+
+  // User associations for BuySellCard
+  User.hasMany(BuySellCard, {
+    foreignKey: 'seller',
+    as: 'soldCards'
+  });
+
+  User.hasMany(BuySellCard, {
+    foreignKey: 'buyer',
+    as: 'boughtCards'
+  });
+
+  // TradingCard associations for BuySellCard
+  TradingCard.hasMany(BuySellCard, {
+    foreignKey: 'trading_card_id',
+    as: 'buySellRecords'
+  });
 }
 
 // Export all models for easy importing
@@ -197,5 +232,6 @@ export {
   SocialMedia,
   Shipment,
   Address,
-  CategoryShippingRate
+  CategoryShippingRate,
+  BuySellCard
 };

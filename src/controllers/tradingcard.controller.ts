@@ -67,6 +67,156 @@ export const getTradingCardsByCategoryName = async (req: Request, res: Response)
   }
 };
 
+export const getUserTradingCards = async (req: Request, res: Response) => {
+  try {
+    // Get pagination parameters from query
+    const pageParam = req.query.page as string;
+    const perPageParam = req.query.perPage as string;
+    const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
+    
+    // Extract user ID from JWT token if available
+    let authenticatedUserId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
+        console.log('JWT Token decoded - User ID:', authenticatedUserId);
+      } catch (jwtError) {
+        // Token is invalid, but we'll continue without authentication
+        console.log('Invalid token in trading cards API:', jwtError);
+      }
+    }
+    
+    const page = pageParam ? parseInt(pageParam, 10) : 1;
+    const perPage = perPageParam ? parseInt(perPageParam, 10) : 100;
+    const categoryId: number | undefined = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
+    const loggedInUserId: number | undefined = authenticatedUserId;
+
+    // Validate pagination parameters
+    if (isNaN(page) || page < 1) {
+      return sendApiResponse(res, 400, false, "Page must be a valid number greater than 0", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+    }
+
+    if (isNaN(perPage) || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "PerPage must be a valid number between 1 and 100", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+    }
+
+    if (categoryIdParam) {
+      if (categoryId === undefined || isNaN(categoryId) || categoryId < 1) {
+        return sendApiResponse(
+          res,
+          400,
+          false,
+          "Category ID must be a valid positive number",
+          [],
+          {
+            current_page: 1,
+            per_page: 100,
+            total: 0,
+            total_pages: 0,
+            has_next_page: false,
+            has_prev_page: false
+          }
+        );
+      }
+    }
+
+    // Use the original method for user's own cards
+    const result = await tradingcardService.getAllTradingCards(
+      page,
+      perPage,
+      categoryId,
+      loggedInUserId
+    );
+
+    // Transform the data - result.data contains the trading cards array
+    const tradingCards = (result.data || []).map((card: any) => {
+      // Add canTradeOrOffer logic
+      let canTradeOrOffer = true;
+      
+      // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
+      if (loggedInUserId && card.trader_id === loggedInUserId) {
+        canTradeOrOffer = false;
+      }
+      
+      // If card is already traded, user can't trade
+      if (card.is_traded === '1') {
+        canTradeOrOffer = false;
+      }
+      
+      // If can_buy and can_trade are both 0, user can't trade or make offers
+      if (card.can_buy === 0 && card.can_trade === 0) {
+        canTradeOrOffer = false;
+      }
+
+      const baseResponse = {
+        id: card.id,
+        category_id: card.category_id,
+        trading_card_img: card.trading_card_img,
+        trading_card_img_back: card.trading_card_img_back,
+        trading_card_slug: card.trading_card_slug,
+        trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+        trading_card_asking_price: card.trading_card_asking_price,
+        search_param: card.search_param || null,
+        sport_name: card.sport_name,
+        sport_icon: card.sport_icon,
+        trader_id: card.trader_id,
+        creator_id: card.creator_id,
+        is_traded: card.is_traded,
+        can_trade: card.can_trade,
+        can_buy: card.can_buy,
+        trading_card_status: card.trading_card_status,
+        interested_in: card.interested_in || false,
+        trade_card_status: card.trade_card_status,
+        canTradeOrOffer: canTradeOrOffer,
+        trader: {
+          first_name: card.first_name,
+          last_name: card.last_name,
+          username: card.username,
+          profile_image: card.profile_image,
+          verified_status: card.verified_status,
+          rating: card.rating,
+          total_reviews: card.total_reviews,
+          location: card.location,
+          country: card.country,
+          state: card.state,
+          city: card.city,
+          zip_code: card.zip_code,
+          phone_number: card.phone_number,
+          email: card.email,
+          created_at: card.user_created_at,
+          updated_at: card.user_updated_at
+        },
+        created_at: card.created_at,
+        updated_at: card.updated_at
+      };
+
+      return baseResponse;
+    });
+
+    // Only include pagination if pagination parameters were provided
+    const hasPaginationParams = pageParam || perPageParam;
+    
+    if (hasPaginationParams) {
+      return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", tradingCards, {
+        current_page: page,
+        per_page: perPage,
+        total: result.count || 0,
+        total_pages: Math.ceil((result.count || 0) / perPage),
+        has_next_page: page < Math.ceil((result.count || 0) / perPage),
+        has_prev_page: page > 1
+      });
+    } else {
+      return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", tradingCards);
+    }
+  } catch (error: any) {
+    console.error(error);
+    return sendApiResponse(res, 500, false, "Internal server error", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+  }
+};
+
 export const getTradingCards = async (req: Request, res: Response) => {
   try {
     // Get pagination parameters from query
@@ -123,14 +273,15 @@ export const getTradingCards = async (req: Request, res: Response) => {
       }
     }
 
-    const result = await tradingcardService.getAllTradingCards(
+    // Use the new method that excludes user's own cards
+    const result = await tradingcardService.getAllTradingCardsExceptOwn(
       page,
       perPage,
       categoryId,
       loggedInUserId
     );
 
-    // Transform the data - now result.data contains the trading cards array
+    // Transform the data - result.data contains the trading cards array
     const tradingCards = (result.data || []).map((card: any) => {
       // Add canTradeOrOffer logic
       let canTradeOrOffer = true;
@@ -183,9 +334,9 @@ export const getTradingCards = async (req: Request, res: Response) => {
       return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", tradingCards, {
         current_page: page,
         per_page: perPage,
-        total: result.count,
-        total_pages: Math.ceil(result.count / perPage),
-        has_next_page: page < Math.ceil(result.count / perPage),
+        total: result.count || 0,
+        total_pages: Math.ceil((result.count || 0) / perPage),
+        has_next_page: page < Math.ceil((result.count || 0) / perPage),
         has_prev_page: page > 1
       });
     } else {
@@ -466,9 +617,9 @@ export const getDeletedTradingCards = async (req: Request, res: Response) => {
       return sendApiResponse(res, 200, true, "Deleted trading cards retrieved successfully", deletedTradingCards, {
         current_page: page,
         per_page: perPage,
-        total: result.count,
-        total_pages: Math.ceil(result.count / perPage),
-        has_next_page: page < Math.ceil(result.count / perPage),
+        total: result.count || 0,
+        total_pages: Math.ceil((result.count || 0) / perPage),
+        has_next_page: page < Math.ceil((result.count || 0) / perPage),
         has_prev_page: page > 1
       });
     } else {
@@ -804,17 +955,13 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       }
       
       // Process additional card images
-      if (files.icon1 && files.icon1[0]) {
-        requestData.icon1 = uploadOne(files.icon1[0] as any, uploadPath);
-      }
-      if (files.icon2 && files.icon2[0]) {
-        requestData.icon2 = uploadOne(files.icon2[0] as any, uploadPath);
-      }
-      if (files.icon3 && files.icon3[0]) {
-        requestData.icon3 = uploadOne(files.icon3[0] as any, uploadPath);
-      }
-      if (files.icon4 && files.icon4[0]) {
-        requestData.icon4 = uploadOne(files.icon4[0] as any, uploadPath);
+      if (files.additional_images && files.additional_images.length > 0) {
+        const additionalImages: string[] = [];
+        for (const file of files.additional_images) {
+          const imagePath = uploadOne(file as any, uploadPath);
+          additionalImages.push(imagePath);
+        }
+        requestData.additional_images = additionalImages;
       }
     }
 
@@ -1295,6 +1442,64 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Similar trading cards error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+/**
+ * Update trading card status (on/off switch)
+ * PATCH /api/user/tradingcards/:cardId/status
+ */
+export const updateTradingCardStatus = async (req: Request, res: Response) => {
+  try {
+    const { cardId } = req.params;
+    const { status_id } = req.body;
+    
+    // Get user from auth middleware
+    const user = req.user;
+    if (!user || !user.id) {
+      return sendApiResponse(res, 401, false, "User not authenticated");
+    }
+
+    const userId = user.id;
+    
+    // Validate cardId
+    if (!cardId) {
+      return sendApiResponse(res, 400, false, "Card ID is required");
+    }
+    
+    const cardIdNum = parseInt(cardId);
+    if (isNaN(cardIdNum) || cardIdNum <= 0) {
+      return sendApiResponse(res, 400, false, "Invalid card ID");
+    }
+
+    // Validate status_id
+    if (status_id === undefined || status_id === null) {
+      return sendApiResponse(res, 400, false, "status_id is required");
+    }
+
+    const statusIdNum = parseInt(status_id);
+    if (isNaN(statusIdNum) || (statusIdNum !== 0 && statusIdNum !== 1)) {
+      return sendApiResponse(res, 400, false, "status_id must be 0 (inactive) or 1 (active)");
+    }
+
+    // Call service to update trading card status
+    const result = await tradingcardService.updateTradingCardStatus(cardIdNum, statusIdNum, userId);
+
+    if (!result.success) {
+      return sendApiResponse(res, 400, false, result.error || "Failed to update trading card status");
+    }
+
+    return sendApiResponse(
+      res, 
+      200, 
+      true, 
+      "Trading card status updated successfully",
+      result.data
+    );
+
+  } catch (error: any) {
+    console.error("Update trading card status error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };

@@ -57,7 +57,7 @@ fi
 
 # Build the TypeScript application
 # Check if build artifacts exist (they should be transferred from CI)
-if [ -d ".next" ]; then
+if [ -d "dist" ]; then
     echo "Build artifacts found, skipping build step..."
 else
     echo "Build artifacts not found, building application..."

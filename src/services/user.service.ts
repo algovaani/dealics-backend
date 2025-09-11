@@ -10,10 +10,75 @@ import { SocialMedia } from "../models/socialMedia.model.js";
 import { Shipment } from "../models/shipment.model.js";
 import { Address } from "../models/address.model.js";
 import { CategoryShippingRate } from "../models/categoryShippingRates.model.js";
+import { BuySellCard } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 
 export class UserService {
+  // Format added_on date to DD.MM.YYYY H:MM AM/PM format
+  private static formatAddedOnDate(dateString: string | Date): string {
+    try {
+      const date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return "01.01.2024 12:00 AM"; // Fallback
+      }
+      
+      // Get day, month, year
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      
+      // Get hours and minutes
+      let hours = date.getHours();
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      // Convert to 12-hour format
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 should be 12
+      const hoursStr = String(hours);
+      
+      return `${day}.${month}.${year} ${hoursStr}:${minutes} ${ampm}`;
+    } catch (error) {
+      console.error('Error formatting added_on date:', error);
+      return "01.01.2024 12:00 AM"; // Fallback
+    }
+  }
+
+  // Format followed_on date to DD-MM-YYYY HH:MM AM/PM format
+  private static formatFollowedOnDate(dateString: string | Date): string {
+    try {
+      const date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return "01-01-2024 12:00 AM"; // Fallback
+      }
+      
+      // Get day, month, year
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      
+      // Get hours and minutes
+      let hours = date.getHours();
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      // Convert to 12-hour format
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 should be 12
+      const hoursStr = String(hours).padStart(2, '0'); // Always 2 digits for hours
+      
+      return `${day}-${month}-${year} ${hoursStr}:${minutes} ${ampm}`;
+    } catch (error) {
+      console.error('Error formatting followed_on date:', error);
+      return "01-01-2024 12:00 AM"; // Fallback
+    }
+  }
+
   // Get user by ID
   static async getUserById(id: number) {
     return await User.findByPk(id);
@@ -706,8 +771,38 @@ export class UserService {
       // Get social media links from userSocialMedia table
       const socialLinks = await this.getUserSocialMedia(userId);
 
+      // Format user data with joined_date
+      const userData = user.toJSON();
+      
+      // Get the created date from userData (raw database field)
+      const createdAtValue = (userData as any).created_at;
+      
+      // Format joined_date as DD-MM-YYYY
+      let joinedDate;
+      if (createdAtValue) {
+        const date = new Date(createdAtValue);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        joinedDate = `${day}-${month}-${year}`;
+      } else {
+        joinedDate = "01-01-2024"; // Fallback
+      }
+      
+      // Debug: Log the values
+      console.log('createdAtValue from userData:', createdAtValue);
+      console.log('formatted joinedDate:', joinedDate);
+      
+      // Create formatted user object with joined_date
+      const formattedUser = {
+        ...userData,
+        joined_date: joinedDate
+      };
+      
+      console.log('formattedUser joined_date:', formattedUser.joined_date);
+
       return {
-        user,
+        user: formattedUser,
         interestedCardsCount,
         interestedCategories,
         socialLinks
@@ -950,8 +1045,8 @@ export class UserService {
     }
   }
 
-  // Get user's dashboard data (favorite products + following users)
-  static async getUserDashboard(userId: number, page?: number, perPage?: number) {
+  // Get user's likes and following data (favorite products + following users)
+  static async getLikesAndFollowing(userId: number, page?: number, perPage?: number) {
     try {
       // Validate userId
       if (!userId || isNaN(userId) || userId <= 0) {
@@ -1007,6 +1102,7 @@ export class UserService {
           tc.is_traded,
           tc.can_trade,
           tc.can_buy,
+          ii.created_at as added_on,
           CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in
         FROM interested_in ii
         INNER JOIN trading_cards tc ON ii.trading_card_id = tc.id
@@ -1068,7 +1164,8 @@ export class UserService {
           search_param: card.search_param || null,
           sport_name: card.sport_name || null,
           canTradeOrOffer: canTradeOrOffer,
-          interested_in: Boolean(card.interested_in)
+          interested_in: Boolean(card.interested_in),
+          added_on: card.added_on ? UserService.formatAddedOnDate(card.added_on) : null
         };
       });
 
@@ -1125,7 +1222,7 @@ export class UserService {
         first_name: user.first_name,
         last_name: user.last_name,
         username: user.username,
-        followed_on: new Date(user.followed_on).toISOString()
+        followed_on: UserService.formatFollowedOnDate(user.followed_on)
       }));
 
       return { 
@@ -1295,6 +1392,7 @@ export class UserService {
       let totalCount = 0;
 
       if (type === 'purchase' || type === 'all') {
+        console.log('Fetching purchase logs for type:', type);
         // Get coin purchase history
         const purchaseCount = await CreditPurchaseLog.count({
           where: { user_id: userId }
@@ -1314,7 +1412,7 @@ export class UserService {
           amount: purchase.amount,
           payment_status: purchase.payment_status,
           payment_source: purchase.payment_source,
-          created_at: purchase.created_at
+          created_at: UserService.formatFollowedOnDate(purchase.created_at)
         }));
 
         if (type === 'purchase') {
@@ -1327,6 +1425,7 @@ export class UserService {
       }
 
       if (type === 'deduction' || type === 'all') {
+        console.log('Fetching deduction logs for type:', type);
         // Get coin deduction history
         const deductionCount = await CreditDeductionLog.count({
           where: { 
@@ -1361,8 +1460,7 @@ export class UserService {
           coin: deduction.coin,
           status: deduction.status,
           deduction_from: deduction.deduction_from,
-          created_at: deduction.created_at,
-          updated_at: deduction.updated_at
+          created_at: UserService.formatFollowedOnDate(deduction.created_at),
         }));
 
         if (type === 'deduction') {
@@ -1507,13 +1605,32 @@ export class UserService {
     }
   }
 
-  // Get user's shipment log
-  static async getShipmentLog(userId: number) {
+  // Get user's shipment log with pagination
+  static async getShipmentLog(userId: number, page: number = 1, perPage: number = 10) {
     try {
       // Validate userId
       if (!userId || isNaN(userId) || userId <= 0) {
-        return { shipments: [] };
+        return { 
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
       }
+
+      // Calculate pagination
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const totalCount = await Shipment.count({
+        where: {
+          user_id: userId,
+          tracking_id: {
+            [Op.ne]: null // whereNotNull equivalent
+          }
+        }
+      });
 
       // Get shipments with tracking_id and include address relationships
       const shipments = await Shipment.findAll({
@@ -1535,7 +1652,9 @@ export class UserService {
             attributes: ['id', 'name', 'phone', 'email', 'street1', 'street2', 'city', 'state', 'country', 'zip']
           }
         ],
-        order: [['updated_at', 'DESC']]
+        order: [['updated_at', 'DESC']],
+        limit: limit,
+        offset: offset
       });
 
       // Transform shipments to include rate condition and final rate
@@ -1677,11 +1796,34 @@ export class UserService {
         };
       });
 
-      return { shipments: transformedShipments };
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return { 
+        success: true,
+        data: {
+          shipments: transformedShipments,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
 
     } catch (error: any) {
       console.error('Error getting shipment log:', error);
-      throw error;
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get shipment log'
+        }
+      };
     }
   }
 
@@ -2141,6 +2283,264 @@ export class UserService {
     }
   }
 
+  // Update category shipping rate for authenticated user
+  static async updateCategoryShippingRate(userId: number, rateId: number, updateData: any) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate rateId
+      if (!rateId || isNaN(rateId) || rateId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid rate ID is required'
+          }
+        };
+      }
+
+      // Check if the shipping rate exists and belongs to the user
+      const existingRate = await CategoryShippingRate.findOne({
+        where: {
+          id: rateId,
+          user_id: userId
+        }
+      });
+
+      if (!existingRate) {
+        return {
+          success: false,
+          error: {
+            message: 'Shipping rate not found or you do not have permission to update it'
+          }
+        };
+      }
+
+      // Prepare update data (only allow specific fields)
+      const allowedFields = ['category_id', 'usa_rate', 'canada_rate'];
+      const updateFields: any = {};
+      
+      for (const field of allowedFields) {
+        if (updateData[field] !== undefined) {
+          updateFields[field] = updateData[field];
+        }
+      }
+
+      // Check if there's anything to update
+      if (Object.keys(updateFields).length === 0) {
+        return {
+          success: false,
+          error: {
+            message: 'No valid fields provided for update'
+          }
+        };
+      }
+
+      // Update the shipping rate
+      await CategoryShippingRate.update(updateFields, {
+        where: {
+          id: rateId,
+          user_id: userId
+        }
+      });
+
+      // Get the updated rate with category information
+      const updatedRate = await CategoryShippingRate.findOne({
+        where: {
+          id: rateId,
+          user_id: userId
+        },
+        include: [
+          {
+            model: Category,
+            as: 'category',
+            attributes: ['sport_name']
+          }
+        ],
+        attributes: ['id', 'category_id', 'user_id', 'usa_rate', 'canada_rate']
+      });
+
+      // Flatten category relationship
+      const rateData = updatedRate?.toJSON() as any;
+      const flattenedRate = {
+        id: rateData.id,
+        category_id: rateData.category_id,
+        user_id: rateData.user_id,
+        usa_rate: rateData.usa_rate,
+        canada_rate: rateData.canada_rate,
+        category_name: rateData.category?.sport_name || null
+      };
+
+      return {
+        success: true,
+        data: {
+          message: 'Category shipping rate updated successfully',
+          shippingRate: flattenedRate
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error updating category shipping rate:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to update category shipping rate'
+        }
+      };
+    }
+  }
+
+  // Create category shipping rate for authenticated user
+  static async createCategoryShippingRate(userId: number, createData: any) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate required fields
+      const requiredFields = ['category_id', 'usa_rate', 'canada_rate'];
+      const missingFields = requiredFields.filter(field => 
+        createData[field] === undefined || createData[field] === null || createData[field] === ''
+      );
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: {
+            message: `Required fields are missing: ${missingFields.join(', ')}`
+          }
+        };
+      }
+
+      // Validate category_id
+      if (!createData.category_id || isNaN(createData.category_id) || createData.category_id <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid category ID is required'
+          }
+        };
+      }
+
+      // Validate rates
+      if (isNaN(parseFloat(createData.usa_rate)) || parseFloat(createData.usa_rate) < 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid USA rate is required (must be a number >= 0)'
+          }
+        };
+      }
+
+      if (isNaN(parseFloat(createData.canada_rate)) || parseFloat(createData.canada_rate) < 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid Canada rate is required (must be a number >= 0)'
+          }
+        };
+      }
+
+      // Check if category exists and has grades_ungraded_status = true
+      const category = await Category.findOne({
+        where: {
+          id: createData.category_id,
+          grades_ungraded_status: true
+        }
+      });
+
+      if (!category) {
+        return {
+          success: false,
+          error: {
+            message: 'Category not found or not eligible for shipping rates'
+          }
+        };
+      }
+
+      // Check if user already has a shipping rate for this category
+      const existingRate = await CategoryShippingRate.findOne({
+        where: {
+          user_id: userId,
+          category_id: createData.category_id
+        }
+      });
+
+      if (existingRate) {
+        return {
+          success: false,
+          error: {
+            message: 'You already have a shipping rate for this category. Use update instead.'
+          }
+        };
+      }
+
+      // Create the shipping rate
+      const newRate = await CategoryShippingRate.create({
+        user_id: userId,
+        category_id: parseInt(createData.category_id),
+        usa_rate: parseFloat(createData.usa_rate),
+        canada_rate: parseFloat(createData.canada_rate)
+      } as any);
+
+      // Get the created rate with category information
+      const createdRate = await CategoryShippingRate.findOne({
+        where: {
+          id: newRate.id
+        },
+        include: [
+          {
+            model: Category,
+            as: 'category',
+            attributes: ['sport_name']
+          }
+        ],
+        attributes: ['id', 'category_id', 'user_id', 'usa_rate', 'canada_rate']
+      });
+
+      // Flatten category relationship
+      const rateData = createdRate?.toJSON() as any;
+      const flattenedRate = {
+        id: rateData.id,
+        category_id: rateData.category_id,
+        user_id: rateData.user_id,
+        usa_rate: rateData.usa_rate,
+        canada_rate: rateData.canada_rate,
+        category_name: rateData.category?.sport_name || null
+      };
+
+      return {
+        success: true,
+        data: {
+          message: 'Category shipping rate created successfully',
+          shippingRate: flattenedRate
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error creating category shipping rate:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to create category shipping rate'
+        }
+      };
+    }
+  }
+
   // Delete category shipping rate for authenticated user
   static async deleteCategoryShippingRate(userId: number, shippingRateId: number) {
     try {
@@ -2195,6 +2595,688 @@ export class UserService {
         success: false,
         error: {
           message: error.message || 'Failed to delete category shipping rate'
+        }
+      };
+    }
+  }
+
+  // Get all addresses for authenticated user
+  static async getAddresses(userId: number, page: number = 1, perPage: number = 10) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Calculate pagination
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const totalCount = await Address.count({
+        where: {
+          user_id: userId,
+          is_deleted: '0'
+        }
+      });
+
+      // Get addresses with pagination
+      const addresses = await Address.findAll({
+        where: {
+          user_id: userId,
+          is_deleted: '0'
+        },
+        order: [['mark_default', 'ASC'], ['created_at', 'DESC']],
+        limit: limit,
+        offset: offset,
+        attributes: [
+          'id', 'user_id', 'name', 'phone', 'email', 'street1', 'street2',
+          'city', 'state', 'country', 'zip', 'is_sender', 'is_deleted',
+          'latitude', 'longitude', 'adr_id', 'mark_default', 'created_at', 'updated_at'
+        ]
+      });
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          addresses,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting addresses:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get addresses'
+        }
+      };
+    }
+  }
+
+  // Get address by ID for authenticated user
+  static async getAddressById(userId: number, addressId: number) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate addressId
+      if (!addressId || isNaN(addressId) || addressId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid address ID is required'
+          }
+        };
+      }
+
+      // Get address
+      const address = await Address.findOne({
+        where: {
+          id: addressId,
+          user_id: userId,
+          is_deleted: '0'
+        },
+        attributes: [
+          'id', 'user_id', 'name', 'phone', 'email', 'street1', 'street2',
+          'city', 'state', 'country', 'zip', 'is_sender', 'is_deleted',
+          'latitude', 'longitude', 'adr_id', 'mark_default', 'created_at', 'updated_at'
+        ]
+      });
+
+      if (!address) {
+        return {
+          success: false,
+          error: {
+            message: 'Address not found or you do not have permission to view it'
+          }
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          address
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting address by ID:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get address'
+        }
+      };
+    }
+  }
+
+  // Create address for authenticated user
+  static async createAddress(userId: number, addressData: any) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate required fields
+      const requiredFields = ['name', 'phone', 'email', 'street1', 'city', 'state', 'country', 'zip'];
+      const missingFields = requiredFields.filter(field => 
+        !addressData[field] || addressData[field].toString().trim() === ''
+      );
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: {
+            message: `Required fields are missing: ${missingFields.join(', ')}`
+          }
+        };
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(addressData.email)) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid email address is required'
+          }
+        };
+      }
+
+      // Validate phone format (basic validation)
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+      if (!phoneRegex.test(addressData.phone.replace(/[\s\-\(\)]/g, ''))) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid phone number is required'
+          }
+        };
+      }
+
+      // If this is being set as default, unset other defaults
+      if (addressData.mark_default === 1) {
+        await Address.update(
+          { mark_default: 2 },
+          { where: { user_id: userId } }
+        );
+      }
+
+      // Create the address
+      const newAddress = await Address.create({
+        user_id: userId,
+        name: addressData.name.trim(),
+        phone: addressData.phone.trim(),
+        email: addressData.email.trim(),
+        street1: addressData.street1.trim(),
+        street2: addressData.street2 ? addressData.street2.trim() : null,
+        city: addressData.city.trim(),
+        state: addressData.state.trim(),
+        country: addressData.country.trim(),
+        zip: addressData.zip.trim(),
+        is_sender: addressData.is_sender || '0',
+        latitude: addressData.latitude ? parseFloat(addressData.latitude) : null,
+        longitude: addressData.longitude ? parseFloat(addressData.longitude) : null,
+        adr_id: addressData.adr_id ? addressData.adr_id.trim() : null,
+        mark_default: addressData.mark_default || 2
+      } as any);
+
+      return {
+        success: true,
+        data: {
+          message: 'Address created successfully',
+          address: newAddress
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error creating address:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to create address'
+        }
+      };
+    }
+  }
+
+  // Update address for authenticated user
+  static async updateAddress(userId: number, addressId: number, updateData: any) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate addressId
+      if (!addressId || isNaN(addressId) || addressId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid address ID is required'
+          }
+        };
+      }
+
+      // Check if address exists and belongs to user
+      const existingAddress = await Address.findOne({
+        where: {
+          id: addressId,
+          user_id: userId,
+          is_deleted: '0'
+        }
+      });
+
+      if (!existingAddress) {
+        return {
+          success: false,
+          error: {
+            message: 'Address not found or you do not have permission to update it'
+          }
+        };
+      }
+
+      // Validate email format if provided
+      if (updateData.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(updateData.email)) {
+          return {
+            success: false,
+            error: {
+              message: 'Valid email address is required'
+            }
+          };
+        }
+      }
+
+      // Validate phone format if provided
+      if (updateData.phone) {
+        const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+        if (!phoneRegex.test(updateData.phone.replace(/[\s\-\(\)]/g, ''))) {
+          return {
+            success: false,
+            error: {
+              message: 'Valid phone number is required'
+            }
+          };
+        }
+      }
+
+      // If this is being set as default, unset other defaults
+      if (updateData.mark_default === 1) {
+        await Address.update(
+          { mark_default: 2 },
+          { where: { user_id: userId } }
+        );
+      }
+
+      // Prepare update data
+      const allowedFields = [
+        'name', 'phone', 'email', 'street1', 'street2', 'city', 'state',
+        'country', 'zip', 'is_sender', 'latitude', 'longitude', 'adr_id', 'mark_default'
+      ];
+      const updateFields: any = {};
+
+      for (const field of allowedFields) {
+        if (updateData[field] !== undefined) {
+          if (field === 'street2' && updateData[field] === '') {
+            updateFields[field] = null;
+          } else if (field === 'latitude' || field === 'longitude') {
+            updateFields[field] = updateData[field] ? parseFloat(updateData[field]) : null;
+          } else if (typeof updateData[field] === 'string') {
+            updateFields[field] = updateData[field].trim();
+          } else {
+            updateFields[field] = updateData[field];
+          }
+        }
+      }
+
+      // Check if there's anything to update
+      if (Object.keys(updateFields).length === 0) {
+        return {
+          success: false,
+          error: {
+            message: 'No valid fields provided for update'
+          }
+        };
+      }
+
+      // Update the address
+      await Address.update(updateFields, {
+        where: {
+          id: addressId,
+          user_id: userId
+        }
+      });
+
+      // Get the updated address
+      const updatedAddress = await Address.findOne({
+        where: {
+          id: addressId,
+          user_id: userId
+        },
+        attributes: [
+          'id', 'user_id', 'name', 'phone', 'email', 'street1', 'street2',
+          'city', 'state', 'country', 'zip', 'is_sender', 'is_deleted',
+          'latitude', 'longitude', 'adr_id', 'mark_default', 'created_at', 'updated_at'
+        ]
+      });
+
+      return {
+        success: true,
+        data: {
+          message: 'Address updated successfully',
+          address: updatedAddress
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error updating address:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to update address'
+        }
+      };
+    }
+  }
+
+  // Delete address for authenticated user (soft delete)
+  static async deleteAddress(userId: number, addressId: number) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate addressId
+      if (!addressId || isNaN(addressId) || addressId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid address ID is required'
+          }
+        };
+      }
+
+      // Check if address exists and belongs to user
+      const existingAddress = await Address.findOne({
+        where: {
+          id: addressId,
+          user_id: userId,
+          is_deleted: '0'
+        }
+      });
+
+      if (!existingAddress) {
+        return {
+          success: false,
+          error: {
+            message: 'Address not found or you do not have permission to delete it'
+          }
+        };
+      }
+
+      // Soft delete the address
+      await Address.update(
+        { is_deleted: '1' },
+        { where: { id: addressId, user_id: userId } }
+      );
+
+      return {
+        success: true,
+        data: {
+          message: 'Address deleted successfully'
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error deleting address:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to delete address'
+        }
+      };
+    }
+  }
+
+  // Mark address as default for authenticated user
+  static async markAddressAsDefault(userId: number, addressId: number) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate addressId
+      if (!addressId || isNaN(addressId) || addressId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid address ID is required'
+          }
+        };
+      }
+
+      // Check if address exists and belongs to user
+      const existingAddress = await Address.findOne({
+        where: {
+          id: addressId,
+          user_id: userId,
+          is_deleted: '0'
+        }
+      });
+
+      if (!existingAddress) {
+        return {
+          success: false,
+          error: {
+            message: 'Address not found or you do not have permission to modify it'
+          }
+        };
+      }
+
+      // Unset all other addresses as default
+      await Address.update(
+        { mark_default: 2 },
+        { where: { user_id: userId } }
+      );
+
+      // Set this address as default
+      await Address.update(
+        { mark_default: 1 },
+        { where: { id: addressId, user_id: userId } }
+      );
+
+      // Get the updated address
+      const updatedAddress = await Address.findOne({
+        where: {
+          id: addressId,
+          user_id: userId
+        },
+        attributes: [
+          'id', 'user_id', 'name', 'phone', 'email', 'street1', 'street2',
+          'city', 'state', 'country', 'zip', 'is_sender', 'is_deleted',
+          'latitude', 'longitude', 'adr_id', 'mark_default', 'created_at', 'updated_at'
+        ]
+      });
+
+      return {
+        success: true,
+        data: {
+          message: 'Address marked as default successfully',
+          address: updatedAddress
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error marking address as default:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to mark address as default'
+        }
+      };
+    }
+  }
+
+  // Get bought and sold products for authenticated user
+  static async getBoughtAndSoldProducts(userId: number, filters: any = {}, page: number = 1, perPage: number = 5) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Build where clause based on trade_type
+      let whereClause: any = {
+        id: { [Op.ne]: 0 }
+      };
+
+      let requestData = 'all';
+      const filterData: any = {};
+
+      // Handle trade_type filtering
+      if (filters.trade_type === 'purchased') {
+        whereClause.buyer = userId;
+        whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
+        requestData = 'purchased';
+        filterData.trade_type = filters.trade_type;
+      } else if (filters.trade_type === 'sold') {
+        whereClause.seller = userId;
+        whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
+        whereClause[Op.or] = [
+          { buyer: userId },
+          { seller: userId }
+        ];
+        requestData = 'sold';
+        filterData.trade_type = filters.trade_type;
+      } else if (filters.trade_type === 'cancelled') {
+        whereClause.buying_status = { [Op.in]: ['declined', 'cancelled'] };
+        requestData = 'cancelled';
+        filterData.trade_type = filters.trade_type;
+      } else {
+        // Default: all offers where user is buyer or seller, excluding cancelled
+        whereClause[Op.or] = [
+          { buyer: userId },
+          { seller: userId }
+        ];
+        whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
+        requestData = 'all';
+      }
+
+      // Handle specific ID filter
+      if (filters.id && filters.id > 0) {
+        whereClause.id = filters.id;
+      } else {
+        whereClause.buying_status = { [Op.ne]: '' };
+      }
+
+      // Handle trade_with filter (username search)
+      if (filters.trade_with && filters.trade_with.trim() !== '') {
+        // This would require joins with user table - simplified for now
+        filterData.trade_with = filters.trade_with;
+      }
+
+      // Handle code filter
+      if (filters.code && filters.code.trim() !== '') {
+        whereClause.code = { [Op.like]: `%${filters.code}%` };
+        filterData.code = filters.code;
+      }
+
+      // Handle status_id filter
+      if (filters.status_id && filters.status_id > 0) {
+        whereClause.buy_offer_status_id = filters.status_id;
+        filterData.status_id = filters.status_id;
+      }
+
+      // Handle date filters
+      if (filters.from_date && filters.from_date.trim() !== '') {
+        whereClause.created_at = { [Op.gte]: new Date(filters.from_date) };
+        filterData.from_date = filters.from_date;
+      }
+
+      if (filters.to_date && filters.to_date.trim() !== '') {
+        if (whereClause.created_at) {
+          whereClause.created_at[Op.lte] = new Date(filters.to_date);
+        } else {
+          whereClause.created_at = { [Op.lte]: new Date(filters.to_date) };
+        }
+        filterData.to_date = filters.to_date;
+      }
+
+      // Calculate pagination
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const totalCount = await BuySellCard.count({
+        where: whereClause
+      });
+
+      // Get buy/sell cards with pagination
+      const buySellCards = await BuySellCard.findAll({
+        where: whereClause,
+        order: [['id', 'DESC']],
+        limit: limit,
+        offset: offset
+      });
+
+      // Check if amount_paid_on is null for specific ID (buyer only)
+      let amountPaidOn = false;
+      if (filters.id && filters.id > 0) {
+        const specificCard = await BuySellCard.findOne({
+          where: {
+            id: filters.id,
+            buyer: userId
+          }
+        });
+        // Check if amount_paid_on is null
+        amountPaidOn = specificCard ? !specificCard.amount_paid_on : false;
+      }
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          buySellCards,
+          requestData,
+          amountPaidOn,
+          filterData,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting bought and sold products:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get bought and sold products'
         }
       };
     }

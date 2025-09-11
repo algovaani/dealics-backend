@@ -5,6 +5,115 @@ import { Sequelize, QueryTypes, Op } from "sequelize";
 import { sequelize } from "../config/db.js";
 
 export class TradingCardService {
+  // Get all trading cards EXCEPT user's own cards (for public listing)
+  async getAllTradingCardsExceptOwn(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
+    try {
+      // Validate and sanitize input parameters
+      const validPage = isNaN(page) || page < 1 ? 1 : page;
+      const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
+      const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
+      const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+      
+      const offset = (validPage - 1) * validPerPage;
+      
+      // Build where clause - EXCLUDE user's own cards (match original structure)
+      let whereClause = 'WHERE tc.mark_as_deleted IS NULL AND c.sport_status = 1 AND tc.is_demo=0 AND tc.is_traded!=1';
+      
+      // EXCLUDE user's own cards if logged in, otherwise show all active cards
+      if (validLoggedInUserId) {
+        whereClause += ` AND tc.trader_id != ${validLoggedInUserId} AND tc.trading_card_status = '1'`;
+      } else {
+        whereClause += ` AND tc.trading_card_status = '1'`;
+      }
+      
+      if (validCategoryId) {
+        whereClause += ` AND tc.category_id = ${validCategoryId}`;
+      }
+      
+      // Debug: Log the where clause
+      console.log('getAllTradingCardsExceptOwn - Where clause:', whereClause);
+      console.log('getAllTradingCardsExceptOwn - Parameters:', { validPage, validPerPage, validCategoryId, validLoggedInUserId });
+
+      // Use raw SQL to get data with sport_name and interested_in status (match original structure)
+      let interestedJoin = '';
+      if (validLoggedInUserId) {
+        interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${validLoggedInUserId}`;
+      } else {
+        interestedJoin = 'LEFT JOIN interested_in ii ON 1=0'; // This will never match, so interested_in will always be false
+      }
+      
+      const rawQuery = `
+        SELECT 
+          tc.id,
+          tc.category_id,
+          tc.trading_card_img,
+          tc.trading_card_img_back,
+          tc.trading_card_slug,
+          tc.trading_card_recent_trade_value,
+          tc.trading_card_asking_price,
+          tc.search_param,
+          c.sport_name,
+          c.sport_icon,
+          tc.trader_id,
+          tc.creator_id,
+          tc.is_traded,
+          tc.can_trade,
+          tc.can_buy,
+          tc.trading_card_status,
+          CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
+          CASE 
+            WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+            WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+            WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+            WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+            WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+            ELSE 'Not Available'
+          END as trade_card_status
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        ${interestedJoin}
+        ${whereClause}
+        ORDER BY tc.created_at DESC
+        LIMIT ${validPerPage} OFFSET ${offset}
+      `;
+      
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        ${whereClause}
+      `;
+
+      console.log('getAllTradingCardsExceptOwn - Count query:', countQuery);
+      console.log('getAllTradingCardsExceptOwn - Main query:', rawQuery);
+
+      const countResult = await sequelize.query(countQuery, {
+        type: QueryTypes.SELECT,
+      }) as any[];
+
+      const totalCount = countResult[0]?.total || 0;
+      const totalPages = Math.ceil(totalCount / validPerPage);
+      
+      console.log('getAllTradingCardsExceptOwn - Total count:', totalCount);
+
+      const tradingCards = await sequelize.query(rawQuery, {
+        type: QueryTypes.SELECT,
+      });
+
+      console.log('getAllTradingCardsExceptOwn - Query result count:', tradingCards.length);
+      console.log('getAllTradingCardsExceptOwn - First few results:', tradingCards.slice(0, 2));
+
+      return {
+        success: true,
+        data: tradingCards as any[],
+        count: totalCount
+      };
+    } catch (error: any) {
+      console.error('Get all trading cards except own error:', error);
+      return { success: false, error: 'Failed to fetch trading cards' };
+    }
+  }
+
   // Get all TradingCard with pagination and category_name
     async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
     // Validate and sanitize input parameters
@@ -14,14 +123,20 @@ export class TradingCardService {
     const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
     
     const offset = (validPage - 1) * validPerPage;
-    let whereClause = 'WHERE tc.trading_card_status = 1 AND tc.mark_as_deleted IS NULL AND c.sport_status = 1 AND tc.is_demo=0 AND tc.is_traded!=1';
-    if (validCategoryId) {
-      whereClause += ` AND tc.category_id = ${validCategoryId}`;
+    
+    // Build where clause based on whether it's user's own cards or not
+    let whereClause = 'WHERE tc.mark_as_deleted IS NULL AND c.sport_status = 1 AND tc.is_demo=0 AND tc.is_traded!=1';
+    
+    // If it's user's own cards, show both active and inactive
+    if (validLoggedInUserId) {
+      whereClause += ` AND tc.trader_id = ${validLoggedInUserId} AND (tc.trading_card_status = '1' OR tc.trading_card_status = '0')`;
+    } else {
+      // For other users' cards, only show active ones
+      whereClause += ` AND tc.trading_card_status = '1'`;
     }
     
-    // Include only user's own cards if loggedInUserId is provided (from JWT token)
-    if (validLoggedInUserId) {
-      whereClause += ` AND tc.trader_id = ${validLoggedInUserId}`;
+    if (validCategoryId) {
+      whereClause += ` AND tc.category_id = ${validCategoryId}`;
     }
     
 
@@ -1261,6 +1376,44 @@ export class TradingCardService {
       // Prepare base save data - only include fields that are actually being updated
       const saveData: any = {};
 
+      // Generate trading_card_slug and search_param from series_set, issue_number, story_title, variant
+      const slugParts: string[] = [];
+      const searchParts: string[] = [];
+      
+      // Add series_set
+      if (requestData.series_set && requestData.series_set.trim()) {
+        const seriesSet = requestData.series_set.trim();
+        slugParts.push(seriesSet.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
+        searchParts.push(seriesSet);
+      }
+      
+      // Add issue_number
+      if (requestData.issue_number && requestData.issue_number.trim()) {
+        const issueNumber = requestData.issue_number.trim();
+        slugParts.push(issueNumber);
+        searchParts.push(`#${issueNumber}`);
+      }
+      
+      // Add story_title
+      if (requestData.story_title && requestData.story_title.trim()) {
+        const storyTitle = requestData.story_title.trim();
+        slugParts.push(storyTitle.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
+        searchParts.push(storyTitle);
+      }
+      
+      // Add variant
+      if (requestData.variant && requestData.variant.trim()) {
+        const variant = requestData.variant.trim();
+        slugParts.push(variant.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
+        searchParts.push(variant);
+      }
+      
+      // Generate final strings
+      if (slugParts.length > 0) {
+        saveData.trading_card_slug = slugParts.join('-');
+        saveData.search_param = searchParts.join(' ');
+      }
+
       // Get category fields with priority
       const categoryFields = await CategoryField.findAll({
         where: { category_id: categoryId },
@@ -1268,21 +1421,48 @@ export class TradingCardService {
         attributes: ['fields', 'is_required', 'additional_information', 'mark_as_title']
       });
 
+      // Validate required fields - COMMENTED OUT FOR EDIT API
+      // const missingRequiredFields: string[] = [];
+      // for (const cField of categoryFields) {
+      //   if (cField.is_required && cField.fields) {
+      //     const fieldValue = requestData[cField.fields];
+      //     if (!fieldValue || (typeof fieldValue === 'string' && !fieldValue.trim())) {
+      //       missingRequiredFields.push(cField.fields);
+      //     }
+      //   }
+      // }
+
+      // if (missingRequiredFields.length > 0) {
+      //   return { 
+      //     success: false, 
+      //     error: `Required fields are missing: ${missingRequiredFields.join(', ')}` 
+      //   };
+      // }
+
       // Process category fields
       const productAttributes: any = {};
       const markAsTitleArr: any = {};
       const markAsTitleColsArr: string[] = [];
 
+      console.log('Category fields found:', categoryFields.map(f => f.fields));
+      console.log('Request data keys:', Object.keys(requestData));
+      console.log('set_name in requestData:', requestData.set_name);
+      console.log('set_name in categoryFields:', categoryFields.find(f => f.fields === 'set_name'));
+
       for (const cField of categoryFields) {
         const fieldName = cField.fields;
         
         if (fieldName && requestData[fieldName] !== undefined) {
-          // Handle boolean fields (convert '1' to 1, others to 0)
-          if (requestData[fieldName] === '1') {
-            saveData[fieldName as string] = 1;
-          } else {
-            saveData[fieldName as string] = 0;
+          // Handle all field types - assign the value directly like in save method
+          saveData[fieldName] = requestData[fieldName];
+          console.log(`Processing category field: ${fieldName} = ${requestData[fieldName]}`);
+          
+          // Special debug for set_name
+          if (fieldName === 'set_name') {
+            console.log(`✅ set_name processed: ${requestData[fieldName]} -> saveData[${fieldName}] = ${saveData[fieldName]}`);
           }
+        } else if (fieldName === 'set_name') {
+          console.log(`❌ set_name NOT processed - fieldName: ${fieldName}, requestData[fieldName]: ${requestData[fieldName]}`);
         }
         // Don't set default values for fields not provided - this is PATCH behavior
 
@@ -1341,6 +1521,10 @@ export class TradingCardService {
         return { success: false, error: "No data provided for update" };
       }
 
+      // Debug: Log what we're about to save
+      console.log('About to update trading card with saveData:', JSON.stringify(saveData, null, 2));
+      console.log('set_name in saveData:', saveData.set_name);
+
       // Update the trading card
       await TradingCard.update(saveData, { where: { id: cardId } });
 
@@ -1374,16 +1558,27 @@ export class TradingCardService {
         console.log('Product attributes to save:', productAttributes);
       }
 
-      // Handle card images - only update if provided
-      const cardImagesData: any = {};
-      if (requestData.icon1 !== undefined) cardImagesData.card_image_1 = requestData.icon1;
-      if (requestData.icon2 !== undefined) cardImagesData.card_image_2 = requestData.icon2;
-      if (requestData.icon3 !== undefined) cardImagesData.card_image_3 = requestData.icon3;
-      if (requestData.icon4 !== undefined) cardImagesData.card_image_4 = requestData.icon4;
-
-      if (Object.keys(cardImagesData).length > 0) {
-        // You'll need to implement CardImages model
-        console.log('Card images to save:', cardImagesData);
+      // Handle additional images - only update if provided
+      if (requestData.additional_images && Array.isArray(requestData.additional_images)) {
+        // Delete existing card images for this trading card
+        await CardImage.destroy({ where: { mainCardId: cardId } });
+        
+        // Create new card image records
+        for (let i = 0; i < requestData.additional_images.length; i++) {
+          const imagePath = requestData.additional_images[i];
+          const cardImageData: any = {
+            mainCardId: cardId,
+            traderId: userId
+          };
+          
+          // Set the appropriate card image field
+          if (i === 0) cardImageData.cardImage1 = imagePath;
+          else if (i === 1) cardImageData.cardImage2 = imagePath;
+          else if (i === 2) cardImageData.cardImage3 = imagePath;
+          else if (i === 3) cardImageData.cardImage4 = imagePath;
+          
+          await CardImage.create(cardImageData);
+        }
       }
 
       // Get updated trading card
@@ -1399,6 +1594,67 @@ export class TradingCardService {
 
     } catch (error: any) {
       console.error('Error updating trading card:', error);
+      return {
+        success: false,
+        error: error.message || 'Unknown error occurred'
+      };
+    }
+  }
+
+  /**
+   * Update trading card status (on/off switch)
+   * Equivalent to Laravel status toggle functionality
+   */
+  async updateTradingCardStatus(
+    cardId: number,
+    statusId: number,
+    userId: number
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      // Validate inputs
+      if (!cardId || isNaN(cardId) || cardId <= 0) {
+        return { success: false, error: "Invalid card ID" };
+      }
+
+      if (statusId !== 0 && statusId !== 1) {
+        return { success: false, error: "Status ID must be 0 (inactive) or 1 (active)" };
+      }
+
+      // Find the trading card
+      const tradingCard = await TradingCard.findByPk(cardId, {
+        attributes: ['id', 'trader_id', 'trading_card_status', 'trading_card_slug']
+      });
+
+      if (!tradingCard) {
+        return { success: false, error: "Trading card not found" };
+      }
+
+      // Check if user owns this trading card
+      if (tradingCard.trader_id !== userId) {
+        return { success: false, error: "You don't have permission to update this trading card" };
+      }
+
+      // Update the trading card status
+      await TradingCard.update(
+        { trading_card_status: statusId.toString() },
+        { where: { id: cardId } }
+      );
+
+      // Get updated trading card with only required fields
+      const updatedCard = await TradingCard.findByPk(cardId, {
+        attributes: ['id', 'trading_card_status']
+      });
+
+      return {
+        success: true,
+        data: {
+          id: updatedCard?.id,
+          trading_card_status: updatedCard?.trading_card_status
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error updating trading card status:', error);
       return {
         success: false,
         error: error.message || 'Unknown error occurred'

@@ -43,11 +43,28 @@ const app = express();
 
 // Configure CORS to allow all origins
 app.use(cors({
-  origin: true, // Allow all origins
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow all origins for development
+    return callback(null, true);
+  },
   credentials: true, // Allow credentials (cookies, authorization headers)
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // Allow all HTTP methods
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'], // Allow common headers
-  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'] // Expose additional headers if needed
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'Accept', 
+    'Origin',
+    'Access-Control-Allow-Origin',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Allow-Methods',
+    'Access-Control-Allow-Credentials'
+  ], // Allow common headers
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'], // Expose additional headers if needed
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
 }));
 
 // Body parser configuration with increased limits
@@ -76,6 +93,26 @@ process.on("uncaughtException", (err) => {
 // Test route
 app.get("/", (req, res) => {
   res.send("TypeScript + MySQL API running 🚀");
+});
+
+// Health check endpoint for CORS testing
+app.get("/health", (req, res) => {
+  res.json({
+    status: "OK",
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+    cors: "Enabled"
+  });
+});
+
+// Handle CORS preflight requests manually
+app.options('*', (req, res) => {
+  console.log(`🔄 CORS Preflight: ${req.method} ${req.originalUrl}`);
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.status(200).end();
 });
 
 // Add request logging middleware BEFORE routes

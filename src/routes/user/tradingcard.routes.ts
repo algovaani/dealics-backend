@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { 
   getTradingCards, 
+  getUserTradingCards,
   getTradingCard, 
   getTradingCardsByCategoryName, 
   getMyTradingCardsByCategory, 
   getFormFieldsByCategory, 
   saveTradingCard,
   updateTradingCard,
+  updateTradingCardStatus,
   deleteTradingCard,
   getDeletedTradingCards
 } from "../../controllers/tradingcard.controller.js";
@@ -20,7 +22,7 @@ console.log("🔧 Registering user trading card routes...");
 router.use(userAuth);
 
 // Define specific routes first (before catch-all)
-router.get("/", getTradingCards);
+router.get("/", getUserTradingCards);
 router.get("/deleted", getDeletedTradingCards);
 router.get("/by-category/:categoryName", getTradingCardsByCategoryName);
 router.get("/my-products/:categoryName", getMyTradingCardsByCategory);
@@ -34,11 +36,11 @@ router.post("/save/:categoryId", upload.fields([
 router.patch("/:cardId", upload.fields([
   { name: 'trading_card_img', maxCount: 1 },
   { name: 'trading_card_img_back', maxCount: 1 },
-  { name: 'icon1', maxCount: 1 },
-  { name: 'icon2', maxCount: 1 },
-  { name: 'icon3', maxCount: 1 },
-  { name: 'icon4', maxCount: 1 }
+  { name: 'additional_images', maxCount: 10 }
 ]), (req: any, res: any) => updateTradingCard(req, res));
+
+// Update trading card status (on/off switch)
+router.patch("/:cardId/status", userAuth, updateTradingCardStatus);
 
 router.delete("/:id", deleteTradingCard);
 

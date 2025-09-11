@@ -194,7 +194,7 @@ export function setupAssociations() {
   });
 
   BuySellCard.belongsTo(TradingCard, {
-    foreignKey: 'trading_card_id',
+    foreignKey: 'main_card',
     as: 'tradingCard'
   });
 
@@ -211,7 +211,7 @@ export function setupAssociations() {
 
   // TradingCard associations for BuySellCard
   TradingCard.hasMany(BuySellCard, {
-    foreignKey: 'trading_card_id',
+    foreignKey: 'main_card',
     as: 'buySellRecords'
   });
 }

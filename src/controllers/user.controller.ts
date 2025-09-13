@@ -3,6 +3,7 @@ import { UserService } from "../services/user.service.js";
 import { sendApiResponse } from "../utils/apiResponse.js";
 import { uploadOne } from "../utils/fileUpload.js";
 import jwt from "jsonwebtoken";
+import { decodeJWTToken } from "../utils/jwt.js";
 
 // Extend Request interface to include user property
 declare global {
@@ -84,8 +85,22 @@ export const getUserProfile = async (req: Request, res: Response) => {
 
     const userId = parseInt(userIdParam, 10);
 
+    // Get logged-in user ID from token (optional - for following status)
+    let loggedInUserId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+        loggedInUserId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+      } catch (jwtError) {
+        // Token is invalid or expired, but we still proceed without following status
+        loggedInUserId = null;
+      }
+    }
+
     // Get user profile data
-    const profileData = await UserService.getUserProfile(userId);
+    const profileData = await UserService.getUserProfile(userId, loggedInUserId);
 
     if (!profileData) {
       return sendApiResponse(res, 404, false, "User not found");
@@ -127,7 +142,8 @@ export const getUserProfile = async (req: Request, res: Response) => {
       reviews: profileData.reviews,
       interestedCardsCount: profileData.interestedCardsCount,
       tradeCount: profileData.tradeCount,
-      followingCount: profileData.followingCount
+      followingCount: profileData.followingCount,
+      following: profileData.following || false  // ✅ NEW: Following status
     };
 
     return sendApiResponse(res, 200, true, "User profile retrieved successfully", [response]);
@@ -182,32 +198,33 @@ export const updateUser = async (req: Request, res: Response) => {
 // GET /api/users/top-traders - Get top traders based on ratings and trading cards
 export const getTopTraders = async (req: Request, res: Response) => {
   try {
-    const limitParam = req.query.limit as string;
-    const limit = limitParam && !isNaN(Number(limitParam)) ? parseInt(limitParam) : 10;
+    // Get pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
     
-    // Validate limit
-    if (limit < 1 || limit > 100) {
-      return sendApiResponse(res, 400, false, "Limit must be between 1 and 100", []);
+    // Validate pagination parameters
+    if (page < 1 || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters", []);
     }
 
-    const topTraders = await UserService.getTopTraders(limit);
+    const result = await UserService.getTopTraders(page, perPage);
 
-    if (!topTraders || topTraders.length === 0) {
-      return sendApiResponse(res, 200, true, "No top traders found", []);
+    if (result.success && result.data) {
+      // Transform the response to include only necessary fields
+      const response = result.data.traders.map((trader: any) => ({
+        trader_id: trader.id,
+        profile_picture: trader.profile_picture,
+        first_name: trader.first_name,
+        last_name: trader.last_name,
+        ratings: trader.ratings,
+        username: trader.username,
+        joinedDate: trader.created_at
+      }));
+
+      return sendApiResponse(res, 200, true, "Top traders retrieved successfully", response, result.data.pagination);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to get top traders", []);
     }
-
-    // Transform the response to include only necessary fields
-    const response = topTraders.map((trader: any) => ({
-      trader_id: trader.id,
-      profile_picture: trader.profile_picture,
-      first_name: trader.first_name,
-      last_name: trader.last_name,
-      ratings: trader.ratings,
-      username: trader.username,
-      joinedDate: trader.created_at
-    }));
-
-    return sendApiResponse(res, 200, true, "Top traders retrieved successfully", response);
 
   } catch (error: any) {
     console.error("Get top traders error:", error);
@@ -937,8 +954,8 @@ export const getShipmentLog = async (req: Request, res: Response) => {
     // Call service method
     const result = await UserService.getShipmentLog(userId, page, perPage);
 
-    if (result.success) {
-      return sendApiResponse(res, 200, true, "Shipment log retrieved successfully", result.data);
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, "Shipment log retrieved successfully", result.data, result.pagination);
     } else {
       return sendApiResponse(res, 400, false, "Failed to get shipment log", result.error);
     }
@@ -1031,8 +1048,8 @@ export const getCategoryShippingRateHistory = async (req: Request, res: Response
     // Call service method
     const result = await UserService.getCategoryShippingRateHistory(userId, categoryId, specificId, page, perPage);
 
-    if (result.success) {
-      return sendApiResponse(res, 200, true, "Category shipping rate history retrieved successfully", result.data);
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, "Category shipping rate history retrieved successfully", result.data, result.pagination);
     } else {
       return sendApiResponse(res, 400, false, "Failed to get category shipping rate history", result.error);
     }
@@ -1161,8 +1178,8 @@ export const getAddresses = async (req: Request, res: Response) => {
     // Call service method
     const result = await UserService.getAddresses(userId, page, perPage);
 
-    if (result.success) {
-      return sendApiResponse(res, 200, true, "Addresses retrieved successfully", result.data);
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, "Addresses retrieved successfully", result.data, result.pagination);
     } else {
       return sendApiResponse(res, 400, false, "Failed to get addresses", result.error);
     }
@@ -1477,8 +1494,8 @@ export const getBoughtAndSoldProducts = async (req: Request, res: Response) => {
     // Call service method
     const result = await UserService.getBoughtAndSoldProducts(userId, filters, page, perPage);
 
-    if (result.success) {
-      return sendApiResponse(res, 200, true, "Bought and sold products retrieved successfully", result.data);
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, "Bought and sold products retrieved successfully", result.data, result.pagination);
     } else {
       return sendApiResponse(res, 400, false, "Failed to get bought and sold products", result.error);
     }
@@ -1486,6 +1503,344 @@ export const getBoughtAndSoldProducts = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Get bought and sold products error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get ongoing trades for authenticated user
+export const getOngoingTrades = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Extract filters from query parameters
+    const filters = {
+      filter: req.query.filter as string,
+      trade_with: req.query.trade_with as string,
+      code: req.query.code as string,
+      trade_type: req.query.trade_type as string,
+      status_id: req.query.status_id ? parseInt(String(req.query.status_id)) : undefined,
+      from_date: req.query.from_date as string,
+      to_date: req.query.to_date as string,
+      id: req.params.id ? parseInt(req.params.id) : undefined
+    };
+
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 5;
+
+    // Call service method
+    const result = await UserService.getOngoingTrades(userId, filters, page, perPage);
+
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, "Ongoing trades retrieved successfully", result.data, result.pagination);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get ongoing trades", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Get ongoing trades error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get completed trades for authenticated user
+export const getCompletedTrades = async (req: Request, res: Response) => {
+  try {
+    // Extract JWT token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Verify and decode JWT token
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Extract filters from query parameters
+    const filters = {
+      id: req.params.id ? parseInt(req.params.id) : null,
+      trade_with: req.query.trade_with as string,
+      code: req.query.code as string,
+      trade_type: req.query.trade_type as string,
+      from_date: req.query.from_date as string,
+      to_date: req.query.to_date as string
+    };
+
+    // Extract pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const perPage = parseInt(req.query.perPage as string) || 5;
+
+    // Call service method
+    const result = await UserService.getCompletedTrades(userId, filters, page, perPage);
+
+    if (!result.success) {
+      if (result.error?.redirect === 'ongoing-trades') {
+        return sendApiResponse(res, 404, false, result.error.message, [], { redirect: 'ongoing-trades' });
+      }
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to get completed trades", []);
+    }
+
+    // Send successful response with pagination metadata at top level
+    return sendApiResponse(res, 200, true, "Completed trades retrieved successfully", result.data, result.pagination);
+
+  } catch (error: any) {
+    console.error("Get completed trades error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get cancelled trades for authenticated user
+export const getCancelledTrades = async (req: Request, res: Response) => {
+  try {
+    // Extract JWT token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Verify and decode JWT token
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Extract filters from query parameters
+    const filters = {
+      id: req.params.id ? parseInt(req.params.id) : null,
+      trade_with: req.query.trade_with as string,
+      code: req.query.code as string,
+      trade_type: req.query.trade_type as string,
+      from_date: req.query.from_date as string,
+      to_date: req.query.to_date as string
+    };
+
+    // Extract pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const perPage = parseInt(req.query.perPage as string) || 5;
+
+    // Call service method
+    const result = await UserService.getCancelledTrades(userId, filters, page, perPage);
+
+    if (!result.success) {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to get cancelled trades", []);
+    }
+
+    // Send successful response with pagination metadata at top level
+    return sendApiResponse(res, 200, true, "Cancelled trades retrieved successfully", result.data, result.pagination);
+
+  } catch (error: any) {
+    console.error("Get cancelled trades error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Get notifications list for authenticated user
+export const getNotifications = async (req: Request, res: Response) => {
+  try {
+    // Extract JWT token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Verify and decode JWT token
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    // Extract pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const perPage = parseInt(req.query.perPage as string) || 10;
+
+    // Call service method
+    const result = await UserService.getNotifications(userId, page, perPage);
+
+    if (!result.success) {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to get notifications", []);
+    }
+
+    // Send successful response with pagination metadata at top level
+    return sendApiResponse(res, 200, true, "Notifications retrieved successfully", result.data, result.pagination);
+
+  } catch (error: any) {
+    console.error("Get notifications error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// Confirm payment for a trade proposal
+export const confirmPayment = async (req: Request, res: Response) => {
+  try {
+    // Use common JWT token decoding utility
+    const jwtResult = decodeJWTToken(req, res);
+    if (!jwtResult.success) {
+      return sendApiResponse(res, 401, false, jwtResult.error!, []);
+    }
+
+    const userId = jwtResult.userId!;
+    const { trade_proposal_id } = req.body;
+
+    if (!trade_proposal_id) {
+      return sendApiResponse(res, 400, false, 'Trade proposal ID is required', []);
+    }
+
+    const result = await UserService.confirmPayment(userId, parseInt(trade_proposal_id));
+
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, result.data.message, [result.data]);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || 'Failed to confirm payment', []);
+    }
+
+  } catch (error: any) {
+    console.error('Error in confirmPayment controller:', error);
+    return sendApiResponse(res, 500, false, 'Internal server error', []);
+  }
+};
+
+// Get my tickets
+export const getMyTickets = async (req: Request, res: Response) => {
+  try {
+    // Use common JWT token decoding utility
+    const jwtResult = decodeJWTToken(req, res);
+    if (!jwtResult.success) {
+      return sendApiResponse(res, 401, false, jwtResult.error!, []);
+    }
+
+    const userId = jwtResult.userId!;
+    
+    // Get pagination parameters from query
+    const page = parseInt(req.query.page as string) || 1;
+    const perPage = parseInt(req.query.perPage as string) || 10;
+
+    const result = await UserService.getMyTickets(userId, page, perPage);
+
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, 'Tickets retrieved successfully', [result.data]);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || 'Failed to get tickets', []);
+    }
+
+  } catch (error: any) {
+    console.error('Error in getMyTickets controller:', error);
+    return sendApiResponse(res, 500, false, 'Internal server error', []);
+  }
+};
+
+// Mark all notifications as read
+export const markAllNotificationsAsRead = async (req: Request, res: Response) => {
+  try {
+    // Use common JWT token decoding utility
+    const jwtResult = decodeJWTToken(req, res);
+    if (!jwtResult.success) {
+      return sendApiResponse(res, 401, false, jwtResult.error!, []);
+    }
+
+    const userId = jwtResult.userId!;
+    const result = await UserService.markAllNotificationsAsRead(userId);
+
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, result.data.message, [result.data]);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || 'Failed to mark notifications as read', []);
+    }
+
+  } catch (error: any) {
+    console.error('Error in markAllNotificationsAsRead controller:', error);
+    return sendApiResponse(res, 500, false, 'Internal server error', []);
+  }
+};
+
+// Submit rating for a buy/sell transaction
+export const submitRating = async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return sendApiResponse(res, 401, false, 'Authorization token is required', []);
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+
+    if (!userId) {
+      return sendApiResponse(res, 400, false, 'Valid user ID is required', []);
+    }
+
+    const { trade_id, rating, data } = req.body;
+
+    // Validate required fields
+    if (!trade_id) {
+      return sendApiResponse(res, 400, false, 'Trade ID is required', []);
+    }
+    if (!rating) {
+      return sendApiResponse(res, 400, false, 'Rating is required', []);
+    }
+    if (rating < 1 || rating > 10) {
+      return sendApiResponse(res, 400, false, 'Rating must be between 1 and 10', []);
+    }
+
+    const result = await UserService.submitRating(
+      userId,
+      parseInt(trade_id),
+      parseInt(rating),
+      data || ''
+    );
+
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, result.data.message, result.data);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || 'Failed to submit rating', []);
+    }
+
+  } catch (error: any) {
+    console.error('Error in submitRating controller:', error);
+    return sendApiResponse(res, 500, false, 'Internal server error', []);
   }
 };
 

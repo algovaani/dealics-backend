@@ -1,14 +1,47 @@
 import { Category } from "../models/index.js";
 
 export class CategoryService {
-  // Get all Category
-  async getAllCategories() {
-    return await Category.findAll({
+  // Get all Category with pagination
+  async getAllCategories(page: number = 1, perPage: number = 10) {
+    const offset = (page - 1) * perPage;
+    const limit = perPage;
+
+    // Get total count
+    const totalCount = await Category.count({
+      where: {
+        sport_status: '1'
+      }
+    });
+
+    // Get categories with pagination
+    const categories = await Category.findAll({
       where: {
         sport_status: '1'
       },
-      order: [['sport_name', 'ASC']]
+      order: [['sport_name', 'ASC']],
+      limit: limit,
+      offset: offset
     });
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount / perPage);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    return {
+      success: true,
+      data: {
+        categories,
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
+        }
+      }
+    };
   }
 
   // Get Category by ID

@@ -4,18 +4,33 @@ import { CategoryService } from "../services/categories.service.js";
 const categoriesService = new CategoryService();
 
 // Helper function to send standardized API responses
-const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any) => {
-  return res.status(statusCode).json({
+const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any, pagination?: any) => {
+  const response: any = {
     status,
     message,
     data: data || []
-  });
+  };
+
+  if (pagination) {
+    response.pagination = pagination;
+  }
+
+  return res.status(statusCode).json(response);
 };
 
 export const getCategories = async (req: Request, res: Response) => {
   try {
-    const categories = await categoriesService.getAllCategories();
-    return sendApiResponse(res, 200, true, "Categories retrieved successfully", categories);
+    // Get pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
+
+    const result = await categoriesService.getAllCategories(page, perPage);
+    
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Categories retrieved successfully", result.data.categories, result.data.pagination);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get categories", []);
+    }
   } catch (error: any) {
     console.error("Error getting categories:", error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);

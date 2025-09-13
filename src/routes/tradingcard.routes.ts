@@ -34,6 +34,6 @@ router.get("/:id", getTradingCard);
 // router.post("/", createTradingCard);
 // router.put("/:id", updateTradingCard);
 router.delete("/:id", userAuth, deleteTradingCard);
-router.patch("/:id", userAuth, toggleTradingCardDeleteStatus);
+router.put("/:id", userAuth, toggleTradingCardDeleteStatus);
 
 export default router;

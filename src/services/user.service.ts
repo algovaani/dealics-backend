@@ -10,7 +10,7 @@ import { SocialMedia } from "../models/socialMedia.model.js";
 import { Shipment } from "../models/shipment.model.js";
 import { Address } from "../models/address.model.js";
 import { CategoryShippingRate } from "../models/categoryShippingRates.model.js";
-import { BuySellCard } from "../models/index.js";
+import { BuySellCard, BuyOfferStatus, TradeProposal, TradeProposalStatus, TradeTransaction, TradeNotification, ReviewCollection, Review, Support } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 
@@ -76,6 +76,38 @@ export class UserService {
     } catch (error) {
       console.error('Error formatting followed_on date:', error);
       return "01-01-2024 12:00 AM"; // Fallback
+    }
+  }
+
+  // Format date to MM.DD.YY H:MM AM/PM format (for created_at and estimated_delivery_date)
+  private static formatDateToMMDDYY(dateString: string | Date): string {
+    try {
+      const date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return "01.01.25 12:00 AM"; // Fallback
+      }
+      
+      // Get month, day, year (2 digits)
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = String(date.getFullYear()).slice(-2);
+      
+      // Get hours and minutes
+      let hours = date.getHours();
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      // Convert to 12-hour format
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 should be 12
+      const hoursStr = String(hours);
+      
+      return `${month}.${day}.${year} ${hoursStr}:${minutes} ${ampm}`;
+    } catch (error) {
+      console.error('Error formatting date to MM.DD.YY:', error);
+      return "01.01.25 12:00 AM"; // Fallback
     }
   }
 
@@ -244,7 +276,7 @@ export class UserService {
   }
 
   // Get user profile details without authentication
-  static async getUserProfile(userId: number) {
+  static async getUserProfile(userId: number, loggedInUserId: number | null = null) {
     try {
       // Validate userId
       if (!userId || isNaN(userId) || userId <= 0) {
@@ -279,13 +311,20 @@ export class UserService {
       // Get following count from followers table
       const followingCount = await this.getFollowingCount(userId);
 
+      // Check if logged-in user is following this user
+      let following = false;
+      if (loggedInUserId && loggedInUserId !== userId) {
+        following = await this.isFollowing(loggedInUserId, userId);
+      }
+
       return {
         user,
         cardStats,
         reviews,
         interestedCardsCount,
         tradeCount,
-        followingCount
+        followingCount,
+        following
       };
     } catch (error) {
       return null;
@@ -433,42 +472,26 @@ export class UserService {
 
 
 
-  // Get reviews from buy_sell_cards table
+  // Get reviews from review_collections table
   private static async getReviews(userId: number) {
     try {
       const query = `
         SELECT 
-          bsc.buyer_review as trader_review,
-          bsc.buyer_rating as user_rating,
+          rc.content as trader_review,
+          rc.rating as user_rating,
           u.profile_picture as user_image,
           u.username as userName,
-          DATE(bsc.reviewed_on) as date,
-          TIME(bsc.reviewed_on) as time
-        FROM buy_sell_cards bsc
-        LEFT JOIN users u ON bsc.buyer = u.id
-        WHERE bsc.buyer = :userId 
-        AND bsc.buyer_review IS NOT NULL 
-        AND bsc.buyer_review != ''
-        AND bsc.buyer_rating IS NOT NULL
+          DATE(rc.created_at) as date,
+          TIME(rc.created_at) as time
+        FROM review_collections rc
+        LEFT JOIN users u ON rc.sender_id = u.id
+        WHERE rc.user_id = :userId 
+        AND rc.content IS NOT NULL 
+        AND rc.content != ''
+        AND rc.rating IS NOT NULL
         
-        UNION ALL
-        
-        SELECT 
-          bsc.seller_review as trader_review,
-          bsc.seller_rating as user_rating,
-          u.profile_picture as user_image,
-          u.username as userName,
-          DATE(bsc.reviewed_by_seller_on) as date,
-          TIME(bsc.reviewed_by_seller_on) as time
-        FROM buy_sell_cards bsc
-        LEFT JOIN users u ON bsc.seller = u.id
-        WHERE bsc.seller = :userId 
-        AND bsc.seller_review IS NOT NULL 
-        AND bsc.seller_review != ''
-        AND bsc.seller_rating IS NOT NULL
-        
-        ORDER BY bsc.reviewed_on DESC, bsc.reviewed_by_seller_on DESC
-        LIMIT 10
+        ORDER BY rc.id ASC
+        LIMIT 5
       `;
 
       const result = await sequelize.query(query, {
@@ -478,6 +501,7 @@ export class UserService {
 
       return result;
     } catch (error) {
+      console.error('Error fetching reviews:', error);
       return [];
     }
   }
@@ -542,6 +566,96 @@ export class UserService {
       return (result[0] as any)?.count || 0;
     } catch (error) {
       return 0;
+    }
+  }
+
+  // Check if one user is following another user
+  private static async isFollowing(followerId: number, followingId: number): Promise<boolean> {
+    try {
+      const query = `
+        SELECT COUNT(*) as count
+        FROM followers 
+        WHERE trader_id = :followingId AND user_id = :followerId AND follower_status = '1'
+      `;
+
+      console.log('🔍 Checking following status:', { followerId, followingId });
+
+      const result = await sequelize.query(query, {
+        replacements: { followerId, followingId },
+        type: QueryTypes.SELECT
+      });
+
+      const count = (result[0] as any)?.count || 0;
+      const isFollowing = count > 0;
+      
+      console.log('📊 Following check result:', { count, isFollowing });
+
+      return isFollowing;
+    } catch (error) {
+      console.error('Error checking following status:', error);
+      return false;
+    }
+  }
+
+  // Get trade ratings (Laravel reference: sender_review_count_get)
+  private static async getTradeRatings(tradeProposalId: number | null): Promise<any[]> {
+    try {
+      if (!tradeProposalId) {
+        return [];
+      }
+
+      // Laravel reference: Reviews::where('trade_proposal_id', $id)->first()
+      const review = await Review.findOne({
+        where: {
+          trade_proposal_id: tradeProposalId
+        }
+      });
+
+      if (!review) {
+        return [];
+      }
+
+      const reviewData = review.toJSON();
+
+      // Build ratings array with sender and receiver ratings
+      const ratings = [];
+
+      // Add sender rating if available
+      if (reviewData.trader_id && reviewData.trader_rating) {
+        // Get username for trader_id
+        const traderUser = await User.findByPk(reviewData.trader_id, {
+          attributes: ['username']
+        });
+        
+        ratings.push({
+          user_id: reviewData.trader_id,
+          username: traderUser?.username || null,
+          rating: reviewData.trader_rating,
+          review: reviewData.trader_review,
+          type: 'sender'
+        });
+      }
+
+      // Add receiver rating if available
+      if (reviewData.user_id && reviewData.user_rating) {
+        // Get username for user_id
+        const receiverUser = await User.findByPk(reviewData.user_id, {
+          attributes: ['username']
+        });
+        
+        ratings.push({
+          user_id: reviewData.user_id,
+          username: receiverUser?.username || null,
+          rating: reviewData.user_rating,
+          review: reviewData.user_review,
+          type: 'receiver'
+        });
+      }
+
+      return ratings;
+    } catch (error) {
+      console.error('Error getting trade ratings:', error);
+      return [];
     }
   }
 
@@ -813,9 +927,38 @@ export class UserService {
     }
   }
 
-  // Get top traders based on ratings and trading cards
-  static async getTopTraders(limit: number = 10) {
+  // Get top traders based on ratings and trading cards with pagination
+  static async getTopTraders(page: number = 1, perPage: number = 10) {
     try {
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM users u
+        LEFT JOIN (
+          SELECT 
+            trader_id,
+            COUNT(*) as trading_cards_count,
+            SUM(CASE WHEN is_traded = '0' AND trading_card_status = '1' AND mark_as_deleted IS NULL THEN 1 ELSE 0 END) as active_cards_count,
+            SUM(CASE WHEN is_traded = '1' THEN 1 ELSE 0 END) as completed_trades_count
+          FROM trading_cards 
+          WHERE mark_as_deleted IS NULL
+          GROUP BY trader_id
+        ) tc_stats ON u.id = tc_stats.trader_id
+        WHERE u.user_status = '1' 
+        AND u.user_role = 'user'
+        AND (u.ratings IS NOT NULL AND u.ratings != '' AND u.ratings != '0')
+        AND (tc_stats.trading_cards_count > 0 OR u.trading_cards > 0)
+      `;
+
+      const countResult = await sequelize.query(countQuery, {
+        type: QueryTypes.SELECT
+      });
+      const totalCount = (countResult[0] as any).total;
+
+      // Get traders with pagination
       const query = `
         SELECT 
           u.id,
@@ -853,18 +996,41 @@ export class UserService {
           tc_stats.trading_cards_count DESC,
           u.trade_transactions DESC,
           u.followers DESC
-        LIMIT :limit
+        LIMIT :limit OFFSET :offset
       `;
 
       const result = await sequelize.query(query, {
-        replacements: { limit },
+        replacements: { limit, offset },
         type: QueryTypes.SELECT
       });
 
-      return result;
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          traders: result,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
     } catch (error) {
       console.error('Error getting top traders:', error);
-      return [];
+      return {
+        success: false,
+        error: {
+          message: (error as Error).message || 'Failed to get top traders'
+        }
+      };
     }
   }
 
@@ -1804,15 +1970,15 @@ export class UserService {
       return { 
         success: true,
         data: {
-          shipments: transformedShipments,
-          pagination: {
-            currentPage: page,
-            perPage: perPage,
-            totalCount: totalCount,
-            totalPages: totalPages,
-            hasNextPage: hasNextPage,
-            hasPrevPage: hasPrevPage
-          }
+          shipments: transformedShipments
+        },
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
         }
       };
 
@@ -2260,15 +2426,15 @@ export class UserService {
         data: {
           categories,
           shippingRates: flattenedShippingRates,
-          specificShippingRate,
-          pagination: {
-            currentPage: page,
-            perPage: perPage,
-            totalCount: totalCount,
-            totalPages: totalPages,
-            hasNextPage: hasNextPage,
-            hasPrevPage: hasPrevPage
-          }
+          specificShippingRate
+        },
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
         }
       };
 
@@ -2648,16 +2814,14 @@ export class UserService {
 
       return {
         success: true,
-        data: {
-          addresses,
-          pagination: {
-            currentPage: page,
-            perPage: perPage,
-            totalCount: totalCount,
-            totalPages: totalPages,
-            hasNextPage: hasNextPage,
-            hasPrevPage: hasPrevPage
-          }
+        data: addresses,
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
         }
       };
 
@@ -3149,7 +3313,7 @@ export class UserService {
       let requestData = 'all';
       const filterData: any = {};
 
-      // Handle trade_type filtering
+      // Handle trade_type filtering (following Laravel logic)
       if (filters.trade_type === 'purchased') {
         whereClause.buyer = userId;
         whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
@@ -3187,8 +3351,8 @@ export class UserService {
 
       // Handle trade_with filter (username search)
       if (filters.trade_with && filters.trade_with.trim() !== '') {
-        // This would require joins with user table - simplified for now
         filterData.trade_with = filters.trade_with;
+        // This will be handled in the include section with User associations
       }
 
       // Handle code filter
@@ -3205,17 +3369,31 @@ export class UserService {
 
       // Handle date filters
       if (filters.from_date && filters.from_date.trim() !== '') {
-        whereClause.created_at = { [Op.gte]: new Date(filters.from_date) };
-        filterData.from_date = filters.from_date;
+        try {
+          const fromDate = new Date(filters.from_date);
+          if (!isNaN(fromDate.getTime())) {
+            whereClause.created_at = { [Op.gte]: fromDate };
+            filterData.from_date = filters.from_date;
+          }
+        } catch (error) {
+          console.error('Invalid from_date format:', filters.from_date);
+        }
       }
 
       if (filters.to_date && filters.to_date.trim() !== '') {
-        if (whereClause.created_at) {
-          whereClause.created_at[Op.lte] = new Date(filters.to_date);
-        } else {
-          whereClause.created_at = { [Op.lte]: new Date(filters.to_date) };
+        try {
+          const toDate = new Date(filters.to_date);
+          if (!isNaN(toDate.getTime())) {
+            if (whereClause.created_at) {
+              whereClause.created_at[Op.lte] = toDate;
+            } else {
+              whereClause.created_at = { [Op.lte]: toDate };
+            }
+            filterData.to_date = filters.to_date;
+          }
+        } catch (error) {
+          console.error('Invalid to_date format:', filters.to_date);
         }
-        filterData.to_date = filters.to_date;
       }
 
       // Calculate pagination
@@ -3227,13 +3405,184 @@ export class UserService {
         where: whereClause
       });
 
-      // Get buy/sell cards with pagination
+      // Prepare includes with conditional where clauses for trade_with filter
+      const includes: any[] = [
+        {
+          model: User,
+          as: 'sellerUser',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'buyerUser',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        },
+        {
+          model: TradingCard,
+          as: 'tradingCard',
+          attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'search_param', 'category_id'],
+          required: false
+        },
+        {
+          model: BuyOfferStatus,
+          as: 'buyOfferStatus',
+          attributes: ['id', 'to_sender', 'to_receiver'],
+          required: false
+        },
+        {
+          model: Shipment,
+          as: 'shipmentDetails',
+          attributes: ['id', 'estimated_delivery_date', 'cron_shipment_date', 'tracking_id', 'shipment_status', 'created_at'],
+          required: false
+        }
+      ];
+
+      // Add trade_with filter to user associations if needed
+      if (filters.trade_with && filters.trade_with.trim() !== '') {
+        const tradeWithPattern = `%${filters.trade_with}%`;
+        
+        // Update seller and buyer includes to include username search
+        includes[0].where = { username: { [Op.like]: tradeWithPattern } };
+        includes[1].where = { username: { [Op.like]: tradeWithPattern } };
+        
+        // Add OR condition to main where clause for trade_with
+        whereClause[Op.or] = [
+          ...(whereClause[Op.or] || []),
+          { '$sellerUser.username$': { [Op.like]: tradeWithPattern } },
+          { '$buyerUser.username$': { [Op.like]: tradeWithPattern } }
+        ];
+      }
+
+      // Get buy/sell cards with all required associations
       const buySellCards = await BuySellCard.findAll({
         where: whereClause,
+        include: includes,
+        attributes: [
+          'id', 'code', 'seller', 'buyer', 'main_card', 'trading_card_asking_price', 
+          'offer_amt_buyer', 'paid_amount', 'amount_paid_on', 'amount_pay_id', 
+          'amount_payer_id', 'amount_pay_status', 'buying_status', 'track_id', 
+          'shipped_on', 'buyer_rating', 'buyer_review', 'reviewed_on', 'seller_rating', 
+          'seller_review', 'reviewed_by_seller_on', 'is_received', 'received_on', 
+          'is_payment_received', 'payment_received_on', 'invalid_offer_count', 
+          'is_payment_init', 'payment_init_date', 'buy_offer_status_id', 
+          'products_offer_amount', 'shipment_amount', 'total_amount', 'created_at', 'updated_at'
+        ],
         order: [['id', 'DESC']],
         limit: limit,
         offset: offset
       });
+
+      // Transform the data according to requirements
+      const transformedBuySellCards = await Promise.all(buySellCards.map(async (card: any) => {
+        const cardData = card.toJSON();
+        
+        // Determine seller_name or buyer_name based on user role
+        let seller_name = null;
+        let buyer_name = null;
+        
+        if (cardData.sellerUser) {
+          seller_name = cardData.sellerUser.username || 
+            `${cardData.sellerUser.first_name || ''} ${cardData.sellerUser.last_name || ''}`.trim();
+        }
+        
+        if (cardData.buyerUser) {
+          buyer_name = cardData.buyerUser.username || 
+            `${cardData.buyerUser.first_name || ''} ${cardData.buyerUser.last_name || ''}`.trim();
+        }
+
+        // Format shipment details
+        const shipmentDetail = cardData.shipmentDetails && cardData.shipmentDetails.length > 0 
+          ? cardData.shipmentDetails.map((shipment: any) => ({
+              id: shipment.id,
+              estimated_delivery_date: shipment.estimated_delivery_date 
+                ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) 
+                : shipment.cron_shipment_date 
+                  ? UserService.formatDateToMMDDYY(shipment.cron_shipment_date)
+                  : shipment.created_at 
+                    ? UserService.formatDateToMMDDYY(shipment.created_at)
+                    : null,
+              tracking_number: shipment.tracking_id,
+              status: shipment.shipment_status
+            }))
+          : [];
+
+        // Get category name if trading card exists
+        let category_name = null;
+        if (cardData.tradingCard && cardData.tradingCard.category_id) {
+          try {
+            const category = await Category.findByPk(cardData.tradingCard.category_id);
+            category_name = category ? category.sport_name : null;
+          } catch (error) {
+            console.error('Error fetching category:', error);
+            category_name = null;
+          }
+        }
+
+        return {
+          id: cardData.id,
+          code: cardData.code,
+          seller: cardData.seller,
+          buyer: cardData.buyer,
+          seller_name: seller_name,
+          buyer_name: buyer_name,
+          trading_card_asking_price: cardData.trading_card_asking_price,
+          offer_amt_buyer: cardData.offer_amt_buyer,
+          paid_amount: cardData.paid_amount,
+          amount_paid_on: cardData.amount_paid_on ? UserService.formatDateToMMDDYY(cardData.amount_paid_on) : null,
+          buying_status: cardData.buying_status,
+          track_id: cardData.track_id,
+          shipped_on: cardData.shipped_on,
+          is_received: cardData.is_received,
+          received_on: cardData.received_on,
+          is_payment_received: cardData.is_payment_received,
+          payment_received_on: cardData.payment_received_on,
+          created_at: UserService.formatDateToMMDDYY(cardData.created_at),
+          updated_at: cardData.updated_at,
+          buy_offer_status_id: cardData.buy_offer_status_id,
+          buy_offer_status: cardData.buyOfferStatus ? {
+            id: cardData.buyOfferStatus.id,
+            to_sender: cardData.buyOfferStatus.to_sender,
+            to_receiver: cardData.buyOfferStatus.to_receiver
+          } : null,
+          shipmentDetail: shipmentDetail,
+          tradingCard: cardData.tradingCard ? {
+            id: cardData.tradingCard.id,
+            trading_card_img: cardData.tradingCard.trading_card_img,
+            trading_card_slug: cardData.tradingCard.trading_card_slug,
+            trading_card_asking_price: cardData.tradingCard.trading_card_asking_price,
+            search_param: cardData.tradingCard.search_param,
+            category_name: category_name
+          } : null,
+          payment_detail: {
+            products_offer_amount: cardData.products_offer_amount || 0,
+            shipment_amount: cardData.shipment_amount || 0,
+            total_amount: cardData.total_amount || 0,
+            paid_amount: cardData.paid_amount || 0,
+            amount_paid_on: cardData.amount_paid_on ? UserService.formatDateToMMDDYY(cardData.amount_paid_on) : null
+          },
+          // Ratings array with both seller and buyer ratings
+          ratings: [
+            {
+              "seller_rating": {
+                "username": seller_name,
+                "rating": cardData.seller_rating !== null && cardData.seller_rating !== undefined ? cardData.seller_rating : 0,
+                "review_date": cardData.reviewed_by_seller_on ? UserService.formatDateToMMDDYY(cardData.reviewed_by_seller_on) : "Not reviewed yet",
+                "review_comment": cardData.seller_review || "No review provided"
+              }
+            },
+            {
+              "buyer_rating": {
+                "username": buyer_name,
+                "rating": cardData.buyer_rating !== null && cardData.buyer_rating !== undefined ? cardData.buyer_rating : 0,
+                "review_date": cardData.reviewed_on ? UserService.formatDateToMMDDYY(cardData.reviewed_on) : "Not reviewed yet",
+                "review_comment": cardData.buyer_review || "No review provided"
+              }
+            }
+          ]
+        };
+      }));
 
       // Check if amount_paid_on is null for specific ID (buyer only)
       let amountPaidOn = false;
@@ -3244,7 +3593,6 @@ export class UserService {
             buyer: userId
           }
         });
-        // Check if amount_paid_on is null
         amountPaidOn = specificCard ? !specificCard.amount_paid_on : false;
       }
 
@@ -3256,18 +3604,18 @@ export class UserService {
       return {
         success: true,
         data: {
-          buySellCards,
+          buySellCards: transformedBuySellCards,
           requestData,
           amountPaidOn,
-          filterData,
-          pagination: {
-            currentPage: page,
-            perPage: perPage,
-            totalCount: totalCount,
-            totalPages: totalPages,
-            hasNextPage: hasNextPage,
-            hasPrevPage: hasPrevPage
-          }
+          filterData
+        },
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
         }
       };
 
@@ -3277,6 +3625,1571 @@ export class UserService {
         success: false,
         error: {
           message: error.message || 'Failed to get bought and sold products'
+        }
+      };
+    }
+  }
+
+  // Get ongoing trades for authenticated user
+  static async getOngoingTrades(userId: number, filters: any = {}, page: number = 1, perPage: number = 5) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Build where clause - exclude cancelled, declined, counter_declined, complete
+      let whereClause: any = {
+        trade_status: { [Op.notIn]: ['cancel', 'declined', 'counter_declined', 'complete'] },
+        [Op.or]: [
+          { trade_sent_by: userId },
+          { trade_sent_to: userId }
+        ]
+      };
+
+      const filterData: any = {};
+
+      // Handle filter parameter (partially_completed vs ongoing) - Laravel logic
+      if (filters.filter === 'partially_completed') {
+        // Show trades where user has confirmed but other party hasn't
+        whereClause[Op.and] = [
+          {
+            [Op.or]: [
+              { trade_sent_by: userId },
+              { trade_sent_to: userId }
+            ]
+          },
+          {
+            [Op.or]: [
+              {
+                trade_sent_by: userId,
+                trade_sender_confrimation: 1
+              },
+              {
+                trade_sent_to: userId,
+                receiver_confirmation: 1
+              }
+            ]
+          }
+        ];
+        delete whereClause[Op.or]; // Remove the base OR condition
+        filterData.filter = 'partially_completed';
+      } else {
+        // Default: show ongoing trades where user hasn't confirmed
+        whereClause[Op.and] = [
+          {
+            [Op.or]: [
+              { trade_sent_by: userId },
+              { trade_sent_to: userId }
+            ]
+          },
+          {
+            [Op.or]: [
+              {
+                trade_sent_by: userId,
+                trade_sender_confrimation: { [Op.ne]: 1 }
+              },
+              {
+                trade_sent_to: userId,
+                receiver_confirmation: { [Op.ne]: 1 }
+              }
+            ]
+          }
+        ];
+        delete whereClause[Op.or]; // Remove the base OR condition
+      }
+
+      // Handle specific ID filter
+      if (filters.id && filters.id > 0) {
+        whereClause.id = filters.id;
+      }
+
+      // Handle trade_with filter (username search) - Laravel logic
+      if (filters.trade_with && filters.trade_with.trim() !== '') {
+        filterData.trade_with = filters.trade_with;
+        // This will be handled in the includes section below
+      }
+
+      // Handle code filter
+      if (filters.code && filters.code.trim() !== '') {
+        whereClause.code = { [Op.like]: `%${filters.code}%` };
+        filterData.code = filters.code;
+      }
+
+      // Handle trade_type filter
+      if (filters.trade_type === 'sent') {
+        whereClause.trade_sent_by = userId;
+        filterData.trade_type = 'sent';
+      } else if (filters.trade_type === 'received') {
+        whereClause.trade_sent_to = userId;
+        filterData.trade_type = 'received';
+      }
+
+      // Handle status_id filter
+      if (filters.status_id && filters.status_id > 0) {
+        whereClause.trade_proposal_status_id = filters.status_id;
+        filterData.status_id = filters.status_id;
+      }
+
+      // Handle date filters
+      if (filters.from_date && filters.from_date.trim() !== '') {
+        try {
+          const fromDate = new Date(filters.from_date);
+          if (!isNaN(fromDate.getTime())) {
+            whereClause.created_at = { [Op.gte]: fromDate };
+            filterData.from_date = filters.from_date;
+          }
+        } catch (error) {
+          console.error('Invalid from_date format:', filters.from_date);
+        }
+      }
+
+      if (filters.to_date && filters.to_date.trim() !== '') {
+        try {
+          const toDate = new Date(filters.to_date);
+          if (!isNaN(toDate.getTime())) {
+            if (whereClause.created_at) {
+              whereClause.created_at[Op.lte] = toDate;
+            } else {
+              whereClause.created_at = { [Op.lte]: toDate };
+            }
+            filterData.to_date = filters.to_date;
+          }
+        } catch (error) {
+          console.error('Invalid to_date format:', filters.to_date);
+        }
+      }
+
+      // Calculate pagination
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const totalCount = await TradeProposal.count({
+        where: whereClause
+      });
+
+      // Prepare includes - Laravel logic
+      const includes: any[] = [
+        {
+          model: User,
+          as: 'tradeSender',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'tradeReceiver',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        },
+        {
+          model: TradingCard,
+          as: 'mainTradingCard',
+          attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price'],
+          required: false
+        },
+        {
+          model: TradeProposalStatus,
+          as: 'tradeProposalStatus',
+          attributes: ['id', 'alias', 'name', 'to_sender', 'to_receiver'],
+          required: false
+        },
+        {
+          model: Shipment,
+          as: 'shipmenttrader',
+          attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id'],
+          required: false
+        },
+        {
+          model: Shipment,
+          as: 'shipmentself',
+          attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id'],
+          required: false
+        }
+      ];
+
+      // Handle trade_with filter - Laravel logic (search in receiver username)
+      if (filters.trade_with && filters.trade_with.trim() !== '') {
+        const tradeWithPattern = `%${filters.trade_with}%`;
+        
+        // Add whereHas condition for tradeReceiver username search
+        includes[1].where = { username: { [Op.like]: tradeWithPattern } };
+        includes[1].required = true;
+      }
+
+      // Get ongoing trades with all required associations
+      const ongoingTrades = await TradeProposal.findAll({
+        where: whereClause,
+        include: includes,
+        order: [['id', 'DESC']],
+        limit: limit,
+        offset: offset
+      });
+
+      // Transform the data according to requirements
+      const transformedOngoingTrades = await Promise.all(ongoingTrades.map(async (trade: any) => {
+        const tradeData = trade.toJSON();
+        
+        // Determine sender_name and receiver_name
+        let sender_name = null;
+        let receiver_name = null;
+        
+        if (tradeData.tradeSender) {
+          sender_name = tradeData.tradeSender.username || 
+            `${tradeData.tradeSender.first_name || ''} ${tradeData.tradeSender.last_name || ''}`.trim();
+        }
+        
+        if (tradeData.tradeReceiver) {
+          receiver_name = tradeData.tradeReceiver.username || 
+            `${tradeData.tradeReceiver.first_name || ''} ${tradeData.tradeReceiver.last_name || ''}`.trim();
+        }
+
+        // Get trading card details for send_cards and receive_cards
+        const sendCardsDetails = await UserService.getTradingCardDetails(tradeData.send_cards);
+        const receiveCardsDetails = await UserService.getTradingCardDetails(tradeData.receive_cards);
+
+        // Debug: Log shipment data to help identify the issue
+        console.log('=== DEBUG SHIPMENT DATA ===');
+        console.log('Trade ID:', tradeData.id, 'Code:', tradeData.code);
+        console.log('Shipmenttrader:', tradeData.shipmenttrader);
+        console.log('Shipmentself:', tradeData.shipmentself);
+        console.log('=== END DEBUG ===');
+
+        return {
+          id: tradeData.id,
+          code: tradeData.code,
+          trade_sent_by: tradeData.trade_sent_by,
+          trade_sent_to: tradeData.trade_sent_to,
+          sender_name: sender_name,
+          receiver_name: receiver_name,
+          main_card: tradeData.main_card,
+          send_cards: receiveCardsDetails,
+          receive_cards: sendCardsDetails,
+          add_cash: tradeData.add_cash,
+          ask_cash: tradeData.ask_cash,
+          trade_amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
+          trade_amount_pay_id: tradeData.trade_amount_pay_id,
+          trade_amount_payer_id: tradeData.trade_amount_payer_id,
+          trade_amount_amount: tradeData.trade_amount_amount,
+          trade_amount_pay_status: tradeData.trade_amount_pay_status,
+          message: tradeData.message,
+          counter_personalized_message: tradeData.counter_personalized_message,
+          counter_offer: tradeData.counter_offer,
+          is_new: tradeData.is_new,
+          trade_status: tradeData.trade_status,
+          accepted_on: tradeData.accepted_on ? UserService.formatDateToMMDDYY(tradeData.accepted_on) : null,
+          is_payment_received: tradeData.is_payment_received,
+          payment_received_on: tradeData.payment_received_on ? UserService.formatDateToMMDDYY(tradeData.payment_received_on) : null,
+          shipped_by_trade_sent_by: tradeData.shipped_by_trade_sent_by,
+          shipped_on_by_trade_sent_by: tradeData.shipped_on_by_trade_sent_by ? UserService.formatDateToMMDDYY(tradeData.shipped_on_by_trade_sent_by) : null,
+          shipped_by_trade_sent_to: tradeData.shipped_by_trade_sent_to,
+          shipped_on_by_trade_sent_to: tradeData.shipped_on_by_trade_sent_to ? UserService.formatDateToMMDDYY(tradeData.shipped_on_by_trade_sent_to) : null,
+          is_payment_init: tradeData.is_payment_init,
+          payment_init_date: tradeData.payment_init_date ? UserService.formatDateToMMDDYY(tradeData.payment_init_date) : null,
+          trade_proposal_status_id: tradeData.trade_proposal_status_id,
+          receiver_confirmation: tradeData.receiver_confirmation,
+          trade_sender_confrimation: tradeData.trade_sender_confrimation,
+          created_at: UserService.formatDateToMMDDYY(tradeData.created_at),
+          updated_at: tradeData.updated_at,
+          mainTradingCard: tradeData.mainTradingCard ? {
+            id: tradeData.mainTradingCard.id,
+            trading_card_img: tradeData.mainTradingCard.trading_card_img,
+            trading_card_slug: tradeData.mainTradingCard.trading_card_slug,
+            trading_card_asking_price: tradeData.mainTradingCard.trading_card_asking_price
+          } : null,
+          tradeProposalStatus: tradeData.tradeProposalStatus ? {
+            id: tradeData.tradeProposalStatus.id,
+            alias: tradeData.tradeProposalStatus.alias,
+            name: tradeData.tradeProposalStatus.name,
+            to_sender: tradeData.tradeProposalStatus.to_sender,
+            to_receiver: tradeData.tradeProposalStatus.to_receiver
+          } : null,
+          // Shipment data - Laravel structure
+          // Filter shipments by user_id to distinguish between trader and self shipments
+          shipmenttrader: tradeData.shipmenttrader && tradeData.shipmenttrader.length > 0 ? 
+            tradeData.shipmenttrader.filter((shipment: any) => shipment.user_id !== userId).map((shipment: any) => ({
+              id: shipment.id,
+              tracking_id: shipment.tracking_id,
+              shipment_status: shipment.shipment_status,
+              estimated_delivery_date: shipment.estimated_delivery_date ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) : null
+            }))[0] || null : null,
+          shipmentself: tradeData.shipmentself && tradeData.shipmentself.length > 0 ? 
+            tradeData.shipmentself.filter((shipment: any) => shipment.user_id === userId).map((shipment: any) => ({
+              id: shipment.id,
+              tracking_id: shipment.tracking_id || null,
+              shipment_status: shipment.shipment_status,
+              estimated_delivery_date: shipment.estimated_delivery_date ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) : (shipment.cron_shipment_date ? UserService.formatDateToMMDDYY(shipment.cron_shipment_date) : null)
+            }))[0] || null : null,
+          // Direct tracking IDs for easier access (from filtered shipments)
+          tracking_id_self: tradeData.shipmentself && tradeData.shipmentself.length > 0 ? 
+            tradeData.shipmentself.filter((shipment: any) => shipment.user_id === userId)[0]?.tracking_id || null : null,
+          // Combined tracking ID (prefer trader, fallback to self)
+          tracking_id: tradeData.shipmenttrader && tradeData.shipmenttrader.length > 0 ? 
+            (tradeData.shipmenttrader.filter((shipment: any) => shipment.user_id !== userId)[0]?.tracking_id || 
+             tradeData.shipmentself.filter((shipment: any) => shipment.user_id === userId)[0]?.tracking_id || null) : null,
+          // Shipment status indicators
+          has_shipment_trader: tradeData.shipmenttrader && tradeData.shipmenttrader.length > 0 && 
+                               tradeData.shipmenttrader.some((shipment: any) => shipment.user_id !== userId),
+          has_shipment_self: tradeData.shipmentself && tradeData.shipmentself.length > 0 && 
+                             tradeData.shipmentself.some((shipment: any) => shipment.user_id === userId),
+          has_any_shipment: (tradeData.shipmenttrader && tradeData.shipmenttrader.length > 0 && 
+                             tradeData.shipmenttrader.some((shipment: any) => shipment.user_id !== userId)) || 
+                            (tradeData.shipmentself && tradeData.shipmentself.length > 0 && 
+                             tradeData.shipmentself.some((shipment: any) => shipment.user_id === userId)),
+          // Shipment status message
+          shipment_status_message: (tradeData.shipmenttrader && tradeData.shipmenttrader.length > 0) || (tradeData.shipmentself && tradeData.shipmentself.length > 0) 
+            ? "Shipment information available" 
+            : (tradeData.trade_sender_track_id || tradeData.trade_receiver_track_id || tradeData.admin_sender_track_id || tradeData.admin_receiver_track_id)
+            ? "Tracking information available from trade proposal"
+            : "Shipment pending - tracking information will be available once shipment is initiated",
+          // Payment details for ongoing trades
+          payment_detail: {
+            products_offer_amount: tradeData.add_cash || 0,
+            shipment_amount: tradeData.proxy_fee_amt || 0,
+            total_amount: (tradeData.add_cash || 0) + (tradeData.proxy_fee_amt || 0),
+            paid_amount: tradeData.trade_amount_amount ? parseFloat(tradeData.trade_amount_amount) : 0,
+            amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null
+          }
+        };
+      }));
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          ongoing_trades: transformedOngoingTrades,
+          buy_sel_cards: [], // Empty array as per Laravel
+          filterData,
+          trade_id: filters.id || 0
+        },
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting ongoing trades:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get ongoing trades'
+        }
+      };
+    }
+  }
+
+  // Get cancelled trades for authenticated user
+  static async getCancelledTrades(userId: number, filters: any = {}, page: number = 1, perPage: number = 5) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Build where clause - include declined, cancel, counter_declined
+      let whereClause: any = {
+        trade_status: { [Op.in]: ['declined', 'cancel', 'counter_declined'] },
+        [Op.or]: [
+          { trade_sent_by: userId },
+          { trade_sent_to: userId }
+        ]
+      };
+
+      const filterData: any = {};
+
+      // Handle specific ID filter
+      if (filters.id && filters.id > 0) {
+        whereClause.id = filters.id;
+      }
+
+      // Handle trade_with filter (username search) - Laravel logic
+      if (filters.trade_with && filters.trade_with.trim() !== '') {
+        filterData.trade_with = filters.trade_with;
+        // This will be handled in the includes section below
+      }
+
+      // Handle code filter
+      if (filters.code && filters.code.trim() !== '') {
+        whereClause.code = { [Op.like]: `%${filters.code}%` };
+        filterData.code = filters.code;
+      }
+
+      // Handle trade_type filter
+      if (filters.trade_type === 'sent') {
+        whereClause.trade_sent_by = userId;
+        filterData.trade_type = 'sent';
+      } else if (filters.trade_type === 'received') {
+        whereClause.trade_sent_to = userId;
+        filterData.trade_type = 'received';
+      }
+
+      // Handle date filters
+      if (filters.from_date && filters.from_date.trim() !== '') {
+        try {
+          const fromDate = new Date(filters.from_date);
+          whereClause.created_at = { [Op.gte]: fromDate };
+          filterData.from_date = filters.from_date;
+        } catch (error) {
+          console.error('Invalid from_date format:', filters.from_date);
+        }
+      }
+
+      if (filters.to_date && filters.to_date.trim() !== '') {
+        try {
+          const toDate = new Date(filters.to_date);
+          toDate.setHours(23, 59, 59, 999); // End of day
+          if (whereClause.created_at) {
+            whereClause.created_at[Op.lte] = toDate;
+          } else {
+            whereClause.created_at = { [Op.lte]: toDate };
+          }
+          filterData.to_date = filters.to_date;
+        } catch (error) {
+          console.error('Invalid to_date format:', filters.to_date);
+        }
+      }
+
+      // Calculate pagination
+      const limit = perPage;
+      const offset = (page - 1) * perPage;
+
+      // Get total count for pagination
+      const totalCount = await TradeProposal.count({
+        where: whereClause
+      });
+
+      // Build includes array
+      const includes: any[] = [
+        {
+          model: User,
+          as: 'tradeSender',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'tradeReceiver',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        },
+        {
+          model: TradingCard,
+          as: 'mainTradingCard',
+          attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price'],
+          required: false
+        },
+        {
+          model: TradeProposalStatus,
+          as: 'tradeProposalStatus',
+          attributes: ['id', 'alias', 'name', 'to_sender', 'to_receiver'],
+          required: false
+        }
+      ];
+
+      // Handle trade_with filter - Laravel logic (search in receiver username)
+      if (filters.trade_with && filters.trade_with.trim() !== '') {
+        const tradeWithPattern = `%${filters.trade_with}%`;
+        
+        // Add whereHas condition for tradeReceiver username search
+        includes[1].where = { username: { [Op.like]: tradeWithPattern } };
+        includes[1].required = true;
+      }
+
+      // Get cancelled trades with all required associations
+      const cancelledTrades = await TradeProposal.findAll({
+        where: whereClause,
+        include: includes,
+        order: [['id', 'DESC']],
+        limit: limit,
+        offset: offset
+      });
+
+      // Transform the data according to requirements
+      const transformedCancelledTrades = await Promise.all(cancelledTrades.map(async (trade: any) => {
+        const tradeData = trade.toJSON();
+        
+        // Determine sender_name and receiver_name
+        let sender_name = null;
+        let receiver_name = null;
+        
+        if (tradeData.tradeSender) {
+          sender_name = tradeData.tradeSender.username || 
+            `${tradeData.tradeSender.first_name || ''} ${tradeData.tradeSender.last_name || ''}`.trim();
+        }
+        
+        if (tradeData.tradeReceiver) {
+          receiver_name = tradeData.tradeReceiver.username || 
+            `${tradeData.tradeReceiver.first_name || ''} ${tradeData.tradeReceiver.last_name || ''}`.trim();
+        }
+
+        // Get trading card details for send_cards and receive_cards
+        const sendCardsDetails = await UserService.getTradingCardDetails(tradeData.send_cards);
+        const receiveCardsDetails = await UserService.getTradingCardDetails(tradeData.receive_cards);
+
+        return {
+          id: tradeData.id,
+          code: tradeData.code,
+          trade_sent_by: tradeData.trade_sent_by,
+          trade_sent_to: tradeData.trade_sent_to,
+          sender_name: sender_name,
+          receiver_name: receiver_name,
+          main_card: tradeData.main_card,
+          send_cards: receiveCardsDetails,
+          receive_cards: sendCardsDetails,
+          add_cash: tradeData.add_cash,
+          ask_cash: tradeData.ask_cash,
+          trade_amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
+          trade_amount_pay_id: tradeData.trade_amount_pay_id,
+          trade_amount_payer_id: tradeData.trade_amount_payer_id,
+          trade_amount_amount: tradeData.trade_amount_amount,
+          trade_amount_pay_status: tradeData.trade_amount_pay_status,
+          message: tradeData.message,
+          counter_personalized_message: tradeData.counter_personalized_message,
+          counter_offer: tradeData.counter_offer,
+          is_new: tradeData.is_new,
+          trade_status: tradeData.trade_status,
+          accepted_on: tradeData.accepted_on ? UserService.formatDateToMMDDYY(tradeData.accepted_on) : null,
+          is_payment_received: tradeData.is_payment_received,
+          payment_received_on: tradeData.payment_received_on ? UserService.formatDateToMMDDYY(tradeData.payment_received_on) : null,
+          shipped_by_trade_sent_by: tradeData.shipped_by_trade_sent_by,
+          shipped_on_by_trade_sent_by: tradeData.shipped_on_by_trade_sent_by ? UserService.formatDateToMMDDYY(tradeData.shipped_on_by_trade_sent_by) : null,
+          shipped_by_trade_sent_to: tradeData.shipped_by_trade_sent_to,
+          shipped_on_by_trade_sent_to: tradeData.shipped_on_by_trade_sent_to ? UserService.formatDateToMMDDYY(tradeData.shipped_on_by_trade_sent_to) : null,
+          is_payment_init: tradeData.is_payment_init,
+          payment_init_date: tradeData.payment_init_date ? UserService.formatDateToMMDDYY(tradeData.payment_init_date) : null,
+          trade_proposal_status_id: tradeData.trade_proposal_status_id,
+          created_at: UserService.formatDateToMMDDYY(tradeData.created_at),
+          updated_at: tradeData.updated_at,
+          mainTradingCard: tradeData.mainTradingCard ? {
+            id: tradeData.mainTradingCard.id,
+            trading_card_img: tradeData.mainTradingCard.trading_card_img,
+            trading_card_slug: tradeData.mainTradingCard.trading_card_slug,
+            trading_card_asking_price: tradeData.mainTradingCard.trading_card_asking_price
+          } : null,
+          tradeProposalStatus: tradeData.tradeProposalStatus ? {
+            id: tradeData.tradeProposalStatus.id,
+            alias: tradeData.tradeProposalStatus.alias,
+            name: tradeData.tradeProposalStatus.name,
+            to_sender: tradeData.tradeProposalStatus.to_sender,
+            to_receiver: tradeData.tradeProposalStatus.to_receiver
+          } : null,
+          // Payment details for cancelled trades
+          payment_detail: {
+            products_offer_amount: tradeData.add_cash || 0,
+            shipment_amount: tradeData.proxy_fee_amt || 0,
+            total_amount: (tradeData.add_cash || 0) + (tradeData.proxy_fee_amt || 0),
+            paid_amount: tradeData.trade_amount_amount ? parseFloat(tradeData.trade_amount_amount) : 0,
+            amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null
+          }
+        };
+      }));
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          cancelled_trades: transformedCancelledTrades,
+          filterData,
+          trade_id: filters.id || 0
+        },
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting cancelled trades:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get cancelled trades'
+        }
+      };
+    }
+  }
+
+  // Get notifications list for authenticated user
+  static async getNotifications(userId: number, page: number = 1, perPage: number = 10) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Calculate pagination
+      const limit = perPage;
+      const offset = (page - 1) * perPage;
+
+      // Get total count for pagination
+      const totalCount = await TradeNotification.count({
+        where: {
+          notification_sent_to: userId
+        }
+      });
+
+      // Get notifications with sender information
+      const notifications = await TradeNotification.findAll({
+        where: {
+          notification_sent_to: userId
+        },
+        include: [{
+          model: User,
+          as: 'sender',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        }],
+        order: [['created_at', 'DESC']],
+        limit: limit,
+        offset: offset
+      });
+
+      // Transform the data according to requirements
+      const transformedNotifications = notifications.map((notification: any) => {
+        const notificationData = notification.toJSON();
+        
+        // Determine received_from name
+        let received_from = null;
+        if (notificationData.sender) {
+          received_from = notificationData.sender.username || 
+            `${notificationData.sender.first_name || ''} ${notificationData.sender.last_name || ''}`.trim();
+        }
+
+        return {
+          id: notificationData.id,
+          title: notificationData.message || 'Trade Notification', // Use message as title
+          received_from: received_from,
+          received_on: notificationData.created_at ? UserService.formatDateToMMDDYY(notificationData.created_at) : null,
+          received_on_date: notificationData.created_at,
+          seen_date: notificationData.seen ? (notificationData.updated_at ? UserService.formatDateToMMDDYY(notificationData.updated_at) : null) : null,
+          trade_proposal_id: notificationData.trade_proposal_id,
+          buy_sell_card_id: notificationData.buy_sell_card_id
+        };
+      });
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: transformedNotifications,
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting notifications:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get notifications'
+        }
+      };
+    }
+  }
+
+  // Helper function to parse card IDs and fetch trading card details
+  private static async getTradingCardDetails(cardIdsString: string | null): Promise<any[]> {
+    if (!cardIdsString || cardIdsString.trim() === '') {
+      return [];
+    }
+
+    try {
+      let cardIds: number[] = [];
+
+      // Try to parse as JSON first
+      try {
+        const parsed = JSON.parse(cardIdsString);
+        if (Array.isArray(parsed)) {
+          cardIds = parsed.filter(id => typeof id === 'number' && !isNaN(id));
+        }
+      } catch (jsonError) {
+        // Not JSON format, continue to other formats
+      }
+
+      // If JSON parsing failed, try comma-separated values
+      if (cardIds.length === 0) {
+        const commaSeparated = cardIdsString.split(',').map(id => {
+          const num = parseInt(id.trim());
+          return isNaN(num) ? null : num;
+        }).filter(id => id !== null);
+        
+        if (commaSeparated.length > 0) {
+          cardIds = commaSeparated as number[];
+        }
+      }
+
+      // If still no valid IDs, try space-separated
+      if (cardIds.length === 0) {
+        const spaceSeparated = cardIdsString.split(' ').map(id => {
+          const num = parseInt(id.trim());
+          return isNaN(num) ? null : num;
+        }).filter(id => id !== null);
+        
+        if (spaceSeparated.length > 0) {
+          cardIds = spaceSeparated as number[];
+        }
+      }
+
+      // If still no valid IDs, try semicolon-separated
+      if (cardIds.length === 0) {
+        const semicolonSeparated = cardIdsString.split(';').map(id => {
+          const num = parseInt(id.trim());
+          return isNaN(num) ? null : num;
+        }).filter(id => id !== null);
+        
+        if (semicolonSeparated.length > 0) {
+          cardIds = semicolonSeparated as number[];
+        }
+      }
+
+      // If still no valid IDs, try pipe-separated
+      if (cardIds.length === 0) {
+        const pipeSeparated = cardIdsString.split('|').map(id => {
+          const num = parseInt(id.trim());
+          return isNaN(num) ? null : num;
+        }).filter(id => id !== null);
+        
+        if (pipeSeparated.length > 0) {
+          cardIds = pipeSeparated as number[];
+        }
+      }
+
+      if (cardIds.length === 0) {
+        return [];
+      }
+
+      // Fetch trading card details
+      const tradingCards = await TradingCard.findAll({
+        where: {
+          id: { [Op.in]: cardIds }
+        },
+        attributes: [
+          'id', 
+          'card_name', 
+          'trading_card_img', 
+          'trading_card_slug', 
+          'trading_card_asking_price',
+          'trading_card_estimated_value',
+          'trading_card_status',
+          'code',
+          'search_param',
+          'category_id'
+        ]
+      });
+
+      // Transform cards with category names
+      const cardsWithCategories = await Promise.all(tradingCards.map(async (card) => {
+        let category_name = null;
+        if (card.category_id) {
+          try {
+            const category = await Category.findByPk(card.category_id);
+            category_name = category ? category.sport_name : null;
+          } catch (error) {
+            console.error('Error fetching category for card:', card.id, error);
+            category_name = null;
+          }
+        }
+
+        return {
+          id: card.id,
+          name: card.card_name,
+          image: card.trading_card_img,
+          slug: card.trading_card_slug,
+          asking_price: card.trading_card_asking_price,
+          trading_card_estimated_value: card.trading_card_estimated_value,
+          status: card.trading_card_status,
+          code: card.code,
+          search_param: card.search_param,
+          category_name: category_name
+        };
+      }));
+
+      return cardsWithCategories;
+    } catch (error) {
+      console.error('Error parsing card IDs:', error);
+      return [];
+    }
+  }
+
+  // Get completed trades for authenticated user
+  static async getCompletedTrades(userId: number, filters: any = {}, page: number = 1, perPage: number = 5) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Build base where clause - Laravel logic
+      let whereClause: any = {
+        [Op.or]: [
+          { trade_sent_by_key: userId },
+          { trade_sent_to_key: userId }
+        ]
+      };
+
+      const filterData: any = {};
+
+      // Handle specific ID filter
+      if (filters.id && filters.id > 0) {
+        whereClause.trade_proposal_id = filters.id;
+        // Check if trade transaction exists, if not redirect to ongoing trades
+        const tradeExists = await TradeTransaction.count({
+          where: { trade_proposal_id: filters.id }
+        });
+        if (tradeExists === 0) {
+          return {
+            success: false,
+            error: {
+              message: 'Trade transaction not found',
+              redirect: 'ongoing-trades'
+            }
+          };
+        }
+      }
+
+      // Handle trade_with filter (username search) - Laravel logic
+      if (filters.trade_with && filters.trade_with.trim() !== '') {
+        filterData.trade_with = filters.trade_with;
+      }
+
+      // Handle code filter
+      if (filters.code && filters.code.trim() !== '') {
+        whereClause.order_id = { [Op.like]: `%${filters.code}%` };
+        filterData.code = filters.code;
+      }
+
+      // Handle trade_type filter
+      if (filters.trade_type === 'sent') {
+        whereClause.trade_sent_by_key = userId;
+        filterData.trade_type = 'sent';
+      } else if (filters.trade_type === 'received') {
+        whereClause.trade_sent_to_key = userId;
+        filterData.trade_type = 'received';
+      }
+
+      // Handle date filters
+      if (filters.from_date && filters.from_date.trim() !== '') {
+        try {
+          const fromDate = new Date(filters.from_date);
+          if (!isNaN(fromDate.getTime())) {
+            whereClause.created_at = { [Op.gte]: fromDate };
+            filterData.from_date = filters.from_date;
+          }
+        } catch (error) {
+          console.error('Invalid from_date format:', filters.from_date);
+        }
+      }
+
+      if (filters.to_date && filters.to_date.trim() !== '') {
+        try {
+          const toDate = new Date(filters.to_date);
+          if (!isNaN(toDate.getTime())) {
+            if (whereClause.created_at) {
+              whereClause.created_at[Op.lte] = toDate;
+            } else {
+              whereClause.created_at = { [Op.lte]: toDate };
+            }
+            filterData.to_date = filters.to_date;
+          }
+        } catch (error) {
+          console.error('Invalid to_date format:', filters.to_date);
+        }
+      }
+
+      // Calculate pagination
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const totalCount = await TradeTransaction.count({
+        where: whereClause
+      });
+
+      // Prepare includes - Laravel logic
+      const includes: any[] = [
+        {
+          model: User,
+          as: 'tradeSender',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'tradeReceiver',
+          attributes: ['id', 'username', 'first_name', 'last_name'],
+          required: false
+        },
+        {
+          model: TradeProposal,
+          as: 'tradeProposal',
+          attributes: ['id', 'code', 'trade_status', 'trade_sender_confrimation', 'receiver_confirmation'],
+          required: false,
+          include: [
+            {
+              model: Shipment,
+              as: 'shipmenttrader',
+              attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date'],
+              required: false
+            },
+            {
+              model: Shipment,
+              as: 'shipmentself',
+              attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date'],
+              required: false
+            }
+          ]
+        }
+      ];
+
+      // Handle trade_with filter - Laravel logic (search in receiver username)
+      if (filters.trade_with && filters.trade_with.trim() !== '') {
+        const tradeWithPattern = `%${filters.trade_with}%`;
+        
+        // Add whereHas condition for tradeReceiver username search
+        includes[1].where = { username: { [Op.like]: tradeWithPattern } };
+        includes[1].required = true;
+      }
+
+      // Get completed trades with all required associations
+      const completedTrades = await TradeTransaction.findAll({
+        where: whereClause,
+        include: includes,
+        order: [['id', 'DESC']],
+        limit: limit,
+        offset: offset
+      });
+
+      // Get one-sided completed trades (Laravel logic)
+      const oneSidedCompletedTrades = await TradeProposal.findAll({
+        where: {
+          [Op.or]: [
+            {
+              trade_sent_by: userId,
+              trade_sender_confrimation: 1
+            },
+            {
+              trade_sent_to: userId,
+              receiver_confirmation: 1
+            }
+          ],
+          id: {
+            [Op.notIn]: await TradeTransaction.findAll({
+              attributes: ['trade_proposal_id'],
+              raw: true
+            }).then(results => results.map(r => r.trade_proposal_id).filter(id => id !== null && id !== undefined))
+          }
+        },
+        attributes: ['id', 'code', 'trade_sent_by', 'trade_sent_to', 'trade_status'],
+        limit: 10
+      });
+
+      // Get completed trades for search params (Laravel logic)
+      const completedTradesForSearch = await TradeProposal.findAll({
+        where: {
+          trade_status: 'complete',
+          [Op.or]: [
+            { trade_sent_by: userId },
+            { trade_sent_to: userId }
+          ]
+        },
+        attributes: ['id', 'code', 'trade_sent_by', 'trade_sent_to', 'send_cards', 'receive_cards'],
+        limit: 50
+      });
+
+      // Transform the data according to requirements
+      const transformedCompletedTrades = await Promise.all(completedTrades.map(async (trade: any) => {
+        const tradeData = trade.toJSON();
+        
+        // Determine sender_name and receiver_name
+        let sender_name = null;
+        let receiver_name = null;
+        
+        if (tradeData.tradeSender) {
+          sender_name = tradeData.tradeSender.username || 
+            `${tradeData.tradeSender.first_name || ''} ${tradeData.tradeSender.last_name || ''}`.trim();
+        }
+        
+        if (tradeData.tradeReceiver) {
+          receiver_name = tradeData.tradeReceiver.username || 
+            `${tradeData.tradeReceiver.first_name || ''} ${tradeData.tradeReceiver.last_name || ''}`.trim();
+        }
+
+        // Get trading card details for send_cards and receive_cards
+        const sendCardsDetails = await UserService.getTradingCardDetails(tradeData.send_cards);
+        const receiveCardsDetails = await UserService.getTradingCardDetails(tradeData.receive_cards);
+
+        // Get ratings for this trade (Laravel reference: sender_review_count_get)
+        const ratings = await UserService.getTradeRatings(tradeData.trade_proposal_id);
+        
+        // Debug: Log the raw data to help identify the issue
+        if (tradeData.send_cards || tradeData.receive_cards) {
+          console.log('=== DEBUG TRADE CARD DATA ===');
+          console.log('Trade ID:', tradeData.id);
+          console.log('Send cards raw:', tradeData.send_cards, 'Type:', typeof tradeData.send_cards);
+          console.log('Receive cards raw:', tradeData.receive_cards, 'Type:', typeof tradeData.receive_cards);
+          console.log('Send cards parsed:', sendCardsDetails);
+          console.log('Receive cards parsed:', receiveCardsDetails);
+          console.log('=== END DEBUG ===');
+        }
+
+        return {
+          id: tradeData.id,
+          code: tradeData.order_id, // Use order_id as code for completed trades
+          trade_sent_by: tradeData.trade_sent_by_key,
+          trade_sent_to: tradeData.trade_sent_to_key,
+          sender_name: sender_name,
+          receiver_name: receiver_name,
+          main_card: tradeData.main_card_id,
+          send_cards: sendCardsDetails,
+          receive_cards: receiveCardsDetails,
+          add_cash: tradeData.add_cash,
+          ask_cash: tradeData.ask_cash,
+          trade_amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
+          trade_amount_pay_id: tradeData.trade_amount_pay_id,
+          trade_amount_payer_id: tradeData.trade_amount_payer_id,
+          trade_amount_amount: tradeData.trade_amount_amount,
+          trade_amount_pay_status: tradeData.trade_amount_pay_status,
+          message: tradeData.message,
+          counter_personalized_message: tradeData.counter_personalized_message,
+          counter_offer: null, // Not applicable for completed trades
+          is_new: 0, // Completed trades are not new
+          trade_status: 'complete', // All completed trades have complete status
+          accepted_on: tradeData.trade_created_at ? UserService.formatDateToMMDDYY(tradeData.trade_created_at) : null,
+          is_payment_received: tradeData.trade_amount_pay_status === 'completed' ? 1 : 0,
+          payment_received_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
+          shipped_by_trade_sent_by: tradeData.confirmation_from_sender,
+          shipped_on_by_trade_sent_by: tradeData.confirmation_from_sender ? UserService.formatDateToMMDDYY(tradeData.created_at) : null,
+          shipped_by_trade_sent_to: tradeData.confirmation_from_receiver,
+          shipped_on_by_trade_sent_to: tradeData.confirmation_from_receiver ? UserService.formatDateToMMDDYY(tradeData.created_at) : null,
+          is_payment_init: tradeData.trade_amount_pay_status ? 1 : 0,
+          payment_init_date: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
+          trade_proposal_status_id: null, // Not applicable for completed trades
+          created_at: UserService.formatDateToMMDDYY(tradeData.created_at),
+          updated_at: tradeData.updated_at,
+          mainTradingCard: tradeData.main_card_id ? {
+            id: tradeData.main_card_id,
+            trading_card_img: null, // Would need to fetch from trading_cards table
+            trading_card_slug: null,
+            trading_card_asking_price: null
+          } : null,
+          // Payment details for completed trades
+          payment_detail: {
+            products_offer_amount: tradeData.add_cash || 0,
+            shipment_amount: tradeData.proxy_fee_amt || 0,
+            total_amount: (tradeData.add_cash || 0) + (tradeData.proxy_fee_amt || 0),
+            paid_amount: tradeData.trade_amount_amount || 0,
+            amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null
+          },
+          // Ratings for this trade
+          ratings: ratings
+        };
+      }));
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          ongoing_trades: transformedCompletedTrades, // Use same structure as ongoing trades
+          buy_sel_cards: [], // Empty array as per ongoing trades
+          filterData,
+          trade_id: filters.id || 0
+        },
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting completed trades:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get completed trades'
+        }
+      };
+    }
+  }
+
+  // Confirm payment for a trade proposal (Laravel reference implementation)
+  static async confirmPayment(userId: number, tradeProposalId: number) {
+    try {
+      // Validate inputs
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      if (!tradeProposalId || isNaN(tradeProposalId) || tradeProposalId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid trade proposal ID is required'
+          }
+        };
+      }
+
+      // Find the trade proposal
+      const tradeProposal = await TradeProposal.findByPk(tradeProposalId, {
+        include: [
+          {
+            model: TradeProposalStatus,
+            as: 'tradeProposalStatus'
+          }
+        ]
+      });
+
+      if (!tradeProposal) {
+        return {
+          success: false,
+          error: {
+            message: 'Trade proposal not found'
+          }
+        };
+      }
+
+      const tradeData = tradeProposal.toJSON();
+
+      // Check if user is authorized to confirm payment
+      if (tradeData.trade_sent_by !== userId && tradeData.trade_sent_to !== userId) {
+        return {
+          success: false,
+          error: {
+            message: 'You are not authorized to confirm payment for this trade'
+          }
+        };
+      }
+
+      // Update trade proposal with payment confirmation
+      await TradeProposal.update(
+        {
+          is_payment_received: 1,
+          payment_received_on: new Date()
+        },
+        {
+          where: { id: tradeProposalId }
+        }
+      );
+
+      // Update trade proposal status to 'payment-confirmed'
+      const paymentConfirmedStatus = await TradeProposalStatus.findOne({
+        where: { alias: 'payment-confirmed' }
+      });
+
+      if (paymentConfirmedStatus) {
+        await TradeProposal.update(
+          { trade_proposal_status_id: paymentConfirmedStatus.id },
+          { where: { id: tradeProposalId } }
+        );
+      }
+
+      // Get sender and receiver details
+      const sender = await User.findByPk(tradeData.trade_sent_by, {
+        attributes: ['id', 'first_name', 'last_name', 'email']
+      });
+      const receiver = await User.findByPk(tradeData.trade_sent_to, {
+        attributes: ['id', 'first_name', 'last_name', 'email']
+      });
+
+      // Get trading card details for notifications
+      const sendCardsIds = tradeData.send_cards ? tradeData.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const receiveCardsIds = tradeData.receive_cards ? tradeData.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+
+      const sendCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: sendCardsIds } },
+        attributes: ['search_param']
+      });
+
+      const receiveCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: receiveCardsIds } },
+        attributes: ['search_param']
+      });
+
+      // Create notification for payment confirmation
+      const notificationMessage = `Payment confirmed for trade #${tradeData.code}`;
+      
+      await TradeNotification.create({
+        notification_sent_by: userId,
+        notification_sent_to: userId === tradeData.trade_sent_by ? tradeData.trade_sent_to : tradeData.trade_sent_by,
+        message: notificationMessage,
+        trade_proposal_id: tradeProposalId
+      } as any);
+
+      return {
+        success: true,
+        data: {
+          message: 'Payment confirmation received',
+          trade_proposal_id: tradeProposalId,
+          trade_code: tradeData.code,
+          payment_confirmed_by: userId,
+          payment_confirmed_at: new Date(),
+          sender: sender ? {
+            id: sender.id,
+            name: `${sender.first_name || ''} ${sender.last_name || ''}`.trim(),
+            email: sender.email
+          } : null,
+          receiver: receiver ? {
+            id: receiver.id,
+            name: `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim(),
+            email: receiver.email
+          } : null,
+          send_cards: sendCards.map(card => card.search_param).filter(Boolean),
+          receive_cards: receiveCards.map(card => card.search_param).filter(Boolean),
+          trade_amount: tradeData.trade_amount_amount
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error confirming payment:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to confirm payment'
+        }
+      };
+    }
+  }
+
+  // Get my tickets (Laravel reference implementation)
+  static async getMyTickets(userId: number, page: number = 1, perPage: number = 10) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate pagination parameters
+      const validPage = Math.max(1, parseInt(page.toString()) || 1);
+      const validPerPage = Math.min(100, Math.max(1, parseInt(perPage.toString()) || 10));
+      const offset = (validPage - 1) * validPerPage;
+
+      // Laravel reference: DB::table('support')->where('user_id', auth()->user()->id)->orderBy('id', 'DESC')->paginate(10)
+      const { count: totalCount, rows: tickets } = await Support.findAndCountAll({
+        where: {
+          user_id: userId
+        },
+        order: [['id', 'DESC']],
+        limit: validPerPage,
+        offset: offset
+      });
+
+      // Transform tickets data
+      const transformedTickets = tickets.map((ticket: any) => {
+        const ticketData = ticket.toJSON();
+        return {
+          id: ticketData.id,
+          user_id: ticketData.user_id,
+          first_name: ticketData.first_name,
+          last_name: ticketData.last_name,
+          email: ticketData.email,
+          subject: ticketData.subject,
+          comment: ticketData.comment,
+          support_request_status: ticketData.support_request_status,
+          support_status: ticketData.support_status,
+          created_at: ticketData.created_at,
+          updated_at: ticketData.updated_at
+        };
+      });
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / validPerPage);
+      const hasNextPage = validPage < totalPages;
+      const hasPrevPage = validPage > 1;
+
+      return {
+        success: true,
+        data: {
+          tickets: transformedTickets,
+          pagination: {
+            currentPage: validPage,
+            perPage: validPerPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error getting my tickets:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to get tickets'
+        }
+      };
+    }
+  }
+
+  // Mark all notifications as read (Laravel reference implementation)
+  static async markAllNotificationsAsRead(userId: number) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Laravel reference: NotificationModel::where('notification_sent_to', Auth::user()->id)->update(['seen' => 1])
+      const updatedCount = await TradeNotification.update(
+        { seen: 1 },
+        {
+          where: {
+            notification_sent_to: userId
+          }
+        }
+      );
+
+      return {
+        success: true,
+        data: {
+          message: 'All notifications marked as read successfully',
+          updated_count: updatedCount[0], // Sequelize returns [affectedCount, affectedRows]
+          user_id: userId
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error marking all notifications as read:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to mark notifications as read'
+        }
+      };
+    }
+  }
+
+  // Submit rating for a trade proposal (Laravel reference implementation)
+  static async submitRating(userId: number, tradeId: number, rating: number, data: string) {
+    try {
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Validate tradeId
+      if (!tradeId || isNaN(tradeId) || tradeId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid trade ID is required'
+          }
+        };
+      }
+
+      // Validate rating (1-10)
+      if (!rating || isNaN(rating) || rating < 1 || rating > 10) {
+        return {
+          success: false,
+          error: {
+            message: 'Rating must be between 1 and 10'
+          }
+        };
+      }
+
+      // Find the trade proposal
+      const tradeProposal = await TradeProposal.findByPk(tradeId, {
+        attributes: ['id', 'main_card', 'trade_sent_by', 'trade_sent_to']
+      });
+
+      if (!tradeProposal) {
+        return {
+          success: false,
+          error: {
+            message: 'Trade proposal not found'
+          }
+        };
+      }
+
+      const tradeData = tradeProposal.toJSON();
+
+      // Check if user is authorized to rate this trade
+      const isSender = tradeData.trade_sent_by === userId;
+      const isReceiver = tradeData.trade_sent_to === userId;
+
+      if (!isSender && !isReceiver) {
+        return {
+          success: false,
+          error: {
+            message: 'You are not authorized to rate this trade'
+          }
+        };
+      }
+
+      // Find existing review
+      const existingReview = await Review.findOne({
+        where: {
+          trade_proposal_id: tradeId
+        }
+      });
+
+      let reviewRecord: any;
+      const normalizedRating = rating / 2; // Laravel divides by 2
+
+      if (existingReview) {
+        // Update existing review
+        if (isSender) {
+          const updateData: any = {
+            trader_id: userId,
+            trader_rating: normalizedRating,
+            trader_review: data,
+            trade_proposal_id: tradeId
+          };
+          if (tradeData.main_card) {
+            updateData.card_id = tradeData.main_card;
+          }
+          await Review.update(updateData, {
+            where: { id: existingReview.id }
+          });
+        } else {
+          const updateData: any = {
+            user_id: userId,
+            user_rating: normalizedRating,
+            user_review: data,
+            trade_proposal_id: tradeId
+          };
+          if (tradeData.main_card) {
+            updateData.card_id = tradeData.main_card;
+          }
+          await Review.update(updateData, {
+            where: { id: existingReview.id }
+          });
+        }
+        reviewRecord = await Review.findByPk(existingReview.id);
+      } else {
+        // Create new review
+        if (isSender) {
+          const createData: any = {
+            trader_id: userId,
+            trader_rating: normalizedRating,
+            trader_review: data,
+            trade_proposal_id: tradeId
+          };
+          if (tradeData.main_card) {
+            createData.card_id = tradeData.main_card;
+          }
+          reviewRecord = await Review.create(createData as any);
+        } else {
+          const createData: any = {
+            user_id: userId,
+            user_rating: normalizedRating,
+            user_review: data,
+            trade_proposal_id: tradeId
+          };
+          if (tradeData.main_card) {
+            createData.card_id = tradeData.main_card;
+          }
+          reviewRecord = await Review.create(createData as any);
+        }
+      }
+
+      // Create review collection record
+      const reviewCollectionRecord = await ReviewCollection.create({
+        review_id: reviewRecord.id,
+        user_id: isSender ? tradeData.trade_sent_to : tradeData.trade_sent_by,
+        sender_id: isSender ? tradeData.trade_sent_by : tradeData.trade_sent_to,
+        rating: normalizedRating,
+        content: data
+      } as any);
+
+      // TODO: Send notification (implement notification system)
+      // TODO: Send review email (implement email system)
+
+      return {
+        success: true,
+        data: {
+          message: 'Rating submitted successfully',
+          review_id: reviewRecord.id,
+          review_collection_id: reviewCollectionRecord.id,
+          trade_id: tradeId,
+          rating: normalizedRating,
+          review: data,
+          user_type: isSender ? 'sender' : 'receiver',
+          submitted_at: reviewRecord.created_at
+        }
+      };
+
+    } catch (error: any) {
+      console.error('Error submitting rating:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to submit rating'
         }
       };
     }

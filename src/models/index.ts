@@ -15,6 +15,14 @@ import { Shipment } from './shipment.model.js';
 import { Address } from './address.model.js';
 import { CategoryShippingRate } from './categoryShippingRates.model.js';
 import { BuySellCard } from './buySellCard.model.js';
+import { BuyOfferStatus } from './buyOfferStatus.model.js';
+import { TradeProposal } from './tradeProposal.model.js';
+import { TradeProposalStatus } from './tradeProposalStatus.model.js';
+import { TradeTransaction } from './tradeTransactions.model.js';
+import { TradeNotification } from './tradeNotification.model.js';
+import { ReviewCollection } from './reviewCollection.model.js';
+import { Review } from './reviews.model.js';
+import { Support } from './support.model.js';
 
 // Import all models here
 export const models = [
@@ -33,7 +41,15 @@ export const models = [
   Shipment,
   Address,
   CategoryShippingRate,
-  BuySellCard
+  BuySellCard,
+  BuyOfferStatus,
+  TradeProposal,
+  TradeProposalStatus,
+  TradeTransaction,
+  TradeNotification,
+  ReviewCollection,
+  Review,
+  Support
 ];
 
 // Function to set up all associations
@@ -214,6 +230,145 @@ export function setupAssociations() {
     foreignKey: 'main_card',
     as: 'buySellRecords'
   });
+
+  // BuyOfferStatus associations
+  BuySellCard.belongsTo(BuyOfferStatus, {
+    foreignKey: 'buy_offer_status_id',
+    as: 'buyOfferStatus'
+  });
+
+  BuyOfferStatus.hasMany(BuySellCard, {
+    foreignKey: 'buy_offer_status_id',
+    as: 'buySellCards'
+  });
+
+  // Shipment associations with BuySellCard
+  BuySellCard.hasMany(Shipment, {
+    foreignKey: 'buy_sell_id',
+    as: 'shipmentDetails'
+  });
+
+  Shipment.belongsTo(BuySellCard, {
+    foreignKey: 'buy_sell_id',
+    as: 'buySellCard'
+  });
+
+  // TradeProposal associations
+  TradeProposal.belongsTo(User, {
+    foreignKey: 'trade_sent_by',
+    as: 'tradeSender'
+  });
+
+  TradeProposal.belongsTo(User, {
+    foreignKey: 'trade_sent_to',
+    as: 'tradeReceiver'
+  });
+
+  TradeProposal.belongsTo(TradingCard, {
+    foreignKey: 'main_card',
+    as: 'mainTradingCard'
+  });
+
+  TradeProposal.belongsTo(TradeProposalStatus, {
+    foreignKey: 'trade_proposal_status_id',
+    as: 'tradeProposalStatus'
+  });
+
+  // User associations for TradeProposal
+  User.hasMany(TradeProposal, {
+    foreignKey: 'trade_sent_by',
+    as: 'sentTrades'
+  });
+
+  User.hasMany(TradeProposal, {
+    foreignKey: 'trade_sent_to',
+    as: 'receivedTrades'
+  });
+
+  // TradingCard associations for TradeProposal
+  TradingCard.hasMany(TradeProposal, {
+    foreignKey: 'main_card',
+    as: 'tradeProposals'
+  });
+
+  // TradeProposalStatus associations
+  TradeProposalStatus.hasMany(TradeProposal, {
+    foreignKey: 'trade_proposal_status_id',
+    as: 'tradeProposals'
+  });
+
+  // TradeProposal associations with Shipment
+  TradeProposal.hasMany(Shipment, {
+    foreignKey: 'trade_id',
+    as: 'shipmenttrader',
+    sourceKey: 'id',
+    scope: {
+      // This will be filtered in the service layer by user_id
+    }
+  });
+  TradeProposal.hasMany(Shipment, {
+    foreignKey: 'trade_id',
+    as: 'shipmentself',
+    sourceKey: 'id',
+    scope: {
+      // This will be filtered in the service layer by user_id
+    }
+  });
+  Shipment.belongsTo(TradeProposal, {
+    foreignKey: 'trade_id',
+    as: 'tradeProposal',
+    targetKey: 'id'
+  });
+
+  // TradeTransaction associations
+  TradeTransaction.belongsTo(User, {
+    foreignKey: 'trade_sent_by_key',
+    as: 'tradeSender'
+  });
+  TradeTransaction.belongsTo(User, {
+    foreignKey: 'trade_sent_to_key',
+    as: 'tradeReceiver'
+  });
+  TradeTransaction.belongsTo(TradeProposal, {
+    foreignKey: 'trade_proposal_id',
+    as: 'tradeProposal'
+  });
+  
+  // User associations for TradeTransaction
+  User.hasMany(TradeTransaction, {
+    foreignKey: 'trade_sent_by_key',
+    as: 'sentTradeTransactions'
+  });
+  User.hasMany(TradeTransaction, {
+    foreignKey: 'trade_sent_to_key',
+    as: 'receivedTradeTransactions'
+  });
+  
+  // TradeProposal associations for TradeTransaction
+  TradeProposal.hasMany(TradeTransaction, {
+    foreignKey: 'trade_proposal_id',
+    as: 'tradeTransactions'
+  });
+
+  // TradeNotification associations
+  TradeNotification.belongsTo(User, {
+    foreignKey: 'notification_sent_by',
+    as: 'sender'
+  });
+  TradeNotification.belongsTo(User, {
+    foreignKey: 'notification_sent_to',
+    as: 'receiver'
+  });
+  
+  // User associations for TradeNotification
+  User.hasMany(TradeNotification, {
+    foreignKey: 'notification_sent_by',
+    as: 'sentNotifications'
+  });
+  User.hasMany(TradeNotification, {
+    foreignKey: 'notification_sent_to',
+    as: 'receivedNotifications'
+  });
 }
 
 // Export all models for easy importing
@@ -233,5 +388,13 @@ export {
   Shipment,
   Address,
   CategoryShippingRate,
-  BuySellCard
+  BuySellCard,
+  BuyOfferStatus,
+  TradeProposal,
+  TradeProposalStatus,
+  TradeTransaction,
+  TradeNotification,
+  ReviewCollection,
+  Review,
+  Support
 };

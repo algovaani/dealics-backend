@@ -8,13 +8,13 @@ export class TradingCardService {
   // Get all trading cards EXCEPT user's own cards (for public listing)
   async getAllTradingCardsExceptOwn(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
     try {
-      // Validate and sanitize input parameters
-      const validPage = isNaN(page) || page < 1 ? 1 : page;
-      const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
-      const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
-      const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
-      
-      const offset = (validPage - 1) * validPerPage;
+    // Validate and sanitize input parameters
+    const validPage = isNaN(page) || page < 1 ? 1 : page;
+    const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
+    const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
+    const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+    
+    const offset = (validPage - 1) * validPerPage;
       
       // Build where clause - EXCLUDE user's own cards (match original structure)
       let whereClause = 'WHERE tc.mark_as_deleted IS NULL AND c.sport_status = 1 AND tc.is_demo=0 AND tc.is_traded!=1';
@@ -26,17 +26,17 @@ export class TradingCardService {
         whereClause += ` AND tc.trading_card_status = '1'`;
       }
       
-      if (validCategoryId) {
-        whereClause += ` AND tc.category_id = ${validCategoryId}`;
-      }
-      
+    if (validCategoryId) {
+      whereClause += ` AND tc.category_id = ${validCategoryId}`;
+    }
+    
       // Debug: Log the where clause
       console.log('getAllTradingCardsExceptOwn - Where clause:', whereClause);
       console.log('getAllTradingCardsExceptOwn - Parameters:', { validPage, validPerPage, validCategoryId, validLoggedInUserId });
 
       // Use raw SQL to get data with sport_name and interested_in status (match original structure)
       let interestedJoin = '';
-      if (validLoggedInUserId) {
+    if (validLoggedInUserId) {
         interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${validLoggedInUserId}`;
       } else {
         interestedJoin = 'LEFT JOIN interested_in ii ON 1=0'; // This will never match, so interested_in will always be false
@@ -212,6 +212,8 @@ export class TradingCardService {
     const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
     const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
     
+    console.log('🔍 getDeletedTradingCards - userId from JWT:', userId);
+    
     if (!userId || isNaN(userId) || userId <= 0) {
       throw new Error("Valid user ID is required");
     }
@@ -221,8 +223,8 @@ export class TradingCardService {
     // Base where clause for deleted cards
     let whereClause = 'WHERE tc.mark_as_deleted = 1 AND c.sport_status = 1 AND tc.is_demo=0';
     
-    // Filter by user (creator_id)
-    whereClause += ` AND tc.creator_id = ${userId}`;
+    // Filter by user (trader_id)
+    whereClause += ` AND tc.trader_id = ${userId}`;
     
     if (validCategoryId) {
       whereClause += ` AND tc.category_id = ${validCategoryId}`;
@@ -362,6 +364,14 @@ export class TradingCardService {
       mainCardId: cardImagesData.length > 0 ? (cardImagesData[0] as any)?.mainCardId || null : null,
       images: []
     };
+
+    // Add main trading card images to the images array first
+    if (tradingCard.trading_card_img) {
+      cardImages.images.push(tradingCard.trading_card_img);
+    }
+    if (tradingCard.trading_card_img_back) {
+      cardImages.images.push(tradingCard.trading_card_img_back);
+    }
 
     // Extract all non-null images from all card image records
     cardImagesData.forEach(cardImage => {
@@ -610,10 +620,20 @@ export class TradingCardService {
     };
   }
 
-   // Get TradingCards by Category ID
-  async getTradingCardsByCategoryId(categorySlug: string, loggedInUserId?: number) {
+   // Get TradingCards by Category ID with pagination
+  async getTradingCardsByCategoryId(categorySlug: string, loggedInUserId?: number, page: number = 1, perPage: number = 10) {
     const category = await Category.findOne({ where: { slug: categorySlug, sport_status: '1' } });
-    if (!category) return null;
+    if (!category) {
+      return {
+        success: false,
+        error: {
+          message: 'Category not found'
+        }
+      };
+    }
+
+    const offset = (page - 1) * perPage;
+    const limit = perPage;
 
     const haveItemSubQuery = Sequelize.literal(`(
       SELECT COUNT(1) FROM trading_cards AS tc_sub
@@ -627,6 +647,17 @@ export class TradingCardService {
         AND tc_sub.category_id = ${category.id}
       LIMIT 1
     )`);
+
+    // Get total count
+    const totalCount = await TradingCard.count({
+      where: {
+        category_id: category.id,
+        ...(loggedInUserId ? { trader_id: { [Op.ne]: loggedInUserId } } : {})
+      },
+      include: [
+        { model: User, attributes: ['id'], where: { user_status: '1' }, required: true }
+      ]
+    });
 
     const tradingCards = await TradingCard.findAll({
       where: {
@@ -643,11 +674,30 @@ export class TradingCardService {
         'trading_card_slug', 'trading_card_estimated_value', 'is_demo',
         [haveItemSubQuery, 'haveitem']
       ],
-      order: [['is_demo', 'ASC']]
-      // limit: 15
+      order: [['is_demo', 'ASC']],
+      limit: limit,
+      offset: offset
     });
 
-    return tradingCards;
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount / perPage);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    return {
+      success: true,
+      data: {
+        cards: tradingCards,
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          totalCount: totalCount,
+          totalPages: totalPages,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage
+        }
+      }
+    };
   }
 
   // Get authenticated user's trading cards for a category (by slug) with pagination
@@ -1006,9 +1056,9 @@ export class TradingCardService {
             );
           } else {
             masterData = await HelperService.getMasterDatas(
-              itemColumn.rel_master_table, 
-              categoryId
-            );
+            itemColumn.rel_master_table, 
+            categoryId
+          );
           }
           categoryFieldCollection[itemColumn.rel_master_table] = masterData;
         } else if (itemColumn.is_ajax_load === 1) {
@@ -1048,9 +1098,9 @@ export class TradingCardService {
               );
             } else {
               loopData = await HelperService.getMasterDatas(
-                itemColumn.rel_master_table, 
-                categoryId
-              );
+              itemColumn.rel_master_table, 
+              categoryId
+            );
             }
             
             console.log(`Raw data retrieved:`, loopData);
@@ -1133,18 +1183,51 @@ export class TradingCardService {
   }
 
   // Get all card conditions
-  async getAllCardConditions() {
+  async getAllCardConditions(page: number = 1, perPage: number = 10) {
     try {
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const totalCount = await CardCondition.count({
+        where: { card_condition_status: '1' }
+      });
+
       const cardConditions = await CardCondition.findAll({
         where: { card_condition_status: '1' },
         order: [['card_condition_name', 'ASC']],
-        attributes: ['id', 'card_condition_name', 'card_condition_status', 'created_at', 'updated_at']
+        attributes: ['id', 'card_condition_name', 'card_condition_status', 'created_at', 'updated_at'],
+        limit: limit,
+        offset: offset
       });
-      
-      return cardConditions;
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          cardConditions,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
     } catch (error) {
       console.error('Error getting card conditions:', error);
-      throw error;
+      return {
+        success: false,
+        error: {
+          message: (error as Error).message || 'Failed to get card conditions'
+        }
+      };
     }
   }
 
@@ -1754,10 +1837,39 @@ export class TradingCardService {
   }
 
   /**
-   * Get popular trading cards based on interested_in count and is_traded = 0
+   * Get popular trading cards based on interested_in count and is_traded = 0 with pagination
    */
-  static async getPopularTradingCards(limit: number = 10) {
+  static async getPopularTradingCards(page: number = 1, perPage: number = 10) {
     try {
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN (
+          SELECT
+            trading_card_id,
+            COUNT(*) as interested_count
+          FROM interested_in
+          GROUP BY trading_card_id
+        ) interest_count ON tc.id = interest_count.trading_card_id
+        WHERE tc.trading_card_status = '1'
+        AND tc.mark_as_deleted IS NULL
+        AND tc.is_traded = '0'
+        AND tc.is_demo = '0'
+        AND c.sport_status = '1'
+        AND (tc.can_trade = 1 OR tc.can_buy = 1)
+      `;
+
+      const countResult = await sequelize.query(countQuery, {
+        type: QueryTypes.SELECT
+      });
+      const totalCount = (countResult[0] as any).total;
+
+      // Get popular cards with pagination
       const query = `
         SELECT
           tc.id,
@@ -1796,26 +1908,75 @@ export class TradingCardService {
         ORDER BY
           interested_count DESC,
           tc.created_at DESC
-        LIMIT :limit
+        LIMIT :limit OFFSET :offset
       `;
 
       const result = await sequelize.query(query, {
-        replacements: { limit },
+        replacements: { limit, offset },
         type: QueryTypes.SELECT
       });
 
-      return result;
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          cards: result,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
     } catch (error) {
       console.error('Error getting popular trading cards:', error);
-      return [];
+      return {
+        success: false,
+        error: {
+          message: (error as Error).message || 'Failed to get popular trading cards'
+        }
+      };
     }
   }
 
   /**
-   * Main search API - supports both image upload and text search
+   * Main search API - supports both image upload and text search with pagination
    */
-  static async mainSearch(searchText: string, limit: number = 10) {
+  static async mainSearch(searchText: string, page: number = 1, perPage: number = 10) {
     try {
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
+
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        WHERE tc.trading_card_status = '1'
+        AND tc.mark_as_deleted IS NULL
+        AND tc.is_traded = '0'
+        AND tc.is_demo = '0'
+        AND c.sport_status = '1'
+        AND (tc.can_trade = 1 OR tc.can_buy = 1)
+        AND tc.search_param LIKE :searchText
+      `;
+
+      const countResult = await sequelize.query(countQuery, {
+        replacements: { 
+          searchText: `%${searchText}%`
+        },
+        type: QueryTypes.SELECT
+      });
+      const totalCount = (countResult[0] as any).total;
+
+      // Get search results with pagination
       const query = `
         SELECT
           tc.id,
@@ -1846,36 +2007,103 @@ export class TradingCardService {
         AND (tc.can_trade = 1 OR tc.can_buy = 1)
         AND tc.search_param LIKE :searchText
         ORDER BY tc.created_at DESC
-        LIMIT :limit
+        LIMIT :limit OFFSET :offset
       `;
 
       const result = await sequelize.query(query, {
         replacements: { 
           searchText: `%${searchText}%`,
-          limit 
+          limit,
+          offset
         },
         type: QueryTypes.SELECT
       });
 
-      return result;
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          cards: result,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
     } catch (error) {
       console.error('Error in main search:', error);
-      return [];
+      return {
+        success: false,
+        error: {
+          message: (error as Error).message || 'Failed to perform search'
+        }
+      };
     }
   }
 
-  // Get similar trading cards based on categories
-  static async getSimilarTradingCards(categoryIds: number[], limit: number = 10, loggedInUserId?: number, excludeTradingCardId?: number) {
+  // Get similar trading cards based on categories with pagination
+  static async getSimilarTradingCards(categoryIds: number[], page: number = 1, perPage: number = 10, loggedInUserId?: number, excludeTradingCardId?: number) {
     try {
       if (!categoryIds || categoryIds.length === 0) {
-        return [];
+        return {
+          success: true,
+          data: {
+            cards: [],
+            pagination: {
+              currentPage: page,
+              perPage: perPage,
+              totalCount: 0,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPrevPage: false
+            }
+          }
+        };
       }
+
+      const offset = (page - 1) * perPage;
+      const limit = perPage;
 
       // Add interested_in join if loggedInUserId is provided
       let interestedJoin = '';
       if (loggedInUserId) {
         interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${loggedInUserId}`;
       }
+
+      // Add exclusion condition if tradingCardId is provided
+      let excludeCondition = '';
+      if (excludeTradingCardId) {
+        excludeCondition = `AND tc.id != ${excludeTradingCardId}`;
+      }
+
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(DISTINCT tc.id) as total
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        ${interestedJoin}
+        WHERE tc.category_id IN (:categoryIds)
+        AND tc.mark_as_deleted IS NULL
+        AND tc.trading_card_status = '1'
+        AND c.sport_status = '1'
+        AND tc.is_demo = '0'
+        AND tc.is_traded != '1'
+        ${excludeCondition}
+      `;
+
+      const countResult = await sequelize.query(countQuery, {
+        replacements: { categoryIds },
+        type: QueryTypes.SELECT
+      });
+      const totalCount = (countResult[0] as any).total;
 
       // Build the SELECT clause based on whether loggedInUserId is provided
       let selectClause = `
@@ -1903,12 +2131,6 @@ export class TradingCardService {
         `;
       }
 
-      // Add exclusion condition if tradingCardId is provided
-      let excludeCondition = '';
-      if (excludeTradingCardId) {
-        excludeCondition = `AND tc.id != ${excludeTradingCardId}`;
-      }
-
       const query = `
         ${selectClause}
         FROM trading_cards tc
@@ -1922,18 +2144,41 @@ export class TradingCardService {
         AND tc.is_traded != '1'
         ${excludeCondition}
         ORDER BY tc.created_at DESC
-        LIMIT :limit
+        LIMIT :limit OFFSET :offset
       `;     
 
       const result = await sequelize.query(query, {
-        replacements: { categoryIds, limit },
+        replacements: { categoryIds, limit, offset },
         type: QueryTypes.SELECT
       });
 
-      return result;
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / perPage);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return {
+        success: true,
+        data: {
+          cards: result,
+          pagination: {
+            currentPage: page,
+            perPage: perPage,
+            totalCount: totalCount,
+            totalPages: totalPages,
+            hasNextPage: hasNextPage,
+            hasPrevPage: hasPrevPage
+          }
+        }
+      };
     } catch (error) {
       console.error('Error getting similar trading cards:', error);
-      return [];
+      return {
+        success: false,
+        error: {
+          message: (error as Error).message || 'Failed to get similar trading cards'
+        }
+      };
     }
   }
 }

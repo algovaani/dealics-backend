@@ -5,6 +5,7 @@ import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
 import jwt from "jsonwebtoken";
+import { decodeJWTToken } from "../utils/jwt.js";
 
 // Extend Request interface to include files property
 interface RequestWithFiles extends Request {
@@ -33,6 +34,7 @@ const sendApiResponse = (res: Response, statusCode: number, status: boolean, mes
 export const getTradingCardsByCategoryName = async (req: Request, res: Response) => {
   try {
     const { categoryName } = req.params;
+    const { page, perPage } = req.query;
     
     // Extract user ID from JWT token if available
     let authenticatedUserId: number | undefined;
@@ -53,14 +55,23 @@ export const getTradingCardsByCategoryName = async (req: Request, res: Response)
       return sendApiResponse(res, 400, false, "Category name (slug) is required");
     }
 
-    // Use slug for category lookup
-    const cards = await tradingcardService.getTradingCardsByCategoryId(categoryName, authenticatedUserId);
-    
-    if (!cards || cards.length === 0) {
-      return sendApiResponse(res, 404, false, "Category not found or no trading cards");
+    // Get pagination parameters
+    const pageNumber = page ? parseInt(String(page)) : 1;
+    const perPageNumber = perPage ? parseInt(String(perPage)) : 10;
+
+    // Validate pagination parameters
+    if (pageNumber < 1 || perPageNumber < 1 || perPageNumber > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters");
     }
 
-    return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", cards);
+    // Use slug for category lookup
+    const result = await tradingcardService.getTradingCardsByCategoryId(categoryName, authenticatedUserId, pageNumber, perPageNumber);
+    
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", result.data.cards, result.data.pagination);
+    } else {
+      return sendApiResponse(res, 404, false, result.error?.message || "Category not found or no trading cards");
+    }
   } catch (error: any) {
     console.error(error);
     return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
@@ -389,8 +400,6 @@ export const getTradingCard = async (req: Request, res: Response) => {
       trading_card_status: tradingCard.trading_card_status,
       category_id: tradingCard.category_id,
       search_param: tradingCard.search_param,
-      trading_card_img: tradingCard.trading_card_img,
-      trading_card_img_back: tradingCard.trading_card_img_back,
       trading_card_slug: tradingCard.trading_card_slug,
       is_traded: tradingCard.is_traded,
       created_at: tradingCard.createdAt,
@@ -405,7 +414,7 @@ export const getTradingCard = async (req: Request, res: Response) => {
       can_buy: tradingCard.can_buy,
       // Add all non-null additional fields from trading card
       additionalFields: additionalFields,
-      // Add card images data
+      // Add card images data (now includes trading_card_img and trading_card_img_back)
       cardImages: cardImages,
       // Add can trade or offer parameter
       canTradeOrOffer: canTradeOrOffer,
@@ -522,12 +531,15 @@ export const toggleTradingCardDeleteStatus = async (req: Request, res: Response)
 // GET /api/user/tradingcards/deleted - Get deleted trading cards for authenticated user
 export const getDeletedTradingCards = async (req: Request, res: Response) => {
   try {
-    // Get user ID from authenticated token
-    const userId = req.user?.id || req.user?.user_id || req.user?.sub;
-    
-    if (!userId) {
-      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    // Use common JWT token decoding utility
+    const jwtResult = decodeJWTToken(req, res);
+    if (!jwtResult.success) {
+      return sendApiResponse(res, 401, false, jwtResult.error!, []);
     }
+
+    const userId = jwtResult.userId!;
+    
+    console.log('🔍 getDeletedTradingCards controller - userId from JWT:', userId);
 
     // Get pagination parameters from query
     const pageParam = req.query.page as string;
@@ -753,11 +765,25 @@ export const getFormFieldsByCategory = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/tradingCards/card-conditions - Get all card conditions
+// GET /api/tradingCards/card-conditions - Get all card conditions with pagination
 export const getAllCardConditions = async (req: Request, res: Response) => {
   try {
-    const cardConditions = await tradingcardService.getAllCardConditions();
-    return sendApiResponse(res, 200, true, "Card conditions retrieved successfully", cardConditions);
+    // Get pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
+
+    // Validate pagination parameters
+    if (page < 1 || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters");
+    }
+
+    const result = await tradingcardService.getAllCardConditions(page, perPage);
+    
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, "Card conditions retrieved successfully", result.data.cardConditions, result.data.pagination);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to get card conditions");
+    }
   } catch (error: any) {
     console.error(error);
     return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
@@ -907,7 +933,7 @@ export const updateSearchParams = async (req: Request, res: Response) => {
 
 /**
  * Update trading card (equivalent to Laravel update_trade_card)
- * PATCH /api/user/tradingcards/:cardId
+ * PUT /api/user/tradingcards/:cardId
  */
 export const updateTradingCard = async (req: RequestWithFiles, res: Response) => {
   try {
@@ -1211,37 +1237,38 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
 // GET /api/tradingCards/popular - Get popular trading cards based on interested_in count
 export const getPopularTradingCards = async (req: Request, res: Response) => {
   try {
-    const limitParam = req.query.limit as string;
-    const limit = limitParam && !isNaN(Number(limitParam)) ? parseInt(limitParam) : 10;
+    // Get pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
 
-    // Validate limit
-    if (limit < 1 || limit > 100) {
-      return sendApiResponse(res, 400, false, "Limit must be between 1 and 100", []);
+    // Validate pagination parameters
+    if (page < 1 || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters", []);
     }
 
-    const popularCards = await TradingCardService.getPopularTradingCards(limit);
+    const result = await TradingCardService.getPopularTradingCards(page, perPage);
 
-    if (!popularCards || popularCards.length === 0) {
-      return sendApiResponse(res, 200, true, "No popular trading cards found", []);
+    if (result.success && result.data) {
+      // Transform the response to include only necessary fields
+      const response = result.data.cards.map((card: any) => ({
+        id: card.id,
+        trading_card_img: card.trading_card_img,
+        trading_card_img_back: card.trading_card_img_back,
+        title: card.trading_card_slug,
+        trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+        trading_card_asking_price: card.trading_card_asking_price,
+        search_param: card.search_param,
+        sport_name: card.sport_name,
+        sport_icon: card.sport_icon,
+        is_traded: card.is_traded,
+        interestedin: true,
+        card_condition: card.card_condition
+      }));
+
+      return sendApiResponse(res, 200, true, "Popular trading cards retrieved successfully", response, result.data.pagination);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to get popular trading cards", []);
     }
-
-    // Transform the response to include only necessary fields
-    const response = popularCards.map((card: any) => ({
-      id: card.id,
-      trading_card_img: card.trading_card_img,
-      trading_card_img_back: card.trading_card_img_back,
-      title: card.trading_card_slug,
-      trading_card_recent_trade_value: card.trading_card_recent_trade_value,
-      trading_card_asking_price: card.trading_card_asking_price,
-      search_param: card.search_param,
-      sport_name: card.sport_name,
-      sport_icon: card.sport_icon,
-      is_traded: card.is_traded,
-      interestedin: true,
-      card_condition: card.card_condition
-    }));
-
-    return sendApiResponse(res, 200, true, "Popular trading cards retrieved successfully", response);
 
   } catch (error: any) {
     console.error("Get popular trading cards error:", error);
@@ -1252,12 +1279,13 @@ export const getPopularTradingCards = async (req: Request, res: Response) => {
 // POST /api/tradingCards/main-search - Main search API with image upload and text search
 export const mainSearch = async (req: Request, res: Response) => {
   try {
-    const limitParam = req.query.limit as string;
-    const limit = limitParam && !isNaN(Number(limitParam)) ? parseInt(limitParam) : 10;
+    // Get pagination parameters
+    const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+    const perPage = req.query.perPage ? parseInt(String(req.query.perPage)) : 10;
 
-    // Validate limit
-    if (limit < 1 || limit > 100) {
-      return sendApiResponse(res, 400, false, "Limit must be between 1 and 100", []);
+    // Validate pagination parameters
+    if (page < 1 || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters", []);
     }
 
     let searchText = '';
@@ -1314,28 +1342,28 @@ export const mainSearch = async (req: Request, res: Response) => {
     }
 
     // Perform search using the extracted or provided text
-    const searchResults = await TradingCardService.mainSearch(searchText, limit);
+    const result = await TradingCardService.mainSearch(searchText, page, perPage);
 
-    if (!searchResults || searchResults.length === 0) {
-      return sendApiResponse(res, 200, true, "No trading cards found for the search", []);
+    if (result.success && result.data) {
+      // Transform the response to include only necessary fields
+      const response = result.data.cards.map((card: any) => ({
+        id: card.id,
+        trading_card_img: card.trading_card_img,
+        trading_card_img_back: card.trading_card_img_back,
+        title: card.trading_card_slug,
+        trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+        trading_card_asking_price: card.trading_card_asking_price,
+        search_param: card.search_param,
+        sport_name: card.sport_name,
+        is_traded: card.is_traded,
+        interestedin: true,
+        card_condition: card.card_condition
+      }));
+
+      return sendApiResponse(res, 200, true, "Search completed successfully", response, result.data.pagination);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to perform search", []);
     }
-
-    // Transform the response to include only necessary fields
-    const response = searchResults.map((card: any) => ({
-      id: card.id,
-      trading_card_img: card.trading_card_img,
-      trading_card_img_back: card.trading_card_img_back,
-      title: card.trading_card_slug,
-      trading_card_recent_trade_value: card.trading_card_recent_trade_value,
-      trading_card_asking_price: card.trading_card_asking_price,
-      search_param: card.search_param,
-      sport_name: card.sport_name,
-      is_traded: card.is_traded,
-      interestedin: true,
-      card_condition: card.card_condition
-    }));
-
-    return sendApiResponse(res, 200, true, "Search completed successfully", response);
 
   } catch (error: any) {
     console.error("Main search error:", error);
@@ -1346,7 +1374,7 @@ export const mainSearch = async (req: Request, res: Response) => {
 // Get similar trading cards based on categories
 export const getSimilarTradingCards = async (req: Request, res: Response) => {
   try {
-    const { categories, limit, tradingCardId } = req.query;
+    const { categories, page, perPage, tradingCardId } = req.query;
 
     // Validate categories parameter
     if (!categories) {
@@ -1371,9 +1399,15 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
       return sendApiResponse(res, 400, false, "No valid category IDs provided", []);
     }
 
-    // Set default limit and parse parameters
-    const limitNumber = limit ? parseInt(String(limit)) : 10;
+    // Get pagination parameters
+    const pageNumber = page ? parseInt(String(page)) : 1;
+    const perPageNumber = perPage ? parseInt(String(perPage)) : 10;
     const tradingCardIdNumber = tradingCardId ? parseInt(String(tradingCardId)) : undefined;
+
+    // Validate pagination parameters
+    if (pageNumber < 1 || perPageNumber < 1 || perPageNumber > 100) {
+      return sendApiResponse(res, 400, false, "Invalid pagination parameters", []);
+    }
 
     // Extract user ID from JWT token if available
     let authenticatedUserId: number | undefined;
@@ -1391,54 +1425,58 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
     }
 
     // Call service method
-    const result = await TradingCardService.getSimilarTradingCards(categoryIds, limitNumber, authenticatedUserId, tradingCardIdNumber);
+    const result = await TradingCardService.getSimilarTradingCards(categoryIds, pageNumber, perPageNumber, authenticatedUserId, tradingCardIdNumber);
 
-    // Transform response to match /api/tradingCards format
-    const response = result.map((card: any) => {
-      // Add canTradeOrOffer logic (same as /api/tradingCards)
-      let canTradeOrOffer = true;
-      
-      // If authenticatedUserId is provided and matches the card's trader_id, user can't trade with themselves
-      if (authenticatedUserId && card.trader_id === authenticatedUserId) {
-        canTradeOrOffer = false;
-      }
-      
-      // If card is already traded, user can't trade
-      if (card.is_traded === '1') {
-        canTradeOrOffer = false;
-      }
-      
-      // If can_buy and can_trade are both 0, user can't trade or make offers
-      if (card.can_buy === 0 && card.can_trade === 0) {
-        canTradeOrOffer = false;
-      }
+    if (result.success && result.data) {
+      // Transform response to match /api/tradingCards format
+      const response = result.data.cards.map((card: any) => {
+        // Add canTradeOrOffer logic (same as /api/tradingCards)
+        let canTradeOrOffer = true;
+        
+        // If authenticatedUserId is provided and matches the card's trader_id, user can't trade with themselves
+        if (authenticatedUserId && card.trader_id === authenticatedUserId) {
+          canTradeOrOffer = false;
+        }
+        
+        // If card is already traded, user can't trade
+        if (card.is_traded === '1') {
+          canTradeOrOffer = false;
+        }
+        
+        // If can_buy and can_trade are both 0, user can't trade or make offers
+        if (card.can_buy === 0 && card.can_trade === 0) {
+          canTradeOrOffer = false;
+        }
 
-      const baseResponse = {
-        id: card.id,
-        category_id: card.category_id,
-        trading_card_img: card.trading_card_img,
-        trading_card_img_back: card.trading_card_img_back,
-        trading_card_slug: card.trading_card_slug,
-        trading_card_recent_trade_value: card.trading_card_recent_trade_value,
-        trading_card_asking_price: card.trading_card_asking_price,
-        search_param: card.search_param || null,
-        sport_name: card.sport_name || null,
-        sport_icon: card.sport_icon || null,
-        canTradeOrOffer: canTradeOrOffer
-      };
-
-      // Only add interested_in field if authenticatedUserId is provided
-      if (authenticatedUserId) {
-        return {
-          ...baseResponse,
-          interested_in: Boolean(card.interested_in)
+        const baseResponse = {
+          id: card.id,
+          category_id: card.category_id,
+          trading_card_img: card.trading_card_img,
+          trading_card_img_back: card.trading_card_img_back,
+          trading_card_slug: card.trading_card_slug,
+          trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+          trading_card_asking_price: card.trading_card_asking_price,
+          search_param: card.search_param || null,
+          sport_name: card.sport_name || null,
+          sport_icon: card.sport_icon || null,
+          canTradeOrOffer: canTradeOrOffer
         };
-      }
 
-      return baseResponse;
-    });
+        // Only add interested_in field if authenticatedUserId is provided
+        if (authenticatedUserId) {
+          return {
+            ...baseResponse,
+            interested_in: Boolean(card.interested_in)
+          };
+        }
 
-    return sendApiResponse(res, 200, true, "Similar trading cards retrieved successfully", response);
+        return baseResponse;
+      });
+
+      return sendApiResponse(res, 200, true, "Similar trading cards retrieved successfully", response, result.data.pagination);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to get similar trading cards", []);
+    }
 
   } catch (error: any) {
     console.error("Similar trading cards error:", error);
@@ -1448,7 +1486,7 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
 
 /**
  * Update trading card status (on/off switch)
- * PATCH /api/user/tradingcards/:cardId/status
+ * PUT /api/user/tradingcards/:cardId/status
  */
 export const updateTradingCardStatus = async (req: Request, res: Response) => {
   try {

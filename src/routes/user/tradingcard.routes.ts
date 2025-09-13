@@ -33,14 +33,14 @@ router.post("/save/:categoryId", upload.fields([
   { name: 'trading_card_img_back', maxCount: 1 },
   { name: 'additional_images', maxCount: 10 }
 ]), (req: any, res: any) => saveTradingCard(req, res));
-router.patch("/:cardId", upload.fields([
+router.put("/:cardId", upload.fields([
   { name: 'trading_card_img', maxCount: 1 },
   { name: 'trading_card_img_back', maxCount: 1 },
   { name: 'additional_images', maxCount: 10 }
 ]), (req: any, res: any) => updateTradingCard(req, res));
 
 // Update trading card status (on/off switch)
-router.patch("/:cardId/status", userAuth, updateTradingCardStatus);
+router.put("/:cardId/status", userAuth, updateTradingCardStatus);
 
 router.delete("/:id", deleteTradingCard);
 

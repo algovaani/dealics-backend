@@ -23,6 +23,9 @@ import { TradeNotification } from './tradeNotification.model.js';
 import { ReviewCollection } from './reviewCollection.model.js';
 import { Review } from './reviews.model.js';
 import { Support } from './support.model.js';
+import { Cart } from './cart.model.js';
+import { CartDetail } from './cartDetail.model.js';
+import { BuyOfferAttempt } from './buyOfferAttempt.model.js';
 
 // Import all models here
 export const models = [
@@ -49,7 +52,10 @@ export const models = [
   TradeNotification,
   ReviewCollection,
   Review,
-  Support
+  Support,
+  Cart,
+  CartDetail,
+  BuyOfferAttempt
 ];
 
 // Function to set up all associations
@@ -369,6 +375,78 @@ export function setupAssociations() {
     foreignKey: 'notification_sent_to',
     as: 'receivedNotifications'
   });
+
+  // Cart associations
+  Cart.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'user'
+  });
+
+  Cart.belongsTo(User, {
+    foreignKey: 'seller_id',
+    as: 'seller'
+  });
+
+  Cart.hasMany(CartDetail, {
+    foreignKey: 'cart_id',
+    as: 'cartDetails'
+  });
+
+  // CartDetail associations (Cart association already defined in model)
+  CartDetail.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'user'
+  });
+
+  CartDetail.belongsTo(TradingCard, {
+    foreignKey: 'product_id',
+    as: 'product'
+  });
+
+  // User associations for Cart
+  User.hasMany(Cart, {
+    foreignKey: 'user_id',
+    as: 'carts'
+  });
+
+  User.hasMany(Cart, {
+    foreignKey: 'seller_id',
+    as: 'sellerCarts'
+  });
+
+  User.hasMany(CartDetail, {
+    foreignKey: 'user_id',
+    as: 'cartDetails'
+  });
+
+  // TradingCard associations for CartDetail
+  TradingCard.hasMany(CartDetail, {
+    foreignKey: 'product_id',
+    as: 'cartDetails'
+  });
+
+  // BuyOfferAttempt associations
+  BuyOfferAttempt.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'user'
+  });
+
+  BuyOfferAttempt.belongsTo(TradingCard, {
+    foreignKey: 'product_id',
+    as: 'product'
+  });
+
+  // User associations for BuyOfferAttempt
+  User.hasMany(BuyOfferAttempt, {
+    foreignKey: 'user_id',
+    as: 'buyOfferAttempts'
+  });
+
+  // TradingCard associations for BuyOfferAttempt
+  TradingCard.hasMany(BuyOfferAttempt, {
+    foreignKey: 'product_id',
+    as: 'buyOfferAttempts'
+  });
 }
 
 // Export all models for easy importing
@@ -396,5 +474,8 @@ export {
   TradeNotification,
   ReviewCollection,
   Review,
-  Support
+  Support,
+  Cart,
+  CartDetail,
+  BuyOfferAttempt
 };

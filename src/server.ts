@@ -79,7 +79,28 @@ app.use(express.urlencoded({
 // Serve static files from public folder
 app.use('/user', express.static('public/user'));
 
-const PORT = process.env.PORT || 5000;
+// Parse PORT with error handling
+let PORT: number;
+try {
+  // Clean the PORT string by removing any invalid characters
+  const portString = (process.env.PORT || '5000').replace(/[^0-9]/g, '');
+  PORT = parseInt(portString, 10);
+  
+  // Validate PORT range
+  if (isNaN(PORT) || PORT < 0 || PORT >= 65536) {
+    console.warn('⚠️ Invalid PORT value, using default 5000');
+    PORT = 5000;
+  }
+} catch (error) {
+  console.warn('⚠️ Error parsing PORT, using default 5000:', error);
+  PORT = 5000;
+}
+
+// Debug: Check PORT configuration
+console.log('🔧 Server Configuration Check:');
+console.log('PORT from env:', process.env.PORT);
+console.log('PORT parsed:', PORT);
+console.log('PORT type:', typeof PORT);
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);

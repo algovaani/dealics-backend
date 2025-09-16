@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment } from "../controllers/user.controller.js";
+import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -96,6 +97,28 @@ router.post("/confirm-payment", userAuth, confirmPayment);
 
 // Rating submission API
 router.post("/submit-rating", userAuth, submitRating);
+
+// Make offer API (requires authentication)
+router.post("/make-offer/:id", userAuth, cartOffer);
+
+// Get cart API (requires authentication)
+router.get("/my-cart", userAuth, getCart);
+
+// Remove cart item API (requires authentication)
+router.delete("/remove-cart-item/:id", userAuth, removeCartItem);
+
+// Trade proposal API (requires authentication)
+router.get("/trade-proposal/:card_id/:interested_user", userAuth, tradeProposal);
+
+// Process checkout API (requires authentication)
+router.post("/checkout", userAuth, processCheckout);
+
+// Pay now API (requires authentication)
+router.post("/pay-now", userAuth, payNowPayment);
+
+// PayPal Payment Return APIs (no authentication required - called by PayPal)
+router.get("/feed-paypal-payment-buysell/:type/:refId", feedPayPalPaymentReturn);
+router.post("/notify/feed-paypal-payment-buysell/:refId", feedPayPalPaymentNotify);
 
 // Other user routes (must be after specific routes to avoid conflicts)
 router.get("/:id", getUserById);

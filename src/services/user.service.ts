@@ -3854,6 +3854,20 @@ export class UserService {
         const sendCardsDetails = await UserService.getTradingCardDetails(tradeData.send_cards);
         const receiveCardsDetails = await UserService.getTradingCardDetails(tradeData.receive_cards);
 
+        // Apply Laravel logic: __getSendingAndReceivingCardNames
+        let finalSendCards = sendCardsDetails;
+        let finalReceiveCards = receiveCardsDetails;
+
+        if (tradeData.trade_sent_by === userId) {
+          // User is the sender: Sending = send_cards, Receiving = receive_cards
+          finalSendCards = sendCardsDetails;
+          finalReceiveCards = receiveCardsDetails;
+        } else if (tradeData.trade_sent_to === userId) {
+          // User is the receiver: Sending = receive_cards, Receiving = send_cards
+          finalSendCards = receiveCardsDetails;
+          finalReceiveCards = sendCardsDetails;
+        }
+
         // Debug: Log shipment data to help identify the issue
         console.log('=== DEBUG SHIPMENT DATA ===');
         console.log('Trade ID:', tradeData.id, 'Code:', tradeData.code);
@@ -3869,8 +3883,8 @@ export class UserService {
           sender_name: sender_name,
           receiver_name: receiver_name,
           main_card: tradeData.main_card,
-          send_cards: receiveCardsDetails,
-          receive_cards: sendCardsDetails,
+          send_cards: finalSendCards,
+          receive_cards: finalReceiveCards,
           add_cash: tradeData.add_cash,
           ask_cash: tradeData.ask_cash,
           trade_amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
@@ -4142,9 +4156,23 @@ export class UserService {
             `${tradeData.tradeReceiver.first_name || ''} ${tradeData.tradeReceiver.last_name || ''}`.trim();
         }
 
-        // Get trading card details for send_cards and receive_cards
-        const sendCardsDetails = await UserService.getTradingCardDetails(tradeData.send_cards);
-        const receiveCardsDetails = await UserService.getTradingCardDetails(tradeData.receive_cards);
+        // Get trading card details for send_cards and receive_cards (excluding image, trading_card_estimated_value)
+        const sendCardsDetails = await UserService.getTradingCardDetails(tradeData.send_cards, true);
+        const receiveCardsDetails = await UserService.getTradingCardDetails(tradeData.receive_cards, true);
+
+        // Apply Laravel logic: __getSendingAndReceivingCardNames
+        let finalSendCards = sendCardsDetails;
+        let finalReceiveCards = receiveCardsDetails;
+
+        if (tradeData.trade_sent_by === userId) {
+          // User is the sender: Sending = send_cards, Receiving = receive_cards
+          finalSendCards = sendCardsDetails;
+          finalReceiveCards = receiveCardsDetails;
+        } else if (tradeData.trade_sent_to === userId) {
+          // User is the receiver: Sending = receive_cards, Receiving = send_cards
+          finalSendCards = receiveCardsDetails;
+          finalReceiveCards = sendCardsDetails;
+        }
 
         return {
           id: tradeData.id,
@@ -4154,10 +4182,8 @@ export class UserService {
           sender_name: sender_name,
           receiver_name: receiver_name,
           main_card: tradeData.main_card,
-          send_cards: receiveCardsDetails,
-          receive_cards: sendCardsDetails,
-          add_cash: tradeData.add_cash,
-          ask_cash: tradeData.ask_cash,
+          send_cards: finalSendCards,
+          receive_cards: finalReceiveCards,
           trade_amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
           trade_amount_pay_id: tradeData.trade_amount_pay_id,
           trade_amount_payer_id: tradeData.trade_amount_payer_id,
@@ -4182,9 +4208,7 @@ export class UserService {
           updated_at: tradeData.updated_at,
           mainTradingCard: tradeData.mainTradingCard ? {
             id: tradeData.mainTradingCard.id,
-            trading_card_img: tradeData.mainTradingCard.trading_card_img,
-            trading_card_slug: tradeData.mainTradingCard.trading_card_slug,
-            trading_card_asking_price: tradeData.mainTradingCard.trading_card_asking_price
+            trading_card_slug: tradeData.mainTradingCard.trading_card_slug
           } : null,
           tradeProposalStatus: tradeData.tradeProposalStatus ? {
             id: tradeData.tradeProposalStatus.id,
@@ -4329,8 +4353,91 @@ export class UserService {
     }
   }
 
+  // Helper function to calculate days difference from current date
+  private static calculateDaysDifference(dateString: string | Date | null): string | null {
+    if (!dateString) return null;
+    
+    try {
+      const targetDate = new Date(dateString);
+      const currentDate = new Date();
+      const diffTime = Math.abs(currentDate.getTime() - targetDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return 'Today';
+      if (diffDays === 1) return '1 day ago';
+      return `${diffDays} days ago`;
+    } catch (error) {
+      console.error('Error calculating days difference:', error);
+      return null;
+    }
+  }
+
+  // Helper function to calculate trade duration between two dates in MM.DD.YY HH:MM AM/PM format
+  private static calculateTradeDuration(date1: string | Date | null, date2: string | Date | null): string | null {
+    if (!date1 || !date2) return null;
+    
+    try {
+      // Helper function to parse MM.DD.YY HH:MM AM/PM format
+      const parseCustomFormat = (dateString: string): Date | null => {
+        try {
+          if (typeof dateString === 'string' && dateString.includes('.') && (dateString.includes('AM') || dateString.includes('PM'))) {
+            const parts = dateString.split(' ');
+            const datePart = parts[0]; // "06.16.25"
+            const timePart = parts.slice(1).join(' '); // "12:57 AM"
+            
+            if (datePart && datePart.includes('.')) {
+              const dateComponents = datePart.split('.');
+              if (dateComponents.length === 3) {
+                const month = dateComponents[0];
+                const day = dateComponents[1];
+                const year = dateComponents[2];
+                
+                if (month && day && year) {
+                  const fullYear = parseInt('20' + year); // Convert 25 to 2025
+                  const dateString = `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')} ${timePart}`;
+                  return new Date(dateString);
+                }
+              }
+            }
+          }
+          return new Date(dateString);
+        } catch (error) {
+          console.error('Error parsing date:', dateString, error);
+          return null;
+        }
+      };
+      
+      const date1Parsed = parseCustomFormat(date1.toString());
+      const date2Parsed = parseCustomFormat(date2.toString());
+      
+      if (!date1Parsed || !date2Parsed) {
+        console.error('Invalid date format:', { date1, date2 });
+        return null;
+      }
+      
+      // Validate dates
+      if (isNaN(date1Parsed.getTime()) || isNaN(date2Parsed.getTime())) {
+        console.error('Invalid parsed dates:', { date1Parsed, date2Parsed });
+        return null;
+      }
+      
+      // Calculate difference in milliseconds
+      const diffTime = Math.abs(date2Parsed.getTime() - date1Parsed.getTime());
+      
+      // Convert to days
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return 'Same day';
+      if (diffDays === 1) return '1 day';
+      return `${diffDays} days`;
+    } catch (error) {
+      console.error('Error calculating trade duration:', error);
+      return null;
+    }
+  }
+
   // Helper function to parse card IDs and fetch trading card details
-  private static async getTradingCardDetails(cardIdsString: string | null): Promise<any[]> {
+  private static async getTradingCardDetails(cardIdsString: string | null, excludeFields: boolean = false): Promise<any[]> {
     if (!cardIdsString || cardIdsString.trim() === '') {
       return [];
     }
@@ -4401,11 +4508,17 @@ export class UserService {
       }
 
       // Fetch trading card details
-      const tradingCards = await TradingCard.findAll({
-        where: {
-          id: { [Op.in]: cardIds }
-        },
-        attributes: [
+      const attributes = excludeFields 
+        ? [
+            'id', 
+            'card_name', 
+            'trading_card_slug', 
+            'trading_card_status',
+            'code',
+            'search_param',
+            'category_id'
+          ]
+        : [
           'id', 
           'card_name', 
           'trading_card_img', 
@@ -4416,7 +4529,13 @@ export class UserService {
           'code',
           'search_param',
           'category_id'
-        ]
+          ];
+
+      const tradingCards = await TradingCard.findAll({
+        where: {
+          id: { [Op.in]: cardIds }
+        },
+        attributes: attributes
       });
 
       // Transform cards with category names
@@ -4432,18 +4551,26 @@ export class UserService {
           }
         }
 
-        return {
+        const baseCard = {
           id: card.id,
           name: card.card_name,
-          image: card.trading_card_img,
           slug: card.trading_card_slug,
-          asking_price: card.trading_card_asking_price,
-          trading_card_estimated_value: card.trading_card_estimated_value,
           status: card.trading_card_status,
           code: card.code,
           search_param: card.search_param,
           category_name: category_name
         };
+
+        if (!excludeFields) {
+          return {
+            ...baseCard,
+            image: card.trading_card_img,
+            asking_price: card.trading_card_asking_price,
+            trading_card_estimated_value: card.trading_card_estimated_value
+          };
+        }
+
+        return baseCard;
       }));
 
       return cardsWithCategories;
@@ -4665,6 +4792,20 @@ export class UserService {
         const sendCardsDetails = await UserService.getTradingCardDetails(tradeData.send_cards);
         const receiveCardsDetails = await UserService.getTradingCardDetails(tradeData.receive_cards);
 
+        // Apply Laravel logic: __getSendingAndReceivingCardNames
+        let finalSendCards = sendCardsDetails;
+        let finalReceiveCards = receiveCardsDetails;
+
+        if (tradeData.trade_sent_by_key === userId) {
+          // User is the sender: Sending = send_cards, Receiving = receive_cards
+          finalSendCards = sendCardsDetails;
+          finalReceiveCards = receiveCardsDetails;
+        } else if (tradeData.trade_sent_to_key === userId) {
+          // User is the receiver: Sending = receive_cards, Receiving = send_cards
+          finalSendCards = receiveCardsDetails;
+          finalReceiveCards = sendCardsDetails;
+        }
+
         // Get ratings for this trade (Laravel reference: sender_review_count_get)
         const ratings = await UserService.getTradeRatings(tradeData.trade_proposal_id);
         
@@ -4676,6 +4817,8 @@ export class UserService {
           console.log('Receive cards raw:', tradeData.receive_cards, 'Type:', typeof tradeData.receive_cards);
           console.log('Send cards parsed:', sendCardsDetails);
           console.log('Receive cards parsed:', receiveCardsDetails);
+          console.log('Final send cards:', finalSendCards);
+          console.log('Final receive cards:', finalReceiveCards);
           console.log('=== END DEBUG ===');
         }
 
@@ -4687,8 +4830,8 @@ export class UserService {
           sender_name: sender_name,
           receiver_name: receiver_name,
           main_card: tradeData.main_card_id,
-          send_cards: sendCardsDetails,
-          receive_cards: receiveCardsDetails,
+          send_cards: finalSendCards,
+          receive_cards: finalReceiveCards,
           add_cash: tradeData.add_cash,
           ask_cash: tradeData.ask_cash,
           trade_amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
@@ -4713,6 +4856,10 @@ export class UserService {
           trade_proposal_status_id: null, // Not applicable for completed trades
           created_at: UserService.formatDateToMMDDYY(tradeData.created_at),
           updated_at: tradeData.updated_at,
+          completed_trade_duration: UserService.calculateTradeDuration(
+            tradeData.trade_created_at ? UserService.formatDateToMMDDYY(tradeData.trade_created_at) : null,
+            tradeData.updated_at ? UserService.formatDateToMMDDYY(tradeData.updated_at) : null
+          ),
           mainTradingCard: tradeData.main_card_id ? {
             id: tradeData.main_card_id,
             trading_card_img: null, // Would need to fetch from trading_cards table

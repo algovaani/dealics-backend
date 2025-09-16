@@ -178,7 +178,16 @@ export class EmailHelperService {
       // Create transporter
       const transporter = nodemailer.createTransport({
         host: process.env.MAIL_HOST || 'mail.hitpacks.com',
-        port: parseInt(process.env.MAIL_PORT || '465'),
+        port: (() => {
+          try {
+            const portString = (process.env.MAIL_PORT || '465').replace(/[^0-9]/g, '');
+            const port = parseInt(portString, 10);
+            return isNaN(port) ? 465 : port;
+          } catch (error) {
+            console.warn('⚠️ Error parsing MAIL_PORT, using default 465:', error);
+            return 465;
+          }
+        })(),
         secure: true, // true for 465 (SSL), false for other ports
         auth: {
           user: process.env.MAIL_USERNAME || 'support@hitpacks.com',
@@ -341,7 +350,16 @@ export class EmailHelperService {
     try {
       const transporter = nodemailer.createTransport({
         host: process.env.MAIL_HOST || 'mail.hitpacks.com',
-        port: parseInt(process.env.MAIL_PORT || '465'),
+        port: (() => {
+          try {
+            const portString = (process.env.MAIL_PORT || '465').replace(/[^0-9]/g, '');
+            const port = parseInt(portString, 10);
+            return isNaN(port) ? 465 : port;
+          } catch (error) {
+            console.warn('⚠️ Error parsing MAIL_PORT, using default 465:', error);
+            return 465;
+          }
+        })(),
         secure: true, // true for 465 (SSL), false for other ports
         auth: {
           user: process.env.MAIL_USERNAME || 'support@hitpacks.com',

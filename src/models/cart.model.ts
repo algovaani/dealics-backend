@@ -32,6 +32,13 @@ import {
       allowNull: true,
     })
     user_id!: number | null;
+
+    @ForeignKey(() => User)
+    @Column({
+      type: DataType.BIGINT,
+      allowNull: true,
+    })
+    seller_id!: number | null;
   
     @Column({
       type: DataType.DOUBLE,

@@ -24,3 +24,6 @@ Thumbs.db
 .idea/
 
 # Database configuration
+
+public/user/assets/images/trading_cards_img/
+public/user/assets/images/profile_images/

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Cart, CartDetail, TradingCard, User, BuyOfferAttempt, CreditDeductionLog, Address, Category, BuySellCard, BuyOfferStatus, Follower } from "../models/index.js";
+import { Cart, CartDetail, TradingCard, User, BuyOfferAttempt, CreditDeductionLog, Address, Category, BuySellCard, BuyOfferStatus, Follower, TradeProposal, TradeProposalStatus, TradeNotification, Shipment, TradeTransaction } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 
@@ -554,7 +554,7 @@ export const getCart = async (req: Request, res: Response) => {
             'id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 
             'trading_card_offer_accept_above', 'trader_id', 'free_shipping',
             'usa_shipping_flat_rate', 'usa_add_product_flat_rate', 
-            'canada_shipping_flat_rate', 'canada_add_product_flat_rate'
+            'canada_shipping_flat_rate', 'canada_add_product_flat_rate', 'search_param'
           ]
         }]
       }]
@@ -583,7 +583,7 @@ export const getCart = async (req: Request, res: Response) => {
               'id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 
               'trading_card_offer_accept_above', 'trader_id', 'free_shipping',
               'usa_shipping_flat_rate', 'usa_add_product_flat_rate', 
-              'canada_shipping_flat_rate', 'canada_add_product_flat_rate'
+              'canada_shipping_flat_rate', 'canada_add_product_flat_rate', 'search_param'
             ]
           }]
         }]
@@ -596,7 +596,11 @@ export const getCart = async (req: Request, res: Response) => {
         user_id: userId,
         is_deleted: '0'
       },
-      attributes: ['id', 'street1', 'street2', 'city', 'state', 'zip', 'country', 'mark_default']
+      attributes: [
+        'id', 'user_id', 'name', 'phone', 'email', 'street1', 'street2', 
+        'city', 'state', 'country', 'zip', 'is_sender', 'is_deleted', 
+        'latitude', 'longitude', 'adr_id', 'mark_default', 'created_at', 'updated_at'
+      ]
     });
 
     // Transform cart data for frontend
@@ -627,6 +631,7 @@ export const getCart = async (req: Request, res: Response) => {
             usa_add_product_flat_rate: detail.product.usa_add_product_flat_rate,
             canada_shipping_flat_rate: detail.product.canada_shipping_flat_rate,
             canada_add_product_flat_rate: detail.product.canada_add_product_flat_rate,
+            search_param: detail.product.search_param,
             sport_name: detail.product.parentCategory ? detail.product.parentCategory.sport_name : null
           } : null
         })) || []
@@ -636,6 +641,10 @@ export const getCart = async (req: Request, res: Response) => {
     // Transform addresses data for frontend
     const addressesData = addresses.map((address: any) => ({
       id: address.id,
+      user_id: address.user_id,
+      name: address.name,
+      phone: address.phone,
+      email: address.email,
       street1: address.street1,
       street2: address.street2,
       city: address.city,
@@ -1357,8 +1366,8 @@ export const tradeProposal = async (req: Request, res: Response) => {
       include: [
         {
           model: Category,
-          as: 'categoryname',
-          attributes: ['id', 'category_name']
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
         }
       ]
     });
@@ -1387,8 +1396,8 @@ export const tradeProposal = async (req: Request, res: Response) => {
       include: [
         {
           model: Category,
-          as: 'categoryname',
-          attributes: ['id', 'category_name']
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
         }
       ]
     });
@@ -1407,6 +1416,19 @@ export const tradeProposal = async (req: Request, res: Response) => {
       }
     });
 
+    // Get total trades count for interested user
+    const totalTradesCount = await sequelize.query(`
+      SELECT COUNT(*) as total_trades
+      FROM trade_transactions tt
+      WHERE tt.trade_sent_by_key = :interestedUserId 
+         OR tt.trade_sent_to_key = :interestedUserId
+    `, {
+      replacements: { interestedUserId: interestedUser.id },
+      type: QueryTypes.SELECT
+    }) as any[];
+
+    const totalTrades = totalTradesCount[0]?.total_trades || 0;
+
     // Check if current user follows the interested user
     const follower = await Follower.findOne({
       where: {
@@ -1424,7 +1446,8 @@ export const tradeProposal = async (req: Request, res: Response) => {
         first_name: interestedUser.first_name,
         last_name: interestedUser.last_name,
         profile_picture: interestedUser.profile_picture,
-        product_count: productCount
+        product_count: productCount,
+        total_trades_count: totalTrades
       },
       user_closets: userClosets.map(card => ({
         id: card.id,
@@ -1433,7 +1456,7 @@ export const tradeProposal = async (req: Request, res: Response) => {
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
-        category_name: (card as any).categoryname?.category_name || null
+        category_name: (card as any).parentCategory?.sport_name || null
       })),
       interested_closets: interestedClosets.map(card => ({
         id: card.id,
@@ -1442,20 +1465,1226 @@ export const tradeProposal = async (req: Request, res: Response) => {
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
-        category_name: (card as any).categoryname?.category_name || null
+        category_name: (card as any).parentCategory?.sport_name || null
       })),
-      is_following: !!follower,
-      trade_config: {
-        open_text: "Edit Trade",
-        next_text: "Continue Trade",
-        btn: "<a><button>Update</button></a>"
-      }
+      is_following: !!follower
     };
 
     return sendApiResponse(res, 200, true, "Trade proposal data retrieved successfully", responseData);
 
   } catch (error: any) {
     console.error('Trade proposal error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Helper function to generate trade code
+const generateTradeCode = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  
+  return `ESW-${year}${month}${day}${random}${hours}${minutes}${seconds}`;
+};
+
+
+// Propose Trade API
+export const proposeTrade = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const user = (req as any).user;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    const {
+      sendcard,
+      receivecard,
+      trader_id_r,
+      main_card,
+      add_cash,
+      ask_cash,
+      message
+    } = req.body;
+
+    // Validation
+    if (!sendcard || !receivecard || !trader_id_r) {
+      return sendApiResponse(res, 400, false, "Please select products you want to send and receive, and select trader you want to trade with.", []);
+    }
+
+    if (!Array.isArray(sendcard) || !Array.isArray(receivecard)) {
+      return sendApiResponse(res, 400, false, "Send cards and receive cards must be arrays", []);
+    }
+
+    if (sendcard.length === 0 || receivecard.length === 0) {
+      return sendApiResponse(res, 400, false, "Please select at least one card to send and receive", []);
+    }
+
+    // Check if user is trying to trade with themselves
+    if (parseInt(trader_id_r) === userId) {
+      return sendApiResponse(res, 400, false, "You can't trade with yourself", []);
+    }
+
+    // Check if cards are already traded
+    const allProducts = [...sendcard, ...receivecard];
+    const tradedCards = await TradingCard.findAll({
+      where: {
+        id: { [Op.in]: allProducts },
+        is_traded: '1',
+        mark_as_deleted: null
+      },
+      attributes: ['id', 'search_param']
+    });
+
+    if (tradedCards.length > 0) {
+      const tradedProducts = tradedCards.map(card => card.search_param).join('<br/>');
+      return sendApiResponse(res, 400, false, `You can not continue this trade.<br/>Below products are already in trade or buy/sell:<br/>${tradedProducts}`, []);
+    }
+
+    // Check user's CXP coins
+    const userCoins = await User.findByPk(userId, {
+      attributes: ['id', 'cxp_coins']
+    });
+
+    if (!userCoins) {
+      return sendApiResponse(res, 404, false, "User not found", []);
+    }
+
+    // Check if user has made any transactions this month
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+    
+    const monthlyTransactions = await CreditDeductionLog.count({
+      where: {
+        [Op.and]: [
+          sequelize.where(sequelize.fn('MONTH', sequelize.col('created_at')), currentMonth),
+          sequelize.where(sequelize.fn('YEAR', sequelize.col('created_at')), currentYear),
+          { status: 'Success' },
+          {
+            [Op.or]: [
+              { sent_by: userId },
+              { sent_to: userId }
+            ]
+          }
+        ]
+      }
+    });
+
+    if (monthlyTransactions > 0) {
+      if (!userCoins.cxp_coins || userCoins.cxp_coins <= 0) {
+        return sendApiResponse(res, 400, false, "You need els coins to complete this trade.", []);
+      }
+    }
+
+    // Validate cash fields
+    let finalAddCash = null;
+    let finalAskCash = null;
+
+    if (add_cash && add_cash !== '0' && add_cash !== 0) {
+      finalAddCash = parseFloat(add_cash.toString().replace(/,/g, ''));
+    }
+
+    if (ask_cash && ask_cash !== '0' && ask_cash !== 0) {
+      finalAskCash = parseFloat(ask_cash.toString().replace(/,/g, ''));
+    }
+
+    if (finalAddCash && finalAskCash) {
+      return sendApiResponse(res, 400, false, "You can't trade with both (Amount you will get & Amount you will pay).", []);
+    }
+
+    // Mark cards as traded
+    for (const cardId of sendcard) {
+      const card = await TradingCard.findByPk(cardId);
+      if (card) {
+        if (card.is_traded === '1') {
+          return sendApiResponse(res, 400, false, "This trade cannot be modified as it has already been accepted.", []);
+        }
+        await card.update({ is_traded: '1' });
+      }
+    }
+
+    for (const cardId of receivecard) {
+      const card = await TradingCard.findByPk(cardId);
+      if (card) {
+        if (card.is_traded === '1') {
+          return sendApiResponse(res, 400, false, "This trade cannot be modified as it has already been accepted.", []);
+        }
+        await card.update({ is_traded: '1' });
+      }
+    }
+
+    // Create trade proposal
+    const tradeProposal = await TradeProposal.create({
+      code: generateTradeCode(),
+      trade_sent_by: userId,
+      trade_sent_to: parseInt(trader_id_r),
+      main_card: parseInt(main_card),
+      send_cards: sendcard.join(','),
+      receive_cards: receivecard.join(','),
+      add_cash: finalAddCash,
+      ask_cash: finalAskCash,
+      message: message || null,
+      trade_status: 'new',
+      is_new: '1',
+      trade_sender_confrimation: '0',
+      receiver_confirmation: '0',
+      created_at: new Date(),
+      updated_at: new Date()
+    } as any);
+
+    // Set trade proposal status
+    await setTradeProposalStatus(tradeProposal.id, 'trade-sent');
+
+    // Deduct user's coins if needed
+    if (monthlyTransactions > 0 && userCoins.cxp_coins && userCoins.cxp_coins > 0) {
+      await userCoins.update({ cxp_coins: userCoins.cxp_coins - 1 });
+
+      // Create credit deduction log
+      await CreditDeductionLog.create({
+        trade_status: 'Completed',
+        sent_to: parseInt(trader_id_r),
+        coin: 1,
+        buy_sell_id: 0,
+        cart_detail_id: 0,
+        status: 'Success',
+        deduction_from: 'Sender'
+      } as any);
+    }
+
+    // Send notifications
+    await sendTradeNotifications('send-proposal', userId, parseInt(trader_id_r), tradeProposal.id);
+
+    // Prepare response data
+    const responseData = {
+      trade_proposal_id: tradeProposal.id,
+      code: tradeProposal.code,
+      trade_sent_by: userId,
+      trade_sent_to: parseInt(trader_id_r),
+      main_card: parseInt(main_card),
+      send_cards: sendcard,
+      receive_cards: receivecard,
+      add_cash: finalAddCash,
+      ask_cash: finalAskCash,
+      message: message,
+      trade_status: 'new',
+      created_at: tradeProposal.created_at
+    };
+
+    return sendApiResponse(res, 200, true, "New trade proposed successfully!", responseData);
+
+  } catch (error: any) {
+    console.error('Propose trade error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Helper function to set trade proposal status
+const setTradeProposalStatus = async (tradeProposalId: number, statusAlias: string): Promise<void> => {
+  try {
+    const tradeProposalStatus = await TradeProposalStatus.findOne({
+      where: { alias: statusAlias }
+    });
+
+    if (tradeProposalStatus) {
+      await TradeProposal.update(
+        { trade_proposal_status_id: tradeProposalStatus.id },
+        { where: { id: tradeProposalId } }
+      );
+    }
+  } catch (error) {
+    console.error('Error setting trade proposal status:', error);
+  }
+};
+
+// Helper function to send trade notifications
+const sendTradeNotifications = async (action: string, sentBy: number, sentTo: number, tradeProposalId: number, senderAlias: string = 'The', receiverAlias: string = 'The', senderStatus: string = 'cancelled', receiverStatus: string = 'cancelled'): Promise<void> => {
+  try {
+    // Get sender and receiver user details
+    const sender = await User.findByPk(sentBy);
+    const receiver = await User.findByPk(sentTo);
+
+    if (!sender || !receiver) return;
+
+    // Create notification for receiver
+    await TradeNotification.create({
+      notification_sent_by: sentBy,
+      notification_sent_to: sentTo,
+      trade_proposal_id: tradeProposalId,
+      message: `${senderAlias} trade has been ${receiverStatus} by ${sender.first_name} ${sender.last_name}.`
+    } as any);
+
+    // Create notification for sender
+    await TradeNotification.create({
+      notification_sent_by: sentTo,
+      notification_sent_to: sentBy,
+      trade_proposal_id: tradeProposalId,
+      message: `Your trade has been ${senderStatus} successfully.`
+    } as any);
+  } catch (error) {
+    console.error('Error sending trade notifications:', error);
+  }
+};
+
+// Cancel Trade API
+export const cancelTrade = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { id, st } = req.body; // st = status type (cancel, declined, counter_declined)
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!id) {
+      return sendApiResponse(res, 400, false, "Trade proposal ID is required", []);
+    }
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Check if user has access to this trade
+    if (tradeProposal.trade_sent_by !== userId && tradeProposal.trade_sent_to !== userId) {
+      return sendApiResponse(res, 403, false, "Invalid access", []);
+    }
+
+    // Check if trade is already cancelled/declined
+    const cancelledStatuses = ['declined', 'cancel', 'cancelled', 'counter_declined'];
+    if (cancelledStatuses.includes(tradeProposal.trade_status)) {
+      // Get total active trades for user
+      const totalActiveTrades = await TradeProposal.count({
+        where: {
+          [Op.and]: [
+            { [Op.not]: { trade_status: cancelledStatuses } },
+            { [Op.not]: { trade_status: 'complete' } },
+            {
+              [Op.or]: [
+                { trade_sent_by: userId },
+                { trade_sent_to: userId }
+              ]
+            }
+          ]
+        }
+      });
+
+      return sendApiResponse(res, 200, true, "This offer has already been cancelled by other trader.", [], {
+        total: totalActiveTrades
+      });
+    }
+
+    // Check if trade has payment and is under payment process
+    if ((tradeProposal.add_cash && tradeProposal.add_cash > 0 || tradeProposal.ask_cash && tradeProposal.ask_cash > 0) && tradeProposal.trade_amount_paid_on) {
+      return sendApiResponse(res, 400, false, "You cannot cancel this trade, this trade has been accepted and is under the payment process.", []);
+    }
+
+    // Check if trade is in shipment process
+    const shipmentCount = await Shipment.count({
+      where: { trade_id: tradeProposal.id }
+    });
+
+    if (shipmentCount > 0) {
+      return sendApiResponse(res, 400, false, "You can not cancel this trade, this trade already in shipment process", []);
+    }
+
+    // Refund CXP coins
+    const creditLog = await CreditDeductionLog.findOne({
+      where: { trade_id: tradeProposal.id }
+    });
+
+    if (creditLog) {
+      const userTo = await User.findByPk(creditLog.sent_to, { attributes: ['id', 'cxp_coins'] });
+      const userBy = await User.findByPk(creditLog.sent_by, { attributes: ['id', 'cxp_coins'] });
+
+      if (creditLog.deduction_from === 'Both') {
+        if (userTo && userTo.cxp_coins && creditLog.coin) await userTo.update({ cxp_coins: userTo.cxp_coins + creditLog.coin });
+        if (userBy && userBy.cxp_coins && creditLog.coin) await userBy.update({ cxp_coins: userBy.cxp_coins + creditLog.coin });
+      } else if (creditLog.deduction_from === 'Sender') {
+        if (userBy && userBy.cxp_coins && creditLog.coin) await userBy.update({ cxp_coins: userBy.cxp_coins + creditLog.coin });
+      } else if (creditLog.deduction_from === 'Receiver') {
+        if (userTo && userTo.cxp_coins && creditLog.coin) await userTo.update({ cxp_coins: userTo.cxp_coins + creditLog.coin });
+      }
+
+      // Update credit log status
+      await creditLog.update({ status: 'Refund' });
+    }
+
+    // Set trade proposal status
+    await setTradeProposalStatus(tradeProposal.id, 'trade-cancelled');
+
+    // Mark cards as available for trade
+    const sendCards = tradeProposal.send_cards?.split(',') || [];
+    const receiveCards = tradeProposal.receive_cards?.split(',') || [];
+    const allCards = [...sendCards, ...receiveCards];
+
+    if (allCards.length > 0) {
+      await TradingCard.update(
+        { is_traded: '0' },
+        { where: { id: { [Op.in]: allCards } } }
+      );
+    }
+
+    // Determine trade status
+    const tradeStatus = st || 'cancel';
+    await tradeProposal.update({ trade_status: tradeStatus });
+
+    // Get total active trades for user
+    const totalActiveTrades = await TradeProposal.count({
+      where: {
+        [Op.and]: [
+          { [Op.not]: { trade_status: cancelledStatuses } },
+          { [Op.not]: { trade_status: 'complete' } },
+          {
+            [Op.or]: [
+              { trade_sent_by: userId },
+              { trade_sent_to: userId }
+            ]
+          }
+        ]
+      }
+    });
+
+    // Set notification aliases based on trade status
+    let senderAlias = 'The';
+    let receiverAlias = 'The';
+    let senderStatus = 'cancelled';
+    let receiverStatus = 'cancelled';
+    let returnMessage = 'cancelled';
+
+    if (tradeStatus === 'cancel') {
+      senderAlias = 'The';
+      receiverAlias = 'The';
+      senderStatus = 'cancelled';
+      receiverStatus = 'cancelled';
+      if (tradeProposal.trade_status === 'counter_offer') {
+        senderAlias = 'Your counter';
+        receiverAlias = 'The counter';
+      }
+    } else if (tradeStatus === 'declined') {
+      senderAlias = 'Your';
+      receiverAlias = 'The';
+      senderStatus = 'declined';
+      receiverStatus = 'declined';
+      returnMessage = 'declined';
+    } else if (tradeStatus === 'counter_declined') {
+      senderAlias = 'The counter';
+      receiverAlias = 'Your counter';
+      senderStatus = 'declined';
+      receiverStatus = 'declined';
+      returnMessage = 'declined';
+    }
+
+    // Send notifications
+    await sendTradeNotifications(
+      'trade-cancel-decline',
+      tradeProposal.trade_sent_by!,
+      tradeProposal.trade_sent_to!,
+      tradeProposal.id,
+      senderAlias,
+      receiverAlias,
+      senderStatus,
+      receiverStatus
+    );
+
+    return sendApiResponse(res, 200, true, `Trade successfully ${returnMessage}`, [], {
+      total: totalActiveTrades
+    });
+
+  } catch (error: any) {
+    console.error('Cancel trade error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Edit Trade Proposal Detail API
+export const editTradeProposalDetail = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { card_id } = req.params;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!card_id) {
+      return sendApiResponse(res, 400, false, "Trade proposal ID is required", []);
+    }
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(card_id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Check if trade is cancelled or declined
+    if (tradeProposal.trade_status === 'cancel' || tradeProposal.trade_status === 'declined') {
+      const errorMessage = tradeProposal.trade_status === 'cancel' 
+        ? 'Trade are cancelled.' 
+        : 'Trade are declined.';
+      return sendApiResponse(res, 400, false, errorMessage, []);
+    }
+
+    // Check if trade is already accepted or has counter offer
+    if (tradeProposal.trade_status === 'accepted' || 
+        tradeProposal.trade_status === 'counter_accepted' || 
+        tradeProposal.trade_status === 'counter_offer') {
+      const errorMessage = tradeProposal.trade_status === 'counter_offer'
+        ? 'This trade already has counter offer, you can not edit this trade.'
+        : 'This trade already accepted, you can not edit this trade.';
+      return sendApiResponse(res, 400, false, errorMessage, []);
+    }
+
+    // Get interested user
+    const interestedUserId = tradeProposal.trade_sent_to;
+    if (interestedUserId === userId) {
+      return sendApiResponse(res, 400, false, "You can't trade with yourself.", []);
+    }
+
+    const interestedUser = await User.findByPk(interestedUserId, {
+      attributes: ['id', 'username', 'first_name', 'last_name', 'profile_picture', 'ebay_store_url']
+    });
+
+    if (!interestedUser) {
+      return sendApiResponse(res, 404, false, "Interested user not found", []);
+    }
+
+    // Parse send and receive cards
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+
+    // Get user closets (send cards) - include cards that are already selected or available for trade
+    let userClosetsWhere: any = {
+      trader_id: userId,
+      mark_as_deleted: null,
+      can_trade: '1',
+      is_traded: '0',
+      trading_card_status: '1'
+    };
+
+    // Add OR condition for already selected cards
+    if (sendCards.length > 0) {
+      userClosetsWhere = {
+        [Op.or]: [
+          userClosetsWhere,
+          { id: { [Op.in]: sendCards } }
+        ]
+      };
+    }
+
+    const userClosets = await TradingCard.findAll({
+      where: userClosetsWhere,
+      attributes: [
+        'id', 'code', 'trader_id', 'search_param', 'trading_card_img', 
+        'category_id', 'trading_card_estimated_value'
+      ],
+      include: [{
+        model: Category,
+        as: 'parentCategory',
+        attributes: ['id', 'sport_name']
+      }]
+    });
+
+    // Get interested user closets (receive cards) - include cards that are already selected or available for trade
+    let interestedClosetsWhere: any = {
+      trader_id: interestedUserId,
+      mark_as_deleted: null,
+      can_trade: '1',
+      is_traded: '0',
+      trading_card_status: '1'
+    };
+
+    // Add OR condition for already selected cards
+    if (receiveCards.length > 0) {
+      interestedClosetsWhere = {
+        [Op.or]: [
+          interestedClosetsWhere,
+          { id: { [Op.in]: receiveCards } }
+        ]
+      };
+    }
+
+    const interestedClosets = await TradingCard.findAll({
+      where: interestedClosetsWhere,
+      attributes: [
+        'id', 'code', 'trader_id', 'search_param', 'trading_card_img', 
+        'category_id', 'trading_card_estimated_value'
+      ],
+      include: [{
+        model: Category,
+        as: 'parentCategory',
+        attributes: ['id', 'sport_name']
+      }]
+    });
+
+    // Calculate product count for interested user
+    const productCount = await TradingCard.count({
+      where: {
+        trader_id: interestedUserId,
+        trading_card_status: '1',
+        is_traded: '0',
+        mark_as_deleted: null,
+        [Op.or]: [
+          { can_trade: '1' },
+          { can_buy: '1' }
+        ]
+      }
+    });
+
+    // Check if user is following the interested user
+    const follower = await Follower.findOne({
+      where: {
+        trader_id: interestedUserId,
+        user_id: userId,
+        follower_status: '1'
+      }
+    });
+
+    // Get total trades count for interested user
+    const totalTradesCount = await TradeTransaction.count({
+      where: {
+        [Op.or]: [
+          { trade_sent_by_key: interestedUserId },
+          { trade_sent_to_key: interestedUserId }
+        ]
+      }
+    });
+
+    // Format response data
+    const responseData = {
+      trade_proposal: {
+        id: tradeProposal.id,
+        code: tradeProposal.code,
+        main_card: tradeProposal.main_card,
+        send_cards: tradeProposal.send_cards,
+        receive_cards: tradeProposal.receive_cards,
+        add_cash: tradeProposal.add_cash,
+        ask_cash: tradeProposal.ask_cash,
+        message: tradeProposal.message,
+        trade_status: tradeProposal.trade_status,
+        trade_sent_by: tradeProposal.trade_sent_by,
+        trade_sent_to: tradeProposal.trade_sent_to,
+        created_at: tradeProposal.created_at,
+        updated_at: tradeProposal.updated_at
+      },
+      interested_user: {
+        id: interestedUser.id,
+        username: interestedUser.username,
+        first_name: interestedUser.first_name,
+        last_name: interestedUser.last_name,
+        profile_picture: interestedUser.profile_picture,
+        ebay_store_url: interestedUser.ebay_store_url,
+        total_trades_count: totalTradesCount
+      },
+      user_closets: userClosets.map(card => ({
+        id: card.id,
+        code: card.code,
+        trader_id: card.trader_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        category_id: card.category_id,
+        trading_card_estimated_value: card.trading_card_estimated_value,
+        category_name: (card as any).parentCategory?.sport_name || '',
+        is_selected: sendCards.includes(card.id)
+      })),
+      interested_closets: interestedClosets.map(card => ({
+        id: card.id,
+        code: card.code,
+        trader_id: card.trader_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        category_id: card.category_id,
+        trading_card_estimated_value: card.trading_card_estimated_value,
+        category_name: (card as any).parentCategory?.sport_name || '',
+        is_selected: receiveCards.includes(card.id)
+      })),
+      product_count: productCount,
+      is_following: !!follower,
+      send_cards_tp: sendCards,
+      receive_cards_tp: receiveCards,
+      all_products: [...sendCards, ...receiveCards],
+      td: {
+        open_text: "Edit Trade",
+        next_text: "Continue Trade"
+      }
+    };
+
+    return sendApiResponse(res, 200, true, "Trade proposal detail retrieved successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Edit trade proposal detail error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Edit Trade Proposal API
+export const editTradeProposal = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const {
+      sendcard,
+      receivecard,
+      trader_id_r,
+      add_cash,
+      ask_cash,
+      message,
+      counter_personalized_message,
+      trades_proposal_id,
+      main_card,
+      change_method
+    } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Validation
+    if (!sendcard || !receivecard || !trader_id_r) {
+      return sendApiResponse(res, 400, false, "Please select products you want to send and receive, and select trader you want to trade with.", []);
+    }
+
+    if (!Array.isArray(sendcard) || !Array.isArray(receivecard)) {
+      return sendApiResponse(res, 400, false, "Send cards and receive cards must be arrays", []);
+    }
+
+    if (sendcard.length === 0 || receivecard.length === 0) {
+      return sendApiResponse(res, 400, false, "Please select at least one card to send and receive", []);
+    }
+
+    // Normalize cash inputs
+    const askCash = ask_cash === '0' ? null : ask_cash;
+    const addCash = add_cash === '0' ? null : add_cash;
+
+    if (askCash !== null && addCash !== null) {
+      return sendApiResponse(res, 400, false, "You can't trade with both (Amount you will get & Amount you will pay).", []);
+    }
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(trades_proposal_id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    if (tradeProposal.trade_status === 'cancel') {
+      return sendApiResponse(res, 400, false, "Trade offer already cancelled, you cannot send a counter offer on this trade.", []);
+    }
+
+    // Reset existing cards traded status
+    const tpSendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const tpReceiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const existingCards = [...tpSendCards, ...tpReceiveCards];
+
+    if (existingCards.length > 0) {
+      await TradingCard.update(
+        { is_traded: '0' },
+        { where: { id: { [Op.in]: existingCards } } }
+      );
+    }
+
+    // Update cards traded status for new proposal
+    const allCards = [...sendcard, ...receivecard];
+    await TradingCard.update(
+      { is_traded: '1' },
+      { where: { id: { [Op.in]: allCards } } }
+    );
+
+    const sendcards = sendcard.join(',');
+    const receivecards = receivecard.join(',');
+
+    // Detect if anything is changed in trade proposal
+    let tradeEdited = false;
+    const currentAddCash = tradeProposal.add_cash ? tradeProposal.add_cash.toString() : '0';
+    const currentAskCash = tradeProposal.ask_cash ? tradeProposal.ask_cash.toString() : '0';
+    const newAddCash = addCash ? addCash.toString().replace(/,/g, '') : '0';
+    const newAskCash = askCash ? askCash.toString().replace(/,/g, '') : '0';
+
+    if (
+      currentAddCash !== newAddCash ||
+      currentAskCash !== newAskCash ||
+      tradeProposal.send_cards !== sendcards ||
+      tradeProposal.receive_cards !== receivecards
+    ) {
+      tradeEdited = true;
+    }
+
+    if (tradeEdited) {
+      if (change_method === 'Counter Trade') {
+        // For Counter Trade, swap send and receive cards, and cash accordingly
+        const updateData: any = {
+          trade_status: 'counter_offer',
+          send_cards: receivecards,
+          receive_cards: sendcards,
+          main_card: main_card,
+          message: counter_personalized_message || message || tradeProposal.message
+        };
+
+        if (askCash) {
+          updateData.add_cash = parseFloat(askCash.toString().replace(/,/g, ''));
+        } else {
+          updateData.add_cash = null;
+        }
+
+        if (addCash) {
+          updateData.ask_cash = parseFloat(addCash.toString().replace(/,/g, ''));
+        } else {
+          updateData.ask_cash = null;
+        }
+
+        if (counter_personalized_message) {
+          updateData.counter_personalized_message = counter_personalized_message;
+        }
+
+        await tradeProposal.update(updateData);
+
+        // Send notifications for counter trade
+        await sendTradeNotifications(
+          'counter-offer-proposal-receive',
+          userId,
+          parseInt(trader_id_r),
+          tradeProposal.id,
+          'Trade'
+        );
+
+        // Set trade status
+        await setTradeProposalStatus(tradeProposal.id, 'counter-trade-offer');
+
+        return sendApiResponse(res, 200, true, "Counter offer proposed successfully!", [], {
+          trade_proposal_id: tradeProposal.id,
+          redirect_url: `/ongoing-trades/${tradeProposal.id}`
+        });
+
+      } else {
+        // For regular updates, set normally
+        const updateData: any = {
+          send_cards: sendcards,
+          receive_cards: receivecards,
+          main_card: main_card,
+          message: message || tradeProposal.message
+        };
+
+        if (addCash) {
+          updateData.add_cash = parseFloat(addCash.toString().replace(/,/g, ''));
+        } else {
+          updateData.add_cash = null;
+        }
+
+        if (askCash) {
+          updateData.ask_cash = parseFloat(askCash.toString().replace(/,/g, ''));
+        } else {
+          updateData.ask_cash = null;
+        }
+
+        await tradeProposal.update(updateData);
+
+        // Send notifications for regular trade update
+        await sendTradeNotifications(
+          'edit-proposal',
+          userId,
+          parseInt(trader_id_r),
+          tradeProposal.id,
+          'Trade'
+        );
+
+        // Set trade status
+        await setTradeProposalStatus(tradeProposal.id, 'trade-offer-updated');
+
+        return sendApiResponse(res, 200, true, "Trade proposal updated successfully!", [], {
+          trade_proposal_id: tradeProposal.id,
+          redirect_url: `/ongoing-trades/${tradeProposal.id}`
+        });
+      }
+    } else {
+      return sendApiResponse(res, 200, true, "Nothing updated at this time!", [], {
+        trade_proposal_id: tradeProposal.id,
+        redirect_url: '/ongoing-trades'
+      });
+    }
+
+  } catch (error: any) {
+    console.error('Edit trade proposal error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Review Trade Proposal API
+export const reviewTradeProposal = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { card_id } = req.params;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!card_id) {
+      return sendApiResponse(res, 400, false, "Trade proposal ID is required", []);
+    }
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(card_id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Get interested user (trade sender)
+    const interestedUserId = tradeProposal.trade_sent_by;
+    if (interestedUserId === userId) {
+      return sendApiResponse(res, 400, false, "You can't trade with yourself.", []);
+    }
+
+    const interestedUser = await User.findByPk(interestedUserId, {
+      attributes: ['id', 'username', 'first_name', 'last_name', 'profile_picture', 'ebay_store_url']
+    });
+
+    if (!interestedUser) {
+      return sendApiResponse(res, 404, false, "Interested user not found", []);
+    }
+
+    // Parse send and receive cards
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+
+    // Get interested user closets (cards they're sending)
+    const interestedClosets = await TradingCard.findAll({
+      where: {
+        trader_id: interestedUserId,
+        id: { [Op.in]: sendCards },
+        mark_as_deleted: null
+      },
+      attributes: [
+        'id', 'code', 'trader_id', 'search_param', 'trading_card_img', 
+        'category_id', 'trading_card_estimated_value'
+      ],
+      include: [{
+        model: Category,
+        as: 'parentCategory',
+        attributes: ['id', 'sport_name']
+      }],
+      order: [['updated_at', 'DESC']]
+    });
+
+    // Get user closets (cards they're receiving)
+    const userClosets = await TradingCard.findAll({
+      where: {
+        trader_id: userId,
+        id: { [Op.in]: receiveCards },
+        mark_as_deleted: null
+      },
+      attributes: [
+        'id', 'code', 'trader_id', 'search_param', 'trading_card_img', 
+        'category_id', 'trading_card_estimated_value'
+      ],
+      include: [{
+        model: Category,
+        as: 'parentCategory',
+        attributes: ['id', 'sport_name']
+      }],
+      order: [['updated_at', 'DESC']]
+    });
+
+    // Calculate product count for interested user
+    const productCount = await TradingCard.count({
+      where: {
+        trader_id: interestedUserId,
+        trading_card_status: '1',
+        is_traded: '0',
+        mark_as_deleted: null,
+        [Op.or]: [
+          { can_trade: '1' },
+          { can_buy: '1' }
+        ]
+      }
+    });
+
+    // Check if user is following the interested user
+    const follower = await Follower.findOne({
+      where: {
+        trader_id: interestedUserId,
+        user_id: userId,
+        follower_status: '1'
+      }
+    });
+
+    // Get total trades count for interested user
+    const totalTradesCount = await TradeTransaction.count({
+      where: {
+        [Op.or]: [
+          { trade_sent_by_key: interestedUserId },
+          { trade_sent_to_key: interestedUserId }
+        ]
+      }
+    });
+
+    // Format response data
+    const responseData = {
+      trade_proposal: {
+        id: tradeProposal.id,
+        code: tradeProposal.code,
+        main_card: tradeProposal.main_card,
+        send_cards: tradeProposal.send_cards,
+        receive_cards: tradeProposal.receive_cards,
+        add_cash: tradeProposal.add_cash,
+        ask_cash: tradeProposal.ask_cash,
+        message: tradeProposal.message,
+        trade_status: tradeProposal.trade_status,
+        trade_sent_by: tradeProposal.trade_sent_by,
+        trade_sent_to: tradeProposal.trade_sent_to,
+        created_at: tradeProposal.created_at,
+        updated_at: tradeProposal.updated_at
+      },
+      interested_user: {
+        id: interestedUser.id,
+        username: interestedUser.username,
+        first_name: interestedUser.first_name,
+        last_name: interestedUser.last_name,
+        profile_picture: interestedUser.profile_picture,
+        ebay_store_url: interestedUser.ebay_store_url,
+        total_trades_count: totalTradesCount
+      },
+      interested_closets: interestedClosets.map(card => ({
+        id: card.id,
+        code: card.code,
+        trader_id: card.trader_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        category_id: card.category_id,
+        trading_card_estimated_value: card.trading_card_estimated_value,
+        category_name: (card as any).parentCategory?.sport_name || ''
+      })),
+      user_closets: userClosets.map(card => ({
+        id: card.id,
+        code: card.code,
+        trader_id: card.trader_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        category_id: card.category_id,
+        trading_card_estimated_value: card.trading_card_estimated_value,
+        category_name: (card as any).parentCategory?.sport_name || ''
+      })),
+      product_count: productCount,
+      is_following: !!follower,
+      send_cards_tp: receiveCards, // Swapped for review
+      receive_cards_tp: sendCards, // Swapped for review
+      counter_trade: "This is Counter trade",
+      td: {
+        open_text: "Counter Trade",
+        next_text: "Continue Trade"
+      }
+    };
+
+    return sendApiResponse(res, 200, true, "Trade proposal review data retrieved successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Review trade proposal error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Accept Trade API
+export const acceptTrade = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const {
+      modelid,
+      status,
+      model_name,
+      columnname = 'trade_status'
+    } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!modelid || !status) {
+      return sendApiResponse(res, 400, false, "Trade proposal ID and status are required", []);
+    }
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(modelid);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Check if trade is already in final state
+    const finalStatuses = ['declined', 'cancel', 'cancelled'];
+    if (finalStatuses.includes(tradeProposal.trade_status)) {
+      return sendApiResponse(res, 400, false, `You can not ${status} this trade, this trade already ${tradeProposal.trade_status}`, []);
+    }
+
+    // Handle different status types
+    if (status === 'accepted' || status === 'counter_accepted') {
+      // Deduct coins logic would go here (commented out in Laravel)
+      // For now, we'll proceed with the trade acceptance
+      
+      // Update trade status
+      await tradeProposal.update({
+        [columnname]: status,
+        accepted_on: new Date()
+      });
+
+      // Set trade status
+      const statusAlias = status === 'accepted' ? 'trade-accepted' : 'counter-offer-accepted';
+      await setTradeProposalStatus(tradeProposal.id, statusAlias);
+
+      // Send notifications
+      const notificationAction = status === 'accepted' ? 'accept-proposal' : 'counter-offer-proposal-accept';
+      await sendTradeNotifications(
+        notificationAction,
+        tradeProposal.trade_sent_to!,
+        tradeProposal.trade_sent_by!,
+        tradeProposal.id,
+        'Trade'
+      );
+
+      // Update card statuses
+      const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+      
+      const allCards = [...sendCards, ...receiveCards];
+      await TradingCard.update(
+        { is_traded: '1' },
+        { where: { id: { [Op.in]: allCards } } }
+      );
+
+      // Handle payment notifications if cash is involved
+      if (tradeProposal.add_cash && tradeProposal.add_cash > 0 && !tradeProposal.trade_amount_paid_on) {
+        await setTradeProposalStatus(tradeProposal.id, status === 'accepted' ? 'trade-offer-accepted-sender-pay' : 'counter-offer-accepted-sender-pay');
+      } else if (tradeProposal.ask_cash && tradeProposal.ask_cash > 0 && !tradeProposal.trade_amount_paid_on) {
+        await setTradeProposalStatus(tradeProposal.id, status === 'accepted' ? 'trade-offer-accepted-receiver-pay' : 'counter-offer-accepted-receiver-pay');
+      }
+
+      return sendApiResponse(res, 200, true, "Trade accepted successfully as per your request.", [], {
+        trade_proposal_id: tradeProposal.id,
+        redirect_url: `/ongoing-trades/${tradeProposal.id}`
+      });
+
+    } else if (status === 'declined' && model_name === 'Decline') {
+      // Handle decline
+      await tradeProposal.update({ [columnname]: status });
+      await setTradeProposalStatus(tradeProposal.id, 'trade-cancelled');
+
+      // Reset card statuses
+      const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const allCards = [...sendCards, ...receiveCards];
+      
+      await TradingCard.update(
+        { is_traded: '0' },
+        { where: { id: { [Op.in]: allCards } } }
+      );
+
+      // Send notifications
+      await sendTradeNotifications(
+        'decline-proposal',
+        tradeProposal.trade_sent_to!,
+        tradeProposal.trade_sent_by!,
+        tradeProposal.id,
+        'Trade'
+      );
+
+      return sendApiResponse(res, 200, true, "Trade cancelled successfully as per your request.", [], {
+        trade_proposal_id: tradeProposal.id,
+        redirect_url: '/cancelled-trades'
+      });
+
+    } else if (status === 'declined' && model_name === 'Cancel') {
+      // Handle counter offer cancel
+      await tradeProposal.update({ [columnname]: status });
+      await setTradeProposalStatus(tradeProposal.id, 'trade-cancelled');
+
+      // Reset card statuses
+      const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const allCards = [...sendCards, ...receiveCards];
+      
+      await TradingCard.update(
+        { is_traded: '0' },
+        { where: { id: { [Op.in]: allCards } } }
+      );
+
+      // Send notifications
+      await sendTradeNotifications(
+        'counter-offer-proposal-cancel',
+        tradeProposal.trade_sent_to!,
+        tradeProposal.trade_sent_by!,
+        tradeProposal.id,
+        'Trade'
+      );
+
+      return sendApiResponse(res, 200, true, "Trade cancelled successfully as per your request.", [], {
+        trade_proposal_id: tradeProposal.id,
+        redirect_url: '/cancelled-trades'
+      });
+
+    } else if (status === 'cancel') {
+      // Handle cancel
+      await tradeProposal.update({ [columnname]: status });
+      await setTradeProposalStatus(tradeProposal.id, 'trade-cancelled');
+
+      // Reset card statuses
+      const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const allCards = [...sendCards, ...receiveCards];
+      
+      await TradingCard.update(
+        { is_traded: '0' },
+        { where: { id: { [Op.in]: allCards } } }
+      );
+
+      // Send notifications
+      await sendTradeNotifications(
+        'cancel',
+        tradeProposal.trade_sent_by!,
+        tradeProposal.trade_sent_to!,
+        tradeProposal.id,
+        'Trade'
+      );
+
+      return sendApiResponse(res, 200, true, "Trade cancelled successfully as per your request.", [], {
+        trade_proposal_id: tradeProposal.id,
+        redirect_url: '/cancelled-trades'
+      });
+
+    } else if (status === 'counter_declined') {
+      // Handle counter declined
+      await tradeProposal.update({ [columnname]: status });
+
+      // Reset card statuses
+      const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const allCards = [...sendCards, ...receiveCards];
+      
+      await TradingCard.update(
+        { is_traded: '0' },
+        { where: { id: { [Op.in]: allCards } } }
+      );
+
+      // Send notifications
+      await sendTradeNotifications(
+        'counter-declined',
+        tradeProposal.trade_sent_by!,
+        tradeProposal.trade_sent_to!,
+        tradeProposal.id,
+        'Trade'
+      );
+
+      return sendApiResponse(res, 200, true, "Counter trade declined successfully.", [], {
+        trade_proposal_id: tradeProposal.id,
+        redirect_url: `/ongoing-trades/${tradeProposal.id}`
+      });
+
+    } else {
+      return sendApiResponse(res, 400, false, "Invalid status provided", []);
+    }
+
+  } catch (error: any) {
+    console.error('Accept trade error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };

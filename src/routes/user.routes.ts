@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment } from "../controllers/user.controller.js";
-import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal } from "../controllers/cart.controller.js";
+import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -109,6 +109,24 @@ router.delete("/remove-cart-item/:id", userAuth, removeCartItem);
 
 // Trade proposal API (requires authentication)
 router.get("/trade-proposal/:card_id/:interested_user", userAuth, tradeProposal);
+
+// Propose trade API (requires authentication - handled in controller)
+router.post("/propose-trade", userAuth, proposeTrade);
+
+// Cancel trade API (requires authentication - handled in controller)
+router.post("/cancel-trade", userAuth, cancelTrade);
+
+// Edit trade proposal detail API (requires authentication)
+router.get("/edit-trade-proposal/:card_id", userAuth, editTradeProposalDetail);
+
+// Edit trade proposal API (requires authentication)
+router.post("/edit-trade-proposal", userAuth, editTradeProposal);
+
+// Review trade proposal API (requires authentication)
+router.get("/review-trade-proposal/:card_id", userAuth, reviewTradeProposal);
+
+// Accept trade API (requires authentication)
+router.post("/accept-trade", userAuth, acceptTrade);
 
 // Process checkout API (requires authentication)
 router.post("/checkout", userAuth, processCheckout);

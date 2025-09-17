@@ -4558,6 +4558,7 @@ export class UserService {
           status: card.trading_card_status,
           code: card.code,
           search_param: card.search_param,
+          category_id: card.category_id,
           category_name: category_name
         };
 
@@ -4702,13 +4703,13 @@ export class UserService {
             {
               model: Shipment,
               as: 'shipmenttrader',
-              attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date'],
+              attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id'],
               required: false
             },
             {
               model: Shipment,
               as: 'shipmentself',
-              attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date'],
+              attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id'],
               required: false
             }
           ]
@@ -4809,6 +4810,26 @@ export class UserService {
         // Get ratings for this trade (Laravel reference: sender_review_count_get)
         const ratings = await UserService.getTradeRatings(tradeData.trade_proposal_id);
         
+        // Get shipment data directly from database
+        // shipmenttrader: shipments where user_id = trade_sent_by_key (the person who sent the trade)
+        // shipmenttrader: logged in user's shipment details
+        const shipmenttrader = await Shipment.findAll({
+          where: {
+            trade_id: tradeData.trade_proposal_id,
+            user_id: userId // logged in user's shipment
+          },
+          attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id']
+        });
+        
+        // shipmentself: other user's shipment details
+        const shipmentself = await Shipment.findAll({
+          where: {
+            trade_id: tradeData.trade_proposal_id,
+            user_id: tradeData.trade_sent_by_key === userId ? tradeData.trade_sent_to_key : tradeData.trade_sent_by_key // other user's shipment
+          },
+          attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id']
+        });
+        
         // Debug: Log the raw data to help identify the issue
         if (tradeData.send_cards || tradeData.receive_cards) {
           console.log('=== DEBUG TRADE CARD DATA ===');
@@ -4822,11 +4843,22 @@ export class UserService {
           console.log('=== END DEBUG ===');
         }
 
+        // Debug: Log shipment data
+        console.log('=== DEBUG SHIPMENT DATA ===');
+        console.log('Trade ID:', tradeData.id);
+        console.log('Trade Proposal ID:', tradeData.trade_proposal_id);
+        console.log('Trade sent by key:', tradeData.trade_sent_by_key);
+        console.log('Trade sent to key:', tradeData.trade_sent_to_key);
+        console.log('Current logged in user ID:', userId);
+        console.log('Direct shipmenttrader query result:', shipmenttrader);
+        console.log('Direct shipmentself query result:', shipmentself);
+        console.log('=== END SHIPMENT DEBUG ===');
+
         return {
           id: tradeData.id,
           code: tradeData.order_id, // Use order_id as code for completed trades
-          trade_sent_by: tradeData.trade_sent_by_key,
-          trade_sent_to: tradeData.trade_sent_to_key,
+          trade_sent_by: userId, // logged in user ID
+          trade_sent_to: tradeData.trade_sent_by_key === userId ? tradeData.trade_sent_to_key : tradeData.trade_sent_by_key, // other user ID
           sender_name: sender_name,
           receiver_name: receiver_name,
           main_card: tradeData.main_card_id,
@@ -4874,6 +4906,21 @@ export class UserService {
             paid_amount: tradeData.trade_amount_amount || 0,
             amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null
           },
+          // Shipment data - Direct database query (as objects, not arrays)
+          shipmenttrader: shipmenttrader.length > 0 ? {
+            id: shipmenttrader[0]?.dataValues?.id || shipmenttrader[0]?.id || 0,
+            tracking_id: shipmenttrader[0]?.dataValues?.tracking_id || shipmenttrader[0]?.tracking_id || '',
+            shipment_status: shipmenttrader[0]?.dataValues?.shipment_status || shipmenttrader[0]?.shipment_status || 'Pending',
+            estimated_delivery_date: shipmenttrader[0]?.dataValues?.estimated_delivery_date ? UserService.formatDateToMMDDYY(shipmenttrader[0].dataValues.estimated_delivery_date) : UserService.formatDateToMMDDYY(new Date()),
+            user_id: shipmenttrader[0]?.dataValues?.user_id || shipmenttrader[0]?.user_id || 0
+          } : null,
+          shipmentself: shipmentself.length > 0 ? {
+            id: shipmentself[0]?.dataValues?.id || shipmentself[0]?.id || 0,
+            tracking_id: shipmentself[0]?.dataValues?.tracking_id || shipmentself[0]?.tracking_id || '',
+            shipment_status: shipmentself[0]?.dataValues?.shipment_status || shipmentself[0]?.shipment_status || 'Pending',
+            estimated_delivery_date: shipmentself[0]?.dataValues?.estimated_delivery_date ? UserService.formatDateToMMDDYY(shipmentself[0].dataValues.estimated_delivery_date) : UserService.formatDateToMMDDYY(new Date()),
+            user_id: shipmentself[0]?.dataValues?.user_id || shipmentself[0]?.user_id || 0
+          } : null,
           // Ratings for this trade
           ratings: ratings
         };

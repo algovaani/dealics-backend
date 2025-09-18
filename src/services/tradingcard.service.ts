@@ -55,6 +55,7 @@ export class TradingCardService {
           c.sport_name,
           c.sport_icon,
           tc.trader_id,
+          u.username as trader_name,
           tc.creator_id,
           tc.is_traded,
           tc.can_trade,
@@ -68,9 +69,18 @@ export class TradingCardService {
             WHEN tc.is_traded = '0' THEN 'Offer Accepted'
             WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
             ELSE 'Not Available'
-          END as trade_card_status
+          END as trade_card_status,
+          CASE 
+            WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
+            WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
+            WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
+            WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
+            ELSE NULL
+          END as card_condition
         FROM trading_cards tc
         LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN users u ON tc.trader_id = u.id
+        LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
         ${interestedJoin}
         ${whereClause}
         ORDER BY tc.created_at DESC
@@ -161,6 +171,7 @@ export class TradingCardService {
         c.sport_name,
         c.sport_icon,
         tc.trader_id,
+        u.username as trader_name,
         tc.creator_id,
         tc.is_traded,
         tc.can_trade,
@@ -174,9 +185,18 @@ export class TradingCardService {
           WHEN tc.is_traded = '0' THEN 'Offer Accepted'
           WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
           ELSE 'Not Available'
-        END as trade_card_status
+        END as trade_card_status,
+        CASE 
+          WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
+          WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
+          WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
+          WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
+          ELSE NULL
+        END as card_condition
       FROM trading_cards tc
       LEFT JOIN categories c ON tc.category_id = c.id
+      LEFT JOIN users u ON tc.trader_id = u.id
+      LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
       ${interestedJoin}
       ${whereClause}
       ORDER BY tc.created_at DESC
@@ -845,9 +865,25 @@ export class TradingCardService {
         tc.is_traded,
         tc.can_trade,
         tc.can_buy,
-        CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in
+        CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
+        CASE 
+          WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
+          WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
+          WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
+          WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
+          ELSE NULL
+        END as card_condition,
+        CASE 
+          WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+          WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+          WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+          WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+          WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+          ELSE 'Not Available'
+        END as trade_card_status
       FROM trading_cards tc
       LEFT JOIN categories c ON tc.category_id = c.id
+      LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
       ${interestedJoin}
       WHERE tc.creator_id = ${validUserId}
         AND tc.trading_card_status = '1'
@@ -1880,6 +1916,8 @@ export class TradingCardService {
           tc.trading_card_asking_price,
           tc.search_param,
           tc.is_traded,
+          tc.trader_id,
+          u.username as trader_name,
           c.sport_name,
         c.sport_icon,
           CASE 
@@ -1888,9 +1926,18 @@ export class TradingCardService {
             WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
             WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
             ELSE NULL
-          END as card_condition
+          END as card_condition,
+          CASE 
+            WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+            WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+            WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+            WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+            WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+            ELSE 'Not Available'
+          END as trade_card_status
         FROM trading_cards tc
         LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN users u ON tc.trader_id = u.id
         LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
         LEFT JOIN (
           SELECT
@@ -1987,6 +2034,8 @@ export class TradingCardService {
           tc.trading_card_asking_price,
           tc.search_param,
           tc.is_traded,
+          tc.trader_id,
+          u.username as trader_name,
           c.sport_name,
         c.sport_icon,
           CASE 
@@ -1995,9 +2044,18 @@ export class TradingCardService {
             WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
             WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
             ELSE NULL
-          END as card_condition
+          END as card_condition,
+          CASE 
+            WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+            WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+            WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+            WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+            WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+            ELSE 'Not Available'
+          END as trade_card_status
         FROM trading_cards tc
         LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN users u ON tc.trader_id = u.id
         LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
         WHERE tc.trading_card_status = '1'
         AND tc.mark_as_deleted IS NULL
@@ -2122,7 +2180,22 @@ export class TradingCardService {
           tc.creator_id,
           tc.is_traded,
           tc.can_trade,
-          tc.can_buy
+          tc.can_buy,
+          CASE 
+            WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
+            WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
+            WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
+            WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
+            ELSE NULL
+          END as card_condition,
+          CASE 
+            WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+            WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+            WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+            WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+            WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+            ELSE 'Not Available'
+          END as trade_card_status
       `;
 
       if (loggedInUserId) {
@@ -2135,6 +2208,7 @@ export class TradingCardService {
         ${selectClause}
         FROM trading_cards tc
         LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
         ${interestedJoin}
         WHERE tc.category_id IN (:categoryIds)
         AND tc.mark_as_deleted IS NULL

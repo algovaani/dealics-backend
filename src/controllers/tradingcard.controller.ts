@@ -174,6 +174,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
         sport_name: card.sport_name,
         sport_icon: card.sport_icon,
         trader_id: card.trader_id,
+        trader_name: card.trader_name,
         creator_id: card.creator_id,
         is_traded: card.is_traded,
         can_trade: card.can_trade,
@@ -181,6 +182,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
         trading_card_status: card.trading_card_status,
         interested_in: card.interested_in || false,
         trade_card_status: card.trade_card_status,
+        card_condition: card.card_condition || null,
         canTradeOrOffer: canTradeOrOffer,
         trader: {
           first_name: card.first_name,
@@ -324,6 +326,9 @@ export const getTradingCards = async (req: Request, res: Response) => {
         sport_name: card.sport_name || null,
         sport_icon: card.sport_icon || null,
         trade_card_status: card.trade_card_status || null,
+        trader_id: card.trader_id || null,
+        trader_name: card.trader_name || null,
+        card_condition: card.card_condition || null,
         canTradeOrOffer: canTradeOrOffer
       };
 
@@ -411,23 +416,6 @@ export const getTradingCard = async (req: Request, res: Response) => {
         let attemptsCount = 0;
         if (buyOfferAttempt) {
           attemptsCount = buyOfferAttempt.attempts || 0;
-        } else {
-          // If no record found, create a test record with exceeded attempts
-          console.log('No BuyOfferAttempt record found, creating test record with exceeded attempts...');
-          try {
-            const testRecord = await BuyOfferAttempt.create({
-              user_id: authenticatedUserId,
-              product_id: tradingCard.id,
-              attempts: 3, // Set to 3 to exceed limit
-              offer_amount: 0
-            } as any);
-            console.log('Test record created with ID:', testRecord.id);
-            attemptsCount = 3; // Set to 3 for exceeded limit
-          } catch (error) {
-            console.log('Error creating test record:', error);
-            // If creation fails, simulate exceeded attempts
-            attemptsCount = 3;
-          }
         }
         
         console.log('=== OFFER LIMIT DEBUG ===');
@@ -447,20 +435,15 @@ export const getTradingCard = async (req: Request, res: Response) => {
         console.log('Final remaining attempts:', remainingAttempts);
         console.log('=== END DEBUG ===');
 
-        // Generate offer limit text based on remaining attempts
-        if (remainingAttempts > 3) {
-          remainingAttempts = 3; // Cap at 3
-        } else if (remainingAttempts < 0) {
-          remainingAttempts = 0; // Cap at 0
-        }
-
-        if (remainingAttempts === 3) {
-          offerLimitText = "Offer Limit: 3/3";
-        } else if (remainingAttempts === 2) {
-          offerLimitText = "Offer Limit: 2/3";
-        } else if (remainingAttempts === 1) {
+        // Generate offer limit text based on attempts count
+        // Show used attempts out of total 3
+        if (attemptsCount === 0) {
+          offerLimitText = "Offer Limit: 0/3";
+        } else if (attemptsCount === 1) {
           offerLimitText = "Offer Limit: 1/3";
-        } else {
+        } else if (attemptsCount === 2) {
+          offerLimitText = "Offer Limit: 2/3";
+        } else if (attemptsCount >= 3) {
           offerLimitText = "Offer Limit: Exceeded, buy at asking price.";
         }
 
@@ -595,7 +578,7 @@ export const toggleTradingCardDeleteStatus = async (req: Request, res: Response)
       await tradingCard.update({ mark_as_deleted: 1 });
       return sendApiResponse(res, 200, true, "Trading Card deleted successfully", []);
     } else if (action === 'restore') {
-      await tradingCard.update({ mark_as_deleted: 0 });
+      await tradingCard.update({ mark_as_deleted: null });
       return sendApiResponse(res, 200, true, "Trading Card restored successfully", []);
     }
     
@@ -1282,6 +1265,8 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
          search_param: card.search_param || null,
          sport_name: card.sport_name || null,
         sport_icon: card.sport_icon || null,
+         card_condition: card.card_condition || null,
+         trade_card_status: card.trade_card_status || null,
          canTradeOrOffer: canTradeOrOffer
        };
 
@@ -1338,6 +1323,9 @@ export const getPopularTradingCards = async (req: Request, res: Response) => {
         sport_name: card.sport_name,
         sport_icon: card.sport_icon,
         is_traded: card.is_traded,
+        trader_id: card.trader_id,
+        trader_name: card.trader_name,
+        trade_card_status: card.trade_card_status,
         interestedin: true,
         card_condition: card.card_condition
       }));
@@ -1433,6 +1421,9 @@ export const mainSearch = async (req: Request, res: Response) => {
         search_param: card.search_param,
         sport_name: card.sport_name,
         is_traded: card.is_traded,
+        trader_id: card.trader_id,
+        trader_name: card.trader_name,
+        trade_card_status: card.trade_card_status,
         interestedin: true,
         card_condition: card.card_condition
       }));
@@ -1536,6 +1527,8 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
           search_param: card.search_param || null,
           sport_name: card.sport_name || null,
           sport_icon: card.sport_icon || null,
+          card_condition: card.card_condition || null,
+          trade_card_status: card.trade_card_status || null,
           canTradeOrOffer: canTradeOrOffer
         };
 

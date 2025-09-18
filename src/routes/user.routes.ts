@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment } from "../controllers/user.controller.js";
-import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade } from "../controllers/cart.controller.js";
+import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, shippingCheckout, shippingConfirmOrder } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -127,6 +127,27 @@ router.get("/review-trade-proposal/:card_id", userAuth, reviewTradeProposal);
 
 // Accept trade API (requires authentication)
 router.post("/accept-trade", userAuth, acceptTrade);
+
+// Get shipping address API (requires authentication)
+router.get("/shipping-address", userAuth, getShippingAddress);
+
+// Shipment initialize API (requires authentication)
+router.post("/shipment-initialize", userAuth, shipmentInitialize);
+
+// Get shipping parcel API (requires authentication)
+router.get("/shipping-parcel", userAuth, getShippingParcel);
+
+// Save parcel API (requires authentication)
+router.post("/save-parcel", userAuth, saveParcel);
+
+// Get shipping carrier API (requires authentication)
+router.get("/shipping-carrier", userAuth, getShippingCarrier);
+
+// Shipping checkout API (requires authentication)
+router.post("/shipping-checkout", userAuth, shippingCheckout);
+
+// Shipping confirm order API (requires authentication)
+router.post("/shipping-confirm-order", userAuth, shippingConfirmOrder);
 
 // Process checkout API (requires authentication)
 router.post("/checkout", userAuth, processCheckout);

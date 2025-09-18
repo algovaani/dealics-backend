@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { Cart, CartDetail, TradingCard, User, BuyOfferAttempt, CreditDeductionLog, Address, Category, BuySellCard, BuyOfferStatus, Follower, TradeProposal, TradeProposalStatus, TradeNotification, Shipment, TradeTransaction } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
+import { exit } from "process";
 
 // Helper function to send standardized API responses
 const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any, extra?: any) => {
@@ -2080,7 +2081,8 @@ export const editTradeProposalDetail = async (req: Request, res: Response) => {
         last_name: interestedUser.last_name,
         profile_picture: interestedUser.profile_picture,
         ebay_store_url: interestedUser.ebay_store_url,
-        total_trades_count: totalTradesCount
+        total_trades_count: totalTradesCount,
+        product_count: productCount
       },
       user_closets: userClosets.map(card => ({
         id: card.id,
@@ -2104,7 +2106,6 @@ export const editTradeProposalDetail = async (req: Request, res: Response) => {
         category_name: (card as any).parentCategory?.sport_name || '',
         is_selected: receiveCards.includes(card.id)
       })),
-      product_count: productCount,
       is_following: !!follower,
       send_cards_tp: sendCards,
       receive_cards_tp: receiveCards,
@@ -2685,6 +2686,1201 @@ export const acceptTrade = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('Accept trade error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Get Shipping Address API
+export const getShippingAddress = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { trade_id } = req.query;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!trade_id || typeof trade_id !== 'string') {
+      return sendApiResponse(res, 400, false, "Trade ID is required", []);
+    }
+
+    // Get user's sender addresses
+    const addresses = await Address.findAll({
+      where: {
+        user_id: userId,
+        is_sender: '1',
+        is_deleted: '0'
+      },
+      order: [['updated_at', 'DESC']]
+    });
+
+    let deliveryAddress = 0;
+    let sendTradeCards: any[] = [];
+    let receiveTradeCards: any[] = [];
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(trade_id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Check trade status
+    if (tradeProposal.trade_status === 'cancel' || tradeProposal.trade_status === 'declined') {
+      const errorMessage = tradeProposal.trade_status === 'cancel'
+        ? 'Trade are cancelled.'
+        : 'Trade are declined.';
+      return sendApiResponse(res, 400, false, errorMessage, []);
+    }
+
+    // Check if shipment already exists with payment
+    const existingShipment = await Shipment.findOne({
+      where: {
+        trade_id: parseInt(trade_id),
+        user_id: userId
+      }
+    });
+
+    if (existingShipment && existingShipment.paymentId && existingShipment.selected_rate) {
+      return sendApiResponse(res, 400, false, "Shipment already processed", [], {
+        redirect_url: `/ship-your-products/trade/${trade_id}/${existingShipment.id}`
+      });
+    }
+
+    const tradeSentBy = tradeProposal.trade_sent_by;
+    const tradeSentTo = tradeProposal.trade_sent_to;
+
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+
+    // Get trade cards based on user role
+    if (tradeProposal.trade_sent_to === userId) {
+      // User is receiver, so they send the cards they're receiving and receive the cards they're sending
+      sendTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: receiveCards } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+
+      receiveTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: sendCards } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+    } else {
+      // User is sender, so they send their cards and receive the other's cards
+      sendTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: sendCards } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+
+      receiveTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: receiveCards } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+    }
+
+    // Get delivery address from the other trader
+    if (userId === tradeProposal.trade_sent_by) {
+      const delAddress = await Address.findOne({
+        where: {
+          user_id: tradeProposal.trade_sent_to,
+          mark_default: '1',
+          is_deleted: '0'
+        }
+      });
+      if (delAddress) {
+        deliveryAddress = delAddress.id;
+      }
+    } else if (userId === tradeProposal.trade_sent_to) {
+      const delAddress = await Address.findOne({
+        where: {
+          user_id: tradeProposal.trade_sent_by,
+          mark_default: '1',
+          is_deleted: '0'
+        }
+      });
+      if (delAddress) {
+        deliveryAddress = delAddress.id;
+      }
+    }
+
+    // Format addresses for frontend
+    const formattedAddresses = addresses.map(address => ({
+      id: address.id,
+      name: address.name,
+      email: address.email,
+      phone: address.phone,
+      street1: address.street1,
+      street2: address.street2,
+      city: address.city,
+      state: address.state,
+      country: address.country,
+      zip: address.zip,
+      mark_default: address.mark_default,
+      is_sender: address.is_sender,
+      is_deleted: address.is_deleted,
+      created_at: address.createdAt,
+      updated_at: address.updatedAt
+    }));
+
+    // Format trade cards for frontend
+    const formattedSendCards = sendTradeCards.map(card => ({
+      id: card.id,
+      code: card.code,
+      trader_id: card.trader_id,
+      search_param: card.search_param,
+      trading_card_img: card.trading_card_img,
+      category_id: card.category_id,
+      trading_card_estimated_value: card.trading_card_estimated_value,
+      cardname: card.search_param,
+      category_name: (card as any).parentCategory?.sport_name || ''
+    }));
+
+    const formattedReceiveCards = receiveTradeCards.map(card => ({
+      id: card.id,
+      code: card.code,
+      trader_id: card.trader_id,
+      search_param: card.search_param,
+      trading_card_img: card.trading_card_img,
+      category_id: card.category_id,
+      trading_card_estimated_value: card.trading_card_estimated_value,
+      cardname: card.search_param,
+      category_name: (card as any).parentCategory?.sport_name || ''
+    }));
+
+    const responseData = {
+      addresses: formattedAddresses,
+      delivery_address: deliveryAddress,
+      send_trade_cards: formattedSendCards,
+      receive_trade_cards: formattedReceiveCards,
+      trade_id: parseInt(trade_id as string),
+      trade_status: tradeProposal.trade_status,
+      has_delivery_address: deliveryAddress > 0,
+      can_proceed: deliveryAddress > 0 && addresses.length > 0
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping address data retrieved successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Get shipping address error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Shipment Initialize API
+export const shipmentInitialize = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const {
+      trade_id,
+      delivery_address,
+      pickup_address
+    } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!trade_id || !delivery_address || !pickup_address) {
+      return sendApiResponse(res, 400, false, "Trade ID, delivery address, and pickup address are required", []);
+    }
+
+    // Check if shipment already exists
+    let shipment = await Shipment.findOne({
+      where: {
+        trade_id: trade_id,
+        user_id: userId
+      }
+    });
+
+    if (shipment && shipment.id > 0) {
+      // Update existing shipment
+      await shipment.update({
+        to_address: parseInt(delivery_address),
+        from_address: parseInt(pickup_address)
+      });
+    } else {
+      // Create new shipment
+      shipment = await Shipment.create({
+        user_id: userId,
+        to_address: parseInt(delivery_address),
+        from_address: parseInt(pickup_address),
+        trade_id: trade_id.toString()
+      } as any);
+    }
+
+    // Validate shipment data
+    if (!shipment) {
+      return sendApiResponse(res, 400, false, "Please select address.", []);
+    }
+
+    // Check if shipment payment is already completed
+    if (shipment.shipment_payment_status === 1) {
+      return sendApiResponse(res, 400, false, "Shipment has already been completed.", [], {
+        redirect_url: "/ongoing-trades"
+      });
+    }
+
+    // Return success response with redirect URL
+    return sendApiResponse(res, 200, true, "Pickup & Delivery address has been saved successfully.", [], {
+      shipment_id: shipment.id,
+      redirect_url: "/trade/shipping-parcel"
+    });
+
+  } catch (error: any) {
+    console.error('Shipment initialize error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Get Shipping Parcel API
+export const getShippingParcel = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { trade_id } = req.query;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!trade_id || typeof trade_id !== 'string') {
+      return sendApiResponse(res, 400, false, "Trade ID is required", []);
+    }
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(trade_id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Check trade status
+    if (tradeProposal.trade_status === 'cancel' || tradeProposal.trade_status === 'declined') {
+      const errorMessage = tradeProposal.trade_status === 'cancel'
+        ? 'Trade are cancelled.'
+        : 'Trade are declined.';
+      return sendApiResponse(res, 400, false, errorMessage, []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        trade_id: trade_id,
+        user_id: userId
+      }
+    });
+
+    if (!shipment || !shipment.to_address || !shipment.from_address) {
+      return sendApiResponse(res, 400, false, "First enter the address information.", [], {
+        redirect_url: "/trade/shipping-address"
+      });
+    }
+
+    // Determine which cards the user is sending
+    let sendCards: number[] = [];
+    let traderId = 0;
+
+    if (tradeProposal.trade_sent_to === userId) {
+      // User is receiver, so they send the cards they're receiving
+      if (tradeProposal.receive_cards) {
+        sendCards = tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim()));
+        traderId = tradeProposal.trade_sent_to!;
+      }
+    } else if (tradeProposal.trade_sent_by === userId) {
+      // User is sender, so they send their own cards
+      if (tradeProposal.send_cards) {
+        sendCards = tradeProposal.send_cards.split(',').map(id => parseInt(id.trim()));
+        traderId = tradeProposal.trade_sent_by!;
+      }
+    }
+
+    // Get trading cards that user is sending
+    const tradingCards = await TradingCard.findAll({
+      where: {
+        trader_id: traderId,
+        trading_card_status: '1',
+        id: { [Op.in]: sendCards }
+      },
+      order: [['id', 'DESC']],
+      attributes: [
+        'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+        'category_id', 'trading_card_estimated_value'
+      ],
+      include: [{
+        model: Category,
+        as: 'parentCategory',
+        attributes: ['id', 'sport_name']
+      }]
+    });
+
+    // Get trade cards for display (sending and receiving)
+    const sendCardsArray = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const receiveCardsArray = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+
+    let sendTradeCards: any[] = [];
+    let receiveTradeCards: any[] = [];
+
+    if (tradeProposal.trade_sent_to === userId) {
+      // User is receiver
+      sendTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: receiveCardsArray } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+
+      receiveTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: sendCardsArray } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+    } else {
+      // User is sender
+      sendTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: sendCardsArray } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+
+      receiveTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: receiveCardsArray } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+    }
+
+    // Format trading cards for parcel selection
+    const formattedTradingCards = tradingCards.map(card => ({
+      id: card.id,
+      code: card.code,
+      trader_id: card.trader_id,
+      search_param: card.search_param,
+      trading_card_img: card.trading_card_img,
+      category_id: card.category_id,
+      trading_card_estimated_value: card.trading_card_estimated_value,
+      category_name: (card as any).parentCategory?.sport_name || ''
+    }));
+
+    // Format trade cards for display
+    const formattedSendCards = sendTradeCards.map(card => ({
+      id: card.id,
+      code: card.code,
+      trader_id: card.trader_id,
+      search_param: card.search_param,
+      trading_card_img: card.trading_card_img,
+      category_id: card.category_id,
+      trading_card_estimated_value: card.trading_card_estimated_value,
+      cardname: card.search_param,
+      category_name: (card as any).parentCategory?.sport_name || ''
+    }));
+
+    const formattedReceiveCards = receiveTradeCards.map(card => ({
+      id: card.id,
+      code: card.code,
+      trader_id: card.trader_id,
+      search_param: card.search_param,
+      trading_card_img: card.trading_card_img,
+      category_id: card.category_id,
+      trading_card_estimated_value: card.trading_card_estimated_value,
+      cardname: card.search_param,
+      category_name: (card as any).parentCategory?.sport_name || ''
+    }));
+
+    const responseData = {
+      trading_cards: formattedTradingCards,
+      send_trade_cards: formattedSendCards,
+      receive_trade_cards: formattedReceiveCards,
+      trade_id: parseInt(trade_id),
+      trade_status: tradeProposal.trade_status,
+      shipment_id: shipment.id,
+      has_shipment_data: true
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping parcel data retrieved successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Get shipping parcel error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Save Parcel API
+export const saveParcel = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const {
+      trade_id,
+      lengthInput,
+      widthInput,
+      heightInput,
+      weightInput_lbs,
+      weightInput_oz,
+      packageSelect,
+      packageSelectName
+    } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Validation
+    if (!trade_id || !lengthInput || !widthInput || !heightInput || !weightInput_lbs || !weightInput_oz) {
+      return sendApiResponse(res, 400, false, "All parcel dimensions and weight fields are required", []);
+    }
+
+    // Validate numeric values
+    const length = parseFloat(lengthInput);
+    const width = parseFloat(widthInput);
+    const height = parseFloat(heightInput);
+    const weightLbs = parseFloat(weightInput_lbs);
+    const weightOz = parseFloat(weightInput_oz);
+
+    if (isNaN(length) || isNaN(width) || isNaN(height) || isNaN(weightLbs) || isNaN(weightOz)) {
+      return sendApiResponse(res, 400, false, "All dimensions and weight must be numeric values", []);
+    }
+
+    if (length < 0 || width < 0 || height < 0 || weightLbs < 0 || weightOz < 0) {
+      return sendApiResponse(res, 400, false, "Dimensions and weight must be positive values", []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        trade_id: trade_id,
+        user_id: userId
+      },
+      include: [
+        {
+          model: Address,
+          as: 'toAddress',
+          attributes: ['id', 'name', 'email', 'phone', 'street1', 'street2', 'city', 'state', 'country', 'zip']
+        },
+        {
+          model: Address,
+          as: 'fromAddress',
+          attributes: ['id', 'name', 'email', 'phone', 'street1', 'street2', 'city', 'state', 'country', 'zip']
+        }
+      ]
+    });
+
+    if (!shipment || !shipment.to_address || !shipment.from_address) {
+      return sendApiResponse(res, 400, false, "First enter the address information.", [], {
+        redirect_url: "/trade/shipping-address"
+      });
+    }
+
+    // Calculate total weight in ounces
+    const weightInputLbs = 16 * weightLbs;
+    const totalWeight = weightInputLbs + weightOz;
+
+    // Prepare parcel information
+    const parcelInfo = {
+      length: length,
+      width: width,
+      height: height,
+      weight: totalWeight,
+      parcel_weight_unit: 'oz',
+      weight_lbs: weightLbs,
+      weight_oz: weightOz,
+      parcel_weight_unit_oz: 'oz',
+      parcel_weight_unit_lbs: 'lbs'
+    };
+
+    // Prepare label information - EasyPost expects specific format
+    const selectedPackageIds: string[] = [];
+    const selectedPackageNames: string[] = [];
+
+    if (packageSelect && Array.isArray(packageSelect) && packageSelect.length > 0) {
+      packageSelect.forEach((psid: any) => {
+        selectedPackageIds.push('pl_' + psid);
+      });
+    }
+
+    if (packageSelectName && Array.isArray(packageSelectName) && packageSelectName.length > 0) {
+      packageSelectName.forEach((psName: any) => {
+        selectedPackageNames.push(psName);
+      });
+    }
+
+    // EasyPost expects postage_label as a string, not an object
+    const labelInfo = selectedPackageIds.join(' | ');
+
+    // Update shipment
+    await shipment.update({
+      parcel_weight_unit: 'oz',
+      parcel: parcelInfo as any,
+      postage_label: labelInfo as any
+    });
+
+    // Prepare shipment data for EasyPost API
+    const shipmentData = shipment as any;
+    const shipmentForReq: any = {
+      to_address: shipmentData.toAddress ? {
+        name: shipmentData.toAddress.name,
+        phone: shipmentData.toAddress.phone,
+        email: shipmentData.toAddress.email,
+        street1: shipmentData.toAddress.street1,
+        street2: shipmentData.toAddress.street2 || '',
+        city: shipmentData.toAddress.city,
+        state: shipmentData.toAddress.state,
+        country: shipmentData.toAddress.country,
+        zip: shipmentData.toAddress.zip
+      } : null,
+      from_address: shipmentData.fromAddress ? {
+        name: shipmentData.fromAddress.name,
+        phone: shipmentData.fromAddress.phone,
+        email: shipmentData.fromAddress.email,
+        street1: shipmentData.fromAddress.street1,
+        street2: shipmentData.fromAddress.street2 || '',
+        city: shipmentData.fromAddress.city,
+        state: shipmentData.fromAddress.state,
+        country: shipmentData.fromAddress.country,
+        zip: shipmentData.fromAddress.zip
+      } : null,
+      parcel: {
+        length: parcelInfo.length,
+        width: parcelInfo.width,
+        height: parcelInfo.height,
+        weight: parcelInfo.weight
+      }
+    };
+
+    // Call EasyPost API
+    const apiKey = process.env.EASYPOST_API_KEY;
+    if (!apiKey) {
+      console.error('EASYPOST_API_KEY not found in environment variables');
+      return sendApiResponse(res, 500, false, "EasyPost API key not configured", []);
+    }
+
+    console.log('Using EasyPost API Key:', apiKey.substring(0, 10) + '...'); // Log first 10 chars for debugging
+
+    const shipPostData = { shipment: shipmentForReq };
+console.log(shipPostData);
+    try {
+      const response = await fetch('https://api.easypost.com/v2/shipments', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(shipPostData)
+      });
+
+      const responseData = await response.json();
+
+      if (response.status === 200 || response.status === 201) {
+        // Update shipment with EasyPost response
+        await shipment.update({
+          shipment_response: responseData as any
+        });
+
+        return sendApiResponse(res, 200, true, "Parcel information has been saved successfully.", [], {
+          shipment_id: shipment.id,
+          redirect_url: "/trade/shipping-carrier"
+        });
+      } else {
+        const errorMessage = responseData.error?.message || "EasyPost API error";
+        return sendApiResponse(res, 400, false, errorMessage, []);
+      }
+    } catch (apiError: any) {
+      console.error('EasyPost API error:', apiError);
+      return sendApiResponse(res, 500, false, "Failed to create shipment with EasyPost", []);
+    }
+
+  } catch (error: any) {
+    console.error('Save parcel error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Get Shipping Carrier API
+export const getShippingCarrier = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { trade_id } = req.query;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!trade_id || typeof trade_id !== 'string') {
+      return sendApiResponse(res, 400, false, "Trade ID is required", []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        trade_id: trade_id,
+        user_id: userId
+      }
+    });
+
+    if (!shipment || !shipment.shipment_response) {
+      return sendApiResponse(res, 400, false, "Enter the parcel information.", [], {
+        redirect_url: "/trade/shipping-parcel"
+      });
+    }
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(trade_id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Check trade status
+    if (tradeProposal.trade_status === 'cancel' || tradeProposal.trade_status === 'declined') {
+      const errorMessage = tradeProposal.trade_status === 'cancel'
+        ? 'Trade are cancelled.'
+        : 'Trade are declined.';
+      return sendApiResponse(res, 400, false, errorMessage, [], {
+        redirect_url: `/cancelled-trades/${tradeProposal.id}`
+      });
+    }
+
+    // Parse shipment response
+    let shipmentResponse;
+    try {
+      shipmentResponse = JSON.parse(shipment.shipment_response as unknown as string);
+    } catch (parseError) {
+      return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
+    }
+
+    // Calculate actual amount
+    let actualAmount = 0;
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+
+    let sendTradeCards: any[] = [];
+    let receiveTradeCards: any[] = [];
+
+    // Determine user role and get trading cards
+    if (tradeProposal.trade_sent_to === userId) {
+      // User is receiver
+      sendTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: receiveCards } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+
+      receiveTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: sendCards } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+
+      // Calculate amount from receive cards (cards user is getting)
+      if (receiveTradeCards.length > 0) {
+        receiveTradeCards.forEach(card => {
+          actualAmount += parseFloat(card.trading_card_estimated_value || '0');
+        });
+      }
+    } else {
+      // User is sender
+      sendTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: sendCards } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+
+      receiveTradeCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: receiveCards } },
+        attributes: [
+          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'category_id', 'trading_card_estimated_value'
+        ],
+        include: [{
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }]
+      });
+
+      // Calculate amount from receive cards (cards user is getting)
+      if (receiveTradeCards.length > 0) {
+        receiveTradeCards.forEach(card => {
+          actualAmount += parseFloat(card.trading_card_estimated_value || '0');
+        });
+      }
+    }
+
+    // Determine which cards user is sending for shipment
+    let traderId = 0;
+    let sendCardsForShipment: number[] = [];
+
+    if (tradeProposal.trade_sent_to === userId) {
+      // User is receiver, so they send the cards they're receiving
+      traderId = tradeProposal.trade_sent_to!;
+      sendCardsForShipment = receiveCards;
+    } else {
+      // User is sender, so they send their own cards
+      traderId = tradeProposal.trade_sent_by!;
+      sendCardsForShipment = sendCards;
+    }
+
+    // Get trading cards for shipment
+    const tradingCards = await TradingCard.findAll({
+      where: {
+        trader_id: traderId,
+        trading_card_status: '1',
+        id: { [Op.in]: sendCardsForShipment }
+      },
+      order: [['id', 'DESC']],
+      attributes: [
+        'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+        'category_id', 'trading_card_estimated_value'
+      ],
+      include: [{
+        model: Category,
+        as: 'parentCategory',
+        attributes: ['id', 'sport_name']
+      }]
+    });
+
+    // Format trading cards for frontend
+    const formattedSendCards = sendTradeCards.map(card => ({
+      id: card.id,
+      code: card.code,
+      trader_id: card.trader_id,
+      search_param: card.search_param,
+      trading_card_img: card.trading_card_img,
+      category_id: card.category_id,
+      trading_card_estimated_value: card.trading_card_estimated_value,
+      cardname: card.search_param,
+      category_name: (card as any).parentCategory?.sport_name || ''
+    }));
+
+    const formattedReceiveCards = receiveTradeCards.map(card => ({
+      id: card.id,
+      code: card.code,
+      trader_id: card.trader_id,
+      search_param: card.search_param,
+      trading_card_img: card.trading_card_img,
+      category_id: card.category_id,
+      trading_card_estimated_value: card.trading_card_estimated_value,
+      cardname: card.search_param,
+      category_name: (card as any).parentCategory?.sport_name || ''
+    }));
+
+    const formattedTradingCards = tradingCards.map(card => ({
+      id: card.id,
+      code: card.code,
+      trader_id: card.trader_id,
+      search_param: card.search_param,
+      trading_card_img: card.trading_card_img,
+      category_id: card.category_id,
+      trading_card_estimated_value: card.trading_card_estimated_value,
+      cardname: card.search_param,
+      category_name: (card as any).parentCategory?.sport_name || ''
+    }));
+
+    // Process shipment response for frontend
+    const rates = shipmentResponse.rates || [];
+    const rateIds = rates.map((rate: any) => rate.id);
+    const selectedRate = shipment.selected_rate || '';
+    const rateIsPresent = rateIds.indexOf(selectedRate);
+    
+    // Find default selected rate (lowest price)
+    let defSelectedRate = '0.00';
+    let defSelectedRateId = '';
+    
+    if (rates.length > 0) {
+      rates.forEach((rate: any) => {
+        if (defSelectedRate === '0.00' || parseFloat(rate.rate) <= parseFloat(defSelectedRate)) {
+          defSelectedRate = rate.rate;
+          defSelectedRateId = rate.id;
+        }
+      });
+    }
+
+    const responseData = {
+      send_trade_cards: formattedSendCards,
+      receive_trade_cards: formattedReceiveCards,
+      trading_cards: formattedTradingCards,
+      actual_amount: actualAmount.toFixed(2),
+      shipment_response: shipmentResponse,
+      rates: rates,
+      rate_ids: rateIds,
+      rate_is_present: rateIsPresent,
+      selected_rate: selectedRate,
+      def_selected_rate: defSelectedRate,
+      def_selected_rate_id: defSelectedRateId,
+      shipment_details: {
+        id: shipment.id,
+        trade_id: shipment.trade_id,
+        shipment_status: shipment.shipment_status,
+        shipment_payment_status: shipment.shipment_payment_status,
+        selected_rate: shipment.selected_rate
+      },
+      trade_id: parseInt(trade_id),
+      trade_status: tradeProposal.trade_status,
+      has_shipment_response: true,
+      has_rates: rates.length > 0
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping carrier data retrieved successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Get shipping carrier error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Shipping Checkout API
+export const shippingCheckout = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const {
+      selected_rate_id,
+      selected_rate,
+      cart_amount,
+      insure_shipment
+    } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Validate selected rate
+    if (!selected_rate_id || selected_rate_id === '') {
+      return sendApiResponse(res, 400, false, "Select a Carrier and Delivery Service.", [], {
+        redirect_url: "/trade/shipping-carrier"
+      });
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        user_id: userId,
+        trade_id: req.body.trade_id || req.query.trade_id
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 400, false, "Either shipment completed or shipment details not available. please try again to ship your product.", [], {
+        redirect_url: "/ongoing-trades"
+      });
+    }
+
+    // Update shipment with selected rate and insurance amount
+    await shipment.update({
+      cart_amount_for_insurance: cart_amount || null,
+      selected_rate: selected_rate_id
+    });
+
+    // Parse shipment response
+    let shipmentResponse;
+    try {
+      shipmentResponse = JSON.parse(shipment.shipment_response as unknown as string);
+    } catch (parseError) {
+      return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
+    }
+
+    // Parse postage label
+    let postageLabel;
+    try {
+      postageLabel = JSON.parse(shipment.postage_label as unknown as string);
+    } catch (parseError) {
+      postageLabel = {};
+    }
+
+    // Parse parcel details
+    let shipParcelDetails;
+    try {
+      shipParcelDetails = JSON.parse(shipment.parcel as unknown as string);
+    } catch (parseError) {
+      shipParcelDetails = {};
+    }
+
+    // Find selected rate data
+    const rates = shipmentResponse.rates || [];
+    const rateIds = rates.map((rate: any) => rate.id);
+    const rateIsPresent = rateIds.indexOf(selected_rate_id);
+    
+    if (rateIsPresent === -1) {
+      return sendApiResponse(res, 400, false, "Selected rate not found in available rates", []);
+    }
+
+    const rateData = rates[rateIsPresent];
+
+    // Calculate insurance and total amounts
+    const insuranceAmount = insure_shipment ? (cart_amount || '0.00') : '0.00';
+    const totalAmount = (parseFloat(insuranceAmount) + parseFloat(rateData.rate)).toFixed(2);
+
+    // Format addresses for frontend
+    const senderAddress = shipmentResponse.to_address || {};
+    const receiverAddress = shipmentResponse.from_address || {};
+
+    // Format package details
+    const packageDetails = {
+      length: shipParcelDetails.length || 0,
+      width: shipParcelDetails.width || 0,
+      height: shipParcelDetails.height || 0,
+      weight: shipParcelDetails.weight || 0,
+      weight_lbs: shipParcelDetails.weight_lbs || 0,
+      weight_oz: shipParcelDetails.weight_oz || 0,
+      parcel_weight_unit: shipment.parcel_weight_unit || 'oz'
+    };
+
+    // Format postage label objects
+    const postageLabelObjects = [];
+    if (postageLabel.object) {
+      const objectArray = postageLabel.object.split(' | ');
+      postageLabelObjects.push(...objectArray);
+    }
+
+    const responseData = {
+      shipment_response: shipmentResponse,
+      postage_label: postageLabel,
+      rate_data: rateData,
+      insurance_amount: insuranceAmount,
+      total_amount: totalAmount,
+      insure_shipment: insure_shipment === '1' || insure_shipment === true,
+      shipment_details: {
+        id: shipment.id,
+        trade_id: shipment.trade_id,
+        selected_rate: shipment.selected_rate,
+        cart_amount_for_insurance: shipment.cart_amount_for_insurance,
+        parcel_weight_unit: shipment.parcel_weight_unit
+      },
+      ship_parcel_details: packageDetails,
+      sender_address: {
+        name: senderAddress.name || '',
+        phone: senderAddress.phone || '',
+        email: senderAddress.email || '',
+        street1: senderAddress.street1 || '',
+        street2: senderAddress.street2 || '',
+        city: senderAddress.city || '',
+        state: senderAddress.state || '',
+        country: senderAddress.country || '',
+        zip: senderAddress.zip || ''
+      },
+      receiver_address: {
+        name: receiverAddress.name || '',
+        phone: receiverAddress.phone || '',
+        email: receiverAddress.email || '',
+        street1: receiverAddress.street1 || '',
+        street2: receiverAddress.street2 || '',
+        city: receiverAddress.city || '',
+        state: receiverAddress.state || '',
+        country: receiverAddress.country || '',
+        zip: receiverAddress.zip || ''
+      },
+      package_details: postageLabelObjects,
+      carrier_info: {
+        carrier: rateData.carrier,
+        service: rateData.service,
+        delivery_days: rateData.service === 'Express' ? '1-2' : (rateData.delivery_days || 'Unknown'),
+        rate: rateData.rate
+      },
+      cost_breakdown: {
+        carrier_cost: rateData.rate,
+        insurance_cost: insuranceAmount,
+        total_cost: totalAmount
+      }
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping checkout data retrieved successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Shipping checkout error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Shipping Confirm Order API
+export const shippingConfirmOrder = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const {
+      selected_rate_id,
+      selected_rate,
+      amount,
+      trade_id
+    } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Validate required fields
+    if (!selected_rate_id || !amount || !trade_id) {
+      return sendApiResponse(res, 400, false, "Selected rate ID, amount, and trade ID are required", []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        trade_id: trade_id,
+        user_id: userId
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Shipment not found", []);
+    }
+
+    // Check if shipment is already completed
+    if (shipment.tracking_id && shipment.tracking_id !== '') {
+      return sendApiResponse(res, 400, false, "This shipment has already been completed.", [], {
+        redirect_url: "/ongoing-trades"
+      });
+    }
+
+    // Validate selected rate
+    if (!selected_rate_id || selected_rate_id === '') {
+      return sendApiResponse(res, 400, false, "Select carrier service", [], {
+        redirect_url: "/trade/shipping-carrier"
+      });
+    }
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(trade_id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade not available, please try again", [], {
+        redirect_url: "/trade/shipping-carrier"
+      });
+    }
+
+    // Validate user access to trade
+    if (tradeProposal.trade_sent_by !== userId && tradeProposal.trade_sent_to !== userId) {
+      return sendApiResponse(res, 403, false, "Invalid access", [], {
+        redirect_url: "/trade/shipping-carrier"
+      });
+    }
+
+    // Update shipment with selected rate
+    await shipment.update({
+      selected_rate: selected_rate_id
+    });
+
+    // For now, we'll use environment variables for PayPal configuration
+    // In a real implementation, you would fetch from PaypalAccount table
+    const paypalConfig = {
+      client_id: process.env.PAYPAL_CLIENT_ID || '',
+      client_secret: process.env.PAYPAL_CLIENT_SECRET || '',
+      test_mode: process.env.PAYPAL_SANDBOX === 'true'
+    };
+
+    if (!paypalConfig.client_id || !paypalConfig.client_secret) {
+      return sendApiResponse(res, 500, false, "PayPal configuration not available", [], {
+        redirect_url: "/ongoing-trades"
+      });
+    }
+
+    // Create PayPal payment request
+    const paymentData = {
+      amount: parseFloat(amount),
+      currency: process.env.PAYPAL_CURRENCY || 'USD',
+      returnUrl: `${process.env.FRONTEND_URL}/shipment-cost-payment-success/${trade_id}?shipment_id=${shipment.id}`,
+      cancelUrl: `${process.env.FRONTEND_URL}/shipment-cost-payment-cancel/${trade_id}?shipment_id=${shipment.id}`,
+      description: `Shipping cost for trade #${trade_id}`,
+      paypalConfig: {
+        clientId: paypalConfig.client_id,
+        clientSecret: paypalConfig.client_secret,
+        testMode: paypalConfig.test_mode
+      }
+    };
+
+    // For now, return payment data for frontend to handle PayPal integration
+    // In a real implementation, you would integrate with PayPal SDK here
+    const responseData = {
+      payment_data: paymentData,
+      shipment_id: shipment.id,
+      trade_id: parseInt(trade_id),
+      amount: parseFloat(amount),
+      selected_rate_id: selected_rate_id,
+      paypal_config: {
+        client_id: paypalConfig.client_id,
+        test_mode: paypalConfig.test_mode,
+        currency: process.env.PAYPAL_CURRENCY || 'USD'
+      },
+      redirect_urls: {
+        success: `${process.env.FRONTEND_URL}/shipment-cost-payment-success/${trade_id}?shipment_id=${shipment.id}`,
+        cancel: `${process.env.FRONTEND_URL}/shipment-cost-payment-cancel/${trade_id}?shipment_id=${shipment.id}`
+      }
+    };
+
+    return sendApiResponse(res, 200, true, "Payment data prepared successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Shipping confirm order error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };

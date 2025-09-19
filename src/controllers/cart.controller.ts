@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Cart, CartDetail, TradingCard, User, BuyOfferAttempt, CreditDeductionLog, Address, Category, BuySellCard, BuyOfferStatus, Follower, TradeProposal, TradeProposalStatus, TradeNotification, Shipment, TradeTransaction } from "../models/index.js";
+import { Cart, CartDetail, TradingCard, User, BuyOfferAttempt, CreditDeductionLog, Address, Category, BuySellCard, BuyOfferStatus, Follower, TradeProposal, TradeProposalStatus, TradeNotification, Shipment, TradeTransaction, CardCondition } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 import { exit } from "process";
@@ -3881,6 +3881,433 @@ export const shippingConfirmOrder = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('Shipping confirm order error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+/**
+ * Get trade counter detail for editing trade proposal
+ * GET /api/users/trade-counter-detail/:card_id
+ */
+export const getTradeCounterDetail = async (req: Request, res: Response) => {
+  try {
+    const { card_id } = req.params;
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Authentication required", []);
+    }
+
+    if (!card_id) {
+      return sendApiResponse(res, 400, false, "Trade proposal ID is required", []);
+    }
+
+    // Get trade proposal details
+    const tradeProposal = await TradeProposal.findByPk(card_id);
+
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Determine the interested user (the other party in the trade)
+    // If current user is trade_sent_by, then interested user is trade_sent_to
+    // If current user is trade_sent_to, then interested user is trade_sent_by
+    let interestedUserId;
+    if (userId === tradeProposal.trade_sent_by) {
+      interestedUserId = tradeProposal.trade_sent_to;
+    } else if (userId === tradeProposal.trade_sent_to) {
+      interestedUserId = tradeProposal.trade_sent_by;
+    } else {
+      return sendApiResponse(res, 403, false, "You are not authorized to view this trade proposal", []);
+    }
+    
+    // Check if user is trying to trade with themselves
+    if (interestedUserId === userId) {
+      return sendApiResponse(res, 400, false, "You can't trade with yourself", []);
+    }
+
+    // Get interested user details
+    const interestedUser = await User.findByPk(interestedUserId, {
+      attributes: ['id', 'username', 'first_name', 'last_name']
+    });
+
+    if (!interestedUser) {
+      return sendApiResponse(res, 404, false, "Interested user not found", []);
+    }
+
+    // Get interested user's trading cards (closet) with category and condition
+    const interestedClosetsQuery = `
+      SELECT 
+        tc.id,
+        tc.code,
+        tc.trader_id,
+        tc.search_param,
+        tc.trading_card_img,
+        tc.category_id,
+        tc.trading_card_estimated_value,
+        c.sport_name as category_name,
+        CASE 
+          WHEN FIND_IN_SET(tc.id, ?) > 0 THEN true 
+          ELSE false 
+        END as is_selected
+      FROM trading_cards tc
+      LEFT JOIN categories c ON tc.category_id = c.id
+      WHERE tc.trader_id = ? 
+        AND tc.trading_card_status = '1' 
+        AND tc.can_trade = '1' 
+        AND tc.mark_as_deleted IS NULL
+      ORDER BY tc.updated_at DESC
+    `;
+
+    const interestedClosets = await sequelize.query(interestedClosetsQuery, {
+      replacements: [tradeProposal.receive_cards || '', interestedUserId],
+      type: QueryTypes.SELECT
+    });
+
+    // Get current user's trading cards (closet) with category and condition
+    const userClosetsQuery = `
+      SELECT 
+        tc.id,
+        tc.code,
+        tc.trader_id,
+        tc.search_param,
+        tc.trading_card_img,
+        tc.category_id,
+        tc.trading_card_estimated_value,
+        c.sport_name as category_name,
+        CASE 
+          WHEN FIND_IN_SET(tc.id, ?) > 0 THEN true 
+          ELSE false 
+        END as is_selected
+      FROM trading_cards tc
+      LEFT JOIN categories c ON tc.category_id = c.id
+      WHERE tc.trader_id = ? 
+        AND tc.can_trade = '1' 
+        AND tc.trading_card_status = '1' 
+        AND tc.mark_as_deleted IS NULL
+      ORDER BY tc.updated_at DESC
+    `;
+
+    const userClosets = await sequelize.query(userClosetsQuery, {
+      replacements: [tradeProposal.send_cards || '', userId],
+      type: QueryTypes.SELECT
+    });
+
+    // Get product count for interested user
+    const productCount = await TradingCard.count({
+      where: {
+        trader_id: interestedUserId,
+        trading_card_status: '1',
+        is_traded: '0',
+        mark_as_deleted: null,
+        [Op.or]: [
+          { can_trade: '1' },
+          { can_buy: '1' }
+        ]
+      }
+    });
+
+    // Check if current user follows the interested user
+    const follower = await Follower.findOne({
+      where: {
+        trader_id: interestedUserId,
+        user_id: userId
+      }
+    });
+
+    // Parse send and receive cards from trade proposal
+    const sendCardsTp = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
+    const receiveCardsTp = tradeProposal.send_cards ? tradeProposal.send_cards.split(',') : [];
+    const allProducts = [...sendCardsTp, ...receiveCardsTp];
+
+    // Calculate product count based on user role (like in Blade file)
+    let finalProductCount = productCount;
+    if (userId === tradeProposal.trade_sent_by) {
+      // If current user is the one who sent the trade proposal
+      if (receiveCardsTp.length > 0) {
+        finalProductCount = productCount + receiveCardsTp.length;
+      }
+    } else {
+      // If current user is the one who received the trade proposal
+      if (sendCardsTp.length > 0) {
+        finalProductCount = productCount + sendCardsTp.length;
+      }
+    }
+
+    // Get trade transactions count for interested user
+    const tradeTransactionsCount = await TradeTransaction.count({
+      where: {
+        [Op.or]: [
+          { trade_sent_by_key: interestedUserId },
+          { trade_sent_to_key: interestedUserId }
+        ]
+      }
+    });
+
+    // Prepare response data according to required format
+    const responseData = {
+      trade_proposal: {
+        id: tradeProposal.id,
+        code: tradeProposal.code,
+        main_card: tradeProposal.main_card,
+        send_cards: tradeProposal.send_cards,
+        receive_cards: tradeProposal.receive_cards,
+        add_cash: tradeProposal.add_cash || 0,
+        ask_cash: tradeProposal.ask_cash || 0,
+        message: tradeProposal.message,
+        trade_status: tradeProposal.trade_status,
+        trade_sent_by: tradeProposal.trade_sent_by,
+        trade_sent_to: tradeProposal.trade_sent_to,
+        created_at: tradeProposal.created_at,
+        updated_at: tradeProposal.updated_at
+      },
+      interested_user: {
+        id: interestedUser.id,
+        username: interestedUser.username,
+        first_name: interestedUser.first_name,
+        last_name: interestedUser.last_name,
+        profile_picture: interestedUser.profile_picture,
+        ebay_store_url: interestedUser.ebay_store_url,
+        total_trades_count: tradeTransactionsCount,
+        product_count: finalProductCount
+      },
+      user_closets: userClosets.map((card: any) => ({
+        id: card.id,
+        code: card.code,
+        trader_id: card.trader_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        category_id: card.category_id,
+        trading_card_estimated_value: card.trading_card_estimated_value,
+        category_name: card.category_name,
+        is_selected: card.is_selected
+      })),
+      interested_closets: interestedClosets.map((card: any) => ({
+        id: card.id,
+        code: card.code,
+        trader_id: card.trader_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        category_id: card.category_id,
+        trading_card_estimated_value: card.trading_card_estimated_value,
+        category_name: card.category_name,
+        is_selected: card.is_selected
+      })),
+      is_following: follower ? (follower.follower_status === '1') : false,
+      send_cards_tp: sendCardsTp.map(id => parseInt(id)),
+      receive_cards_tp: receiveCardsTp.map(id => parseInt(id)),
+      all_products: allProducts.map(id => parseInt(id)),
+      td: {
+        open_text: "Counter Trade",
+        next_text: "Continue Trade"
+      }
+    };
+
+    return sendApiResponse(res, 200, true, "Trade proposal detail retrieved successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Trade counter detail error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+/**
+ * Handle shipping payment success and complete shipment
+ * GET /api/users/shipping-trade-success/:trade_id?shipment_id=123&paymentId=xxx&token=xxx&PayerID=xxx
+ */
+export const shippingTradeSuccess = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { trade_id } = req.params;
+    const { shipment_id, paymentId, token, PayerID } = req.query;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!shipment_id || !paymentId || !token || !PayerID) {
+      return sendApiResponse(res, 400, false, "Missing payment details", []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        id: parseInt(shipment_id as string),
+        trade_id: parseInt(trade_id as string)
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Shipment not found", []);
+    }
+
+    // Update shipment with payment details
+    await shipment.update({
+      paymentId: paymentId as string,
+      token: token as string,
+      PayerID: PayerID as string,
+      shipment_payment_status: 1
+    });
+
+    // Create customs info (simplified)
+    const customInfo = {
+      status: true,
+      data: {
+        contents_type: 'merchandise',
+        contents_explanation: 'Trading cards',
+        customs_items: []
+      }
+    };
+
+    if (!customInfo.status) {
+      return sendApiResponse(res, 500, false, "Customs info creation failed", []);
+    }
+
+    // Prepare shipment data for EasyPost
+    const shipmentResponse = JSON.parse(shipment.shipment_response as unknown as string);
+    const shipmentData = {
+      from_address: JSON.parse(shipment.from_address as unknown as string),
+      to_address: JSON.parse(shipment.to_address as unknown as string),
+      parcel: JSON.parse(shipment.parcel as unknown as string),
+      customs_info: customInfo.data
+    };
+
+    // Remove unnecessary fields
+    delete shipmentData.from_address.id;
+    delete shipmentData.from_address.user_id;
+    delete shipmentData.from_address.is_sender;
+    delete shipmentData.from_address.created_at;
+    delete shipmentData.from_address.updated_at;
+
+    delete shipmentData.to_address.id;
+    delete shipmentData.to_address.user_id;
+    delete shipmentData.to_address.is_sender;
+    delete shipmentData.to_address.created_at;
+    delete shipmentData.to_address.updated_at;
+
+    // Call EasyPost API to buy shipment
+    const easyPostResponse = await fetch(`https://api.easypost.com/v2/shipments/${shipmentResponse.id}/buy`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.EASYPOST_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        shipment: shipmentData,
+        rate: { id: shipment.selected_rate }
+      })
+    });
+
+    if (!easyPostResponse.ok) {
+      const errorData = await easyPostResponse.json();
+      return sendApiResponse(res, 500, false, errorData.error?.message || "Shipment purchase failed", []);
+    }
+
+    const easyPostData = await easyPostResponse.json();
+
+    // Update shipment with tracking info
+    await shipment.update({
+      tracking_id: easyPostData.tracking_code || null,
+      shipment_status: 'Pre-Transit'
+    });
+
+    // Get trade proposal
+    const tradeProposal = await TradeProposal.findByPk(trade_id);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    // Update trade proposal based on user role
+    if (tradeProposal.trade_sent_by === userId) {
+      await tradeProposal.update({
+        shipped_by_trade_sent_by: 1,
+        shipped_on_by_trade_sent_by: new Date()
+      });
+    } else if (tradeProposal.trade_sent_to === userId) {
+      await tradeProposal.update({
+        shipped_by_trade_sent_to: 1,
+        shipped_on_by_trade_sent_to: new Date()
+      });
+    }
+
+    // Get card names for email
+    const cardIds = tradeProposal.trade_sent_by === userId 
+      ? tradeProposal.send_cards?.split(',') || []
+      : tradeProposal.receive_cards?.split(',') || [];
+
+    const cards = await TradingCard.findAll({
+      where: { id: cardIds },
+      attributes: ['search_param']
+    });
+
+    const cardNames = cards
+      .filter(card => card.search_param)
+      .map((card, index) => `${index + 1}. ${card.search_param}`)
+      .join('\n');
+
+    // Send emails if tracking ID exists
+    if (shipment.tracking_id) {
+      const otherUserId = tradeProposal.trade_sent_by === userId 
+        ? tradeProposal.trade_sent_to 
+        : tradeProposal.trade_sent_by;
+
+      const otherUser = await User.findByPk(otherUserId);
+      const currentUser = await User.findByPk(userId);
+
+      if (otherUser && currentUser) {
+        const mailInputs = {
+          items_shipped: cardNames.replace(/\n/g, '<br>'),
+          tracking_info: shipment.tracking_id,
+          track_shipment_link: `${process.env.FRONTEND_URL}/track-shipment/${shipment.tracking_id}`,
+          view_shipment_details_link: `${process.env.FRONTEND_URL}/shipping-logs`,
+          transaction_id: tradeProposal.code,
+          link: `${process.env.FRONTEND_URL}/ongoing-trades?id=${tradeProposal.id}`
+        };
+
+        // Email to current user
+        const { EmailHelperService } = await import("../services/emailHelper.service.js");
+        await EmailHelperService.executeMailSender('product-shipped-by-you', {
+          to: currentUser.email,
+          name: `${currentUser.first_name} ${currentUser.last_name}`,
+          other_user_name: `${otherUser.first_name} ${otherUser.last_name}`,
+          ...mailInputs
+        });
+
+        // Email to other user
+        await EmailHelperService.executeMailSender('product-shipped-by-other', {
+          to: otherUser.email,
+          name: `${otherUser.first_name} ${otherUser.last_name}`,
+          other_user_name: `${currentUser.first_name} ${currentUser.last_name}`,
+          ...mailInputs
+        });
+      }
+    }
+
+    // Create notification
+    const notificationData = {
+      type: 'shipped-proposal',
+      from_user_id: userId,
+      to_user_id: tradeProposal.trade_sent_by === userId ? tradeProposal.trade_sent_to : tradeProposal.trade_sent_by,
+      trade_id: tradeProposal.id,
+      entity_type: 'Trade'
+    };
+
+    // Create notification record (simplified)
+    await TradeNotification.create(notificationData as any);
+
+    const responseData = {
+      shipment_id: shipment.id,
+      trade_id: parseInt(trade_id as string),
+      tracking_id: shipment.tracking_id,
+      shipment_status: shipment.shipment_status,
+      trade_code: tradeProposal.code,
+      redirect_url: `${process.env.FRONTEND_URL}/ongoing-trades?id=${tradeProposal.id}`
+    };
+
+    return sendApiResponse(res, 200, true, "Shipment Successfully Completed", responseData);
+
+  } catch (error: any) {
+    console.error('Shipping trade success error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };

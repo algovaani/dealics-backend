@@ -3803,13 +3803,13 @@ export class UserService {
         {
           model: Shipment,
           as: 'shipmenttrader',
-          attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id'],
+          attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id', 'paymentId', 'selected_rate'],
           required: false
         },
         {
           model: Shipment,
           as: 'shipmentself',
-          attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id'],
+          attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id', 'paymentId', 'selected_rate'],
           required: false
         }
       ];
@@ -3931,14 +3931,18 @@ export class UserService {
               id: shipment.id,
               tracking_id: shipment.tracking_id,
               shipment_status: shipment.shipment_status,
-              estimated_delivery_date: shipment.estimated_delivery_date ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) : null
+              estimated_delivery_date: shipment.estimated_delivery_date ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) : null,
+              paymentId: shipment.paymentId || null,
+              selected_rate: shipment.selected_rate || null
             }))[0] || null : null,
           shipmentself: tradeData.shipmentself && tradeData.shipmentself.length > 0 ? 
             tradeData.shipmentself.filter((shipment: any) => shipment.user_id === userId).map((shipment: any) => ({
               id: shipment.id,
               tracking_id: shipment.tracking_id || null,
               shipment_status: shipment.shipment_status,
-              estimated_delivery_date: shipment.estimated_delivery_date ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) : (shipment.cron_shipment_date ? UserService.formatDateToMMDDYY(shipment.cron_shipment_date) : null)
+              estimated_delivery_date: shipment.estimated_delivery_date ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) : (shipment.cron_shipment_date ? UserService.formatDateToMMDDYY(shipment.cron_shipment_date) : null),
+              paymentId: shipment.paymentId || null,
+              selected_rate: shipment.selected_rate || null
             }))[0] || null : null,
           // Direct tracking IDs for easier access (from filtered shipments)
           tracking_id_self: tradeData.shipmentself && tradeData.shipmentself.length > 0 ? 

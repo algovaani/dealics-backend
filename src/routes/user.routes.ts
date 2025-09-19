@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment } from "../controllers/user.controller.js";
-import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, shippingCheckout, shippingConfirmOrder } from "../controllers/cart.controller.js";
+import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -158,6 +158,12 @@ router.post("/pay-now", userAuth, payNowPayment);
 // PayPal Payment Return APIs (no authentication required - called by PayPal)
 router.get("/feed-paypal-payment-buysell/:type/:refId", feedPayPalPaymentReturn);
 router.post("/notify/feed-paypal-payment-buysell/:refId", feedPayPalPaymentNotify);
+
+// Trade counter detail route
+router.get("/trade-counter-detail/:card_id", userAuth, getTradeCounterDetail);
+
+// Shipping trade success route
+router.get("/shipping-trade-success/:trade_id", userAuth, shippingTradeSuccess);
 
 // Other user routes (must be after specific routes to avoid conflicts)
 router.get("/:id", getUserById);

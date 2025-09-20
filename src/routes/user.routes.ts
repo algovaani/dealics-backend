@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment } from "../controllers/user.controller.js";
-import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess } from "../controllers/cart.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment } from "../controllers/user.controller.js";
+import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -68,6 +68,9 @@ router.get("/bought-and-sold-products/:id", getBoughtAndSoldProducts);
 // Ongoing trades API (requires authentication - handled in controller)
 router.get("/ongoing-trades", getOngoingTrades);
 router.get("/ongoing-trades/:id", getOngoingTrades);
+
+// Trade detail API for modal (requires authentication - handled in controller)
+router.get("/trade-detail", getTradeDetail);
 
 // Completed trades API (requires authentication - handled in controller)
 router.get("/completed-trades", getCompletedTrades);
@@ -143,6 +146,9 @@ router.post("/save-parcel", userAuth, saveParcel);
 // Get shipping carrier API (requires authentication)
 router.get("/shipping-carrier", userAuth, getShippingCarrier);
 
+// Get shipping checkout data API (requires authentication)
+router.get("/shipping-checkout", userAuth, getShippingCheckout);
+
 // Shipping checkout API (requires authentication)
 router.post("/shipping-checkout", userAuth, shippingCheckout);
 
@@ -163,7 +169,10 @@ router.post("/notify/feed-paypal-payment-buysell/:refId", feedPayPalPaymentNotif
 router.get("/trade-counter-detail/:card_id", userAuth, getTradeCounterDetail);
 
 // Shipping trade success route
-router.get("/shipping-trade-success/:trade_id", userAuth, shippingTradeSuccess);
+router.post("/shipping-trade-success/:trade_id", userAuth, shippingTradeSuccess);
+
+// Cancel shipping payment route
+router.post("/shipping-trade-cancel", userAuth, cancelShippingPayment);
 
 // Other user routes (must be after specific routes to avoid conflicts)
 router.get("/:id", getUserById);

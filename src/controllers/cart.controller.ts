@@ -125,7 +125,7 @@ const makeOfferAttempts = async (
           status: false,
           inValidOfferCounts: attempts,
           remaining: remainingAttempts - attempts,
-          message: `Insufficient amount.<br>Offer Limit: ${attempts < remainingAttempts ? `${attempts}/3` : 'Exceeded, buy at asking price.'}`
+          message: `Insufficient amount. Offer Limit: ${attempts < remainingAttempts ? `${attempts}/3` : 'Exceeded, buy at asking price.'}`
         };
       }
     } else {
@@ -141,7 +141,7 @@ const makeOfferAttempts = async (
         status: false,
         inValidOfferCounts: 1,
         remaining: remainingAttempts - 1,
-        message: 'Insufficient amount.<br>Offer Limit: 1/3'
+        message: 'Insufficient amount. Offer Limit: 1/3'
       };
     }
   } else {
@@ -1111,7 +1111,7 @@ const makeOfferPayment = async (id: number) => {
           }
         }
         if (cardNamesArray.length > 0) {
-          cardName = cardNamesArray.join('<br/>');
+          cardName = cardNamesArray.join(', ');
         }
       }
     }
@@ -1544,8 +1544,8 @@ export const proposeTrade = async (req: Request, res: Response) => {
     });
 
     if (tradedCards.length > 0) {
-      const tradedProducts = tradedCards.map(card => card.search_param).join('<br/>');
-      return sendApiResponse(res, 400, false, `You can not continue this trade.<br/>Below products are already in trade or buy/sell:<br/>${tradedProducts}`, []);
+      const tradedProducts = tradedCards.map(card => card.search_param).join(', ');
+      return sendApiResponse(res, 400, false, `You can not continue this trade. Below products are already in trade or buy/sell: ${tradedProducts}`, []);
     }
 
     // Check user's CXP coins
@@ -3602,7 +3602,223 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
   }
 };
 
-// Shipping Checkout API
+// GET Shipping Checkout Data API
+export const getShippingCheckout = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { selected_rate_id, trade_id } = req.query;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Validate selected rate
+    if (!selected_rate_id || selected_rate_id === '') {
+      return sendApiResponse(res, 400, false, "Select a Carrier and Delivery Service.", [], {
+        redirect_url: "/trade/shipping-carrier"
+      });
+    }
+
+    // Validate and convert trade_id
+    if (!trade_id || typeof trade_id !== 'string') {
+      return sendApiResponse(res, 400, false, "Trade ID is required", []);
+    }
+
+    const tradeId = parseInt(trade_id, 10);
+    if (isNaN(tradeId) || tradeId <= 0) {
+      return sendApiResponse(res, 400, false, "Invalid trade ID", []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        user_id: userId,
+        trade_id: tradeId
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 400, false, "Either shipment completed or shipment details not available. please try again to ship your product.", [], {
+        redirect_url: "/ongoing-trades"
+      });
+    }
+
+    // Debug logging
+    console.log('Shipment found:', {
+      id: shipment.id,
+      user_id: shipment.user_id,
+      trade_id: shipment.trade_id,
+      has_shipment_response: !!shipment.shipment_response,
+      has_postage_label: !!shipment.postage_label,
+      has_parcel: !!shipment.parcel
+    });
+
+    // Parse shipment data with error handling
+    let shipmentResponse;
+    try {
+      shipmentResponse = typeof shipment.shipment_response === 'string' 
+        ? (shipment.shipment_response ? JSON.parse(shipment.shipment_response) : {}) 
+        : shipment.shipment_response || {};
+    } catch (error) {
+      console.error('Error parsing shipment_response:', error);
+      return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
+    }
+    
+    let postageLabel;
+    try {
+      postageLabel = typeof shipment.postage_label === 'string' 
+        ? (shipment.postage_label ? JSON.parse(shipment.postage_label) : {}) 
+        : shipment.postage_label || {};
+      
+      console.log('Postage label parsed:', {
+        original_type: typeof shipment.postage_label,
+        original_value: shipment.postage_label,
+        parsed_value: postageLabel
+      });
+    } catch (error) {
+      console.error('Error parsing postage_label:', error);
+      postageLabel = {};
+    }
+    
+    let shipParcelDetails;
+    try {
+      shipParcelDetails = typeof shipment.parcel === 'string' 
+        ? (shipment.parcel ? JSON.parse(shipment.parcel) : {}) 
+        : shipment.parcel || {};
+    } catch (error) {
+      console.error('Error parsing parcel:', error);
+      return sendApiResponse(res, 400, false, "Invalid parcel data", []);
+    }
+
+    // Validate shipment response structure
+    if (!shipmentResponse || !shipmentResponse.rates || !Array.isArray(shipmentResponse.rates)) {
+      return sendApiResponse(res, 400, false, "Invalid shipment response structure", []);
+    }
+
+    // Find selected rate
+    const rates = shipmentResponse.rates;
+    const rateIds = rates.map((rate: any) => rate.id);
+    const rateIndex = rateIds.indexOf(selected_rate_id);
+    
+    if (rateIndex === -1) {
+      return sendApiResponse(res, 400, false, "Selected rate not found", []);
+    }
+
+    const rateData = rates[rateIndex];
+    
+    // Validate rate data
+    if (!rateData || !rateData.id || !rateData.rate) {
+      return sendApiResponse(res, 400, false, "Invalid rate data", []);
+    }
+
+    // Calculate amounts
+    const insuranceAmount = '0.00';
+    const insureShipment = false;
+    const totalAmount = (parseFloat(insuranceAmount) + parseFloat(rateData.rate)).toFixed(2);
+
+    // Format weight display
+    const weightDisplay = [];
+    if (shipParcelDetails.weight_lbs > 0) weightDisplay.push(`${shipParcelDetails.weight_lbs} lbs`);
+    if (shipParcelDetails.weight_oz > 0) weightDisplay.push(`${shipParcelDetails.weight_oz} oz`);
+    const finalWeight = weightDisplay.length > 0 
+      ? weightDisplay.join(' ') 
+      : `${shipParcelDetails.weight} ${shipment.parcel_weight_unit}`;
+
+    // Format package details with debugging
+    console.log('Postage label data:', {
+      has_object: !!postageLabel.object,
+      object_type: typeof postageLabel.object,
+      object_value: postageLabel.object
+    });
+    
+    let packageDetails = [];
+    if (postageLabel.object && typeof postageLabel.object === 'string' && postageLabel.object.trim() !== '') {
+      packageDetails = postageLabel.object.split(' | ').filter((item: string) => item.trim() !== '');
+    } else {
+      // Fallback: Try to get package details from other sources
+      console.log('Postage label object is empty, trying fallback sources...');
+      
+      // Check if there are any other fields in postageLabel that might contain package info
+      if (postageLabel && typeof postageLabel === 'object') {
+        console.log('Available postage label fields:', Object.keys(postageLabel));
+        
+        // Try different possible field names
+        const possibleFields = ['description', 'contents', 'items', 'package_contents', 'label_object'];
+        for (const field of possibleFields) {
+          if (postageLabel[field] && typeof postageLabel[field] === 'string' && postageLabel[field].trim() !== '') {
+            packageDetails = postageLabel[field].split(' | ').filter((item: string) => item.trim() !== '');
+            console.log(`Found package details in field '${field}':`, packageDetails);
+            break;
+          }
+        }
+      }
+      
+      // If still empty, create a default package detail
+      if (packageDetails.length === 0) {
+        packageDetails = ['Package contents not specified'];
+        console.log('Using default package detail');
+      }
+    }
+    
+    console.log('Final package details:', packageDetails);
+
+    const responseData = {
+      sender_address: {
+        name: shipmentResponse.to_address?.name || '',
+        street1: shipmentResponse.to_address?.street1 || '',
+        street2: shipmentResponse.to_address?.street2 || '',
+        city: shipmentResponse.to_address?.city || '',
+        state: shipmentResponse.to_address?.state || '',
+        zip: shipmentResponse.to_address?.zip || '',
+        phone: shipmentResponse.to_address?.phone || '',
+        email: shipmentResponse.to_address?.email || ''
+      },
+      receiver_address: {
+        name: shipmentResponse.from_address?.name || '',
+        street1: shipmentResponse.from_address?.street1 || '',
+        street2: shipmentResponse.from_address?.street2 || '',
+        city: shipmentResponse.from_address?.city || '',
+        state: shipmentResponse.from_address?.state || '',
+        zip: shipmentResponse.from_address?.zip || '',
+        phone: shipmentResponse.from_address?.phone || '',
+        email: shipmentResponse.from_address?.email || ''
+      },
+      package_dimensions: {
+        length: shipParcelDetails.length || 0,
+        width: shipParcelDetails.width || 0,
+        height: shipParcelDetails.height || 0,
+        weight: finalWeight
+      },
+      package_details: packageDetails,
+      shipment_details: {
+        carrier: rateData.carrier || '',
+        service: rateData.service || '',
+        transit_days: rateData.service === 'Express' ? '1-2' : rateData.delivery_days || 0
+      },
+      shipment_cost: {
+        carrier_cost: rateData.rate || '0.00',
+        insurance_cost: insuranceAmount,
+        insure_shipment: insureShipment,
+        total_cost: totalAmount
+      },
+      rate_data: {
+        id: rateData.id,
+        rate: rateData.rate,
+        carrier: rateData.carrier,
+        service: rateData.service,
+        delivery_days: rateData.delivery_days
+      }
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping checkout data retrieved successfully", [responseData]);
+
+  } catch (error: any) {
+    console.error("Get shipping checkout error:", error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Shipping Checkout API (POST)
 export const shippingCheckout = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -3830,54 +4046,16 @@ export const shippingConfirmOrder = async (req: Request, res: Response) => {
       selected_rate: selected_rate_id
     });
 
-    // For now, we'll use environment variables for PayPal configuration
-    // In a real implementation, you would fetch from PaypalAccount table
-    const paypalConfig = {
-      client_id: process.env.PAYPAL_CLIENT_ID || '',
-      client_secret: process.env.PAYPAL_CLIENT_SECRET || '',
-      test_mode: process.env.PAYPAL_SANDBOX === 'true'
-    };
-
-    if (!paypalConfig.client_id || !paypalConfig.client_secret) {
-      return sendApiResponse(res, 500, false, "PayPal configuration not available", [], {
-        redirect_url: "/ongoing-trades"
-      });
-    }
-
-    // Create PayPal payment request
-    const paymentData = {
-      amount: parseFloat(amount),
-      currency: process.env.PAYPAL_CURRENCY || 'USD',
-      returnUrl: `${process.env.FRONTEND_URL}/shipment-cost-payment-success/${trade_id}?shipment_id=${shipment.id}`,
-      cancelUrl: `${process.env.FRONTEND_URL}/shipment-cost-payment-cancel/${trade_id}?shipment_id=${shipment.id}`,
-      description: `Shipping cost for trade #${trade_id}`,
-      paypalConfig: {
-        clientId: paypalConfig.client_id,
-        clientSecret: paypalConfig.client_secret,
-        testMode: paypalConfig.test_mode
-      }
-    };
-
-    // For now, return payment data for frontend to handle PayPal integration
-    // In a real implementation, you would integrate with PayPal SDK here
+    // Return simplified response without PayPal configuration
     const responseData = {
-      payment_data: paymentData,
       shipment_id: shipment.id,
       trade_id: parseInt(trade_id),
       amount: parseFloat(amount),
       selected_rate_id: selected_rate_id,
-      paypal_config: {
-        client_id: paypalConfig.client_id,
-        test_mode: paypalConfig.test_mode,
-        currency: process.env.PAYPAL_CURRENCY || 'USD'
-      },
-      redirect_urls: {
-        success: `${process.env.FRONTEND_URL}/shipment-cost-payment-success/${trade_id}?shipment_id=${shipment.id}`,
-        cancel: `${process.env.FRONTEND_URL}/shipment-cost-payment-cancel/${trade_id}?shipment_id=${shipment.id}`
-      }
+      message: "Shipment order confirmed successfully"
     };
 
-    return sendApiResponse(res, 200, true, "Payment data prepared successfully", responseData);
+    return sendApiResponse(res, 200, true, "Shipment order confirmed successfully", [responseData]);
 
   } catch (error: any) {
     console.error('Shipping confirm order error:', error);
@@ -4113,13 +4291,14 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
 
 /**
  * Handle shipping payment success and complete shipment
- * GET /api/users/shipping-trade-success/:trade_id?shipment_id=123&paymentId=xxx&token=xxx&PayerID=xxx
+ * POST /api/users/shipping-trade-success/:trade_id
+ * Body: { shipment_id: 123, paymentId: "xxx", token: "xxx", PayerID: "xxx" }
  */
 export const shippingTradeSuccess = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
     const { trade_id } = req.params;
-    const { shipment_id, paymentId, token, PayerID } = req.query;
+    const { shipment_id, paymentId, token, PayerID } = req.body;
 
     if (!userId) {
       return sendApiResponse(res, 401, false, "User not authenticated", []);

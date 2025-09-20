@@ -143,7 +143,8 @@ export const getUserProfile = async (req: Request, res: Response) => {
       interestedCardsCount: profileData.interestedCardsCount,
       tradeCount: profileData.tradeCount,
       followingCount: profileData.followingCount,
-      following: profileData.following || false  // ✅ NEW: Following status
+      following: profileData.following || false,  // ✅ NEW: Following status
+      social_links: profileData.socialLinks  // ✅ NEW: Social media links
     };
 
     return sendApiResponse(res, 200, true, "User profile retrieved successfully", [response]);
@@ -700,9 +701,13 @@ export const updateUserProfile = async (req: Request, res: Response) => {
     }
 
     // Get profile data from request body (FormData)
-    const profileData = req.body;
+    const profileData = req.body || {};
 
-    if (!profileData || Object.keys(profileData).length === 0) {
+    // Check if there's any data to update (either in body or file upload)
+    const hasBodyData = profileData && Object.keys(profileData).length > 0;
+    const hasFileUpload = req.file !== undefined;
+    
+    if (!hasBodyData && !hasFileUpload) {
       return sendApiResponse(res, 400, false, "Profile data is required", []);
     }
 
@@ -1559,6 +1564,50 @@ export const getOngoingTrades = async (req: Request, res: Response) => {
   }
 };
 
+// Get trade detail for modal (Laravel get_receive_trade_detail equivalent)
+export const getTradeDetail = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    const { trade_id, card_id } = req.query;
+
+    if (!trade_id) {
+      return sendApiResponse(res, 400, false, "Trade ID is required", []);
+    }
+
+    // Call service method
+    const result = await UserService.getTradeDetail(parseInt(trade_id as string), userId, card_id ? parseInt(card_id as string) : null);
+
+    if (result.success && result.data) {
+      return sendApiResponse(res, 200, true, "Trade detail retrieved successfully", [result.data]);
+    } else {
+      return sendApiResponse(res, 400, false, "Failed to get trade detail", result.error);
+    }
+
+  } catch (error: any) {
+    console.error("Get trade detail error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
 // Get completed trades for authenticated user
 export const getCompletedTrades = async (req: Request, res: Response) => {
   try {
@@ -1841,6 +1890,43 @@ export const submitRating = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error in submitRating controller:', error);
     return sendApiResponse(res, 500, false, 'Internal server error', []);
+  }
+};
+
+// Cancel shipping payment for trade transaction (Laravel equivalent)
+export const cancelShippingPayment = async (req: Request, res: Response) => {
+  try {
+    // Extract user ID from middleware (userAuth already validated the token)
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Extract trade_id from request body
+    const { trade_id } = req.body;
+
+    // Validate required fields
+    if (!trade_id) {
+      return sendApiResponse(res, 400, false, "Trade ID is required", []);
+    }
+
+    if (isNaN(parseInt(trade_id))) {
+      return sendApiResponse(res, 400, false, "Trade ID must be a valid number", []);
+    }
+
+    // Call service method to cancel shipping payment
+    const result = await UserService.cancelShippingPayment(parseInt(trade_id), userId);
+
+    if (result.success) {
+      return sendApiResponse(res, 200, true, "Shipment payment cancelled successfully", [result.data]);
+    } else {
+      return sendApiResponse(res, 400, false, result.error?.message || "Failed to cancel shipment payment", []);
+    }
+
+  } catch (error: any) {
+    console.error("Cancel shipping payment error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };
 

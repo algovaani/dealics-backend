@@ -317,6 +317,9 @@ export class UserService {
         following = await this.isFollowing(loggedInUserId, userId);
       }
 
+      // Get social media links from userSocialMedia table
+      const socialLinks = await this.getUserSocialMedia(userId);
+
       return {
         user,
         cardStats,
@@ -324,7 +327,8 @@ export class UserService {
         interestedCardsCount,
         tradeCount,
         followingCount,
-        following
+        following,
+        socialLinks
       };
     } catch (error) {
       return null;
@@ -735,16 +739,20 @@ export class UserService {
 
       // Validate first_name
       if (allowedFields.first_name !== undefined) {
-        if (!allowedFields.first_name || typeof allowedFields.first_name !== 'string') {
-          validationErrors.push('First name is required and must be a string');
-        } 
+        if (typeof allowedFields.first_name !== 'string') {
+          validationErrors.push('First name must be a string');
+        } else if (allowedFields.first_name.trim().length === 0) {
+          validationErrors.push('First name cannot be empty');
+        }
       }
 
       // Validate last_name
       if (allowedFields.last_name !== undefined) {
-        if (!allowedFields.last_name || typeof allowedFields.last_name !== 'string') {
-          validationErrors.push('Last name is required and must be a string');
-        } 
+        if (typeof allowedFields.last_name !== 'string') {
+          validationErrors.push('Last name must be a string');
+        } else if (allowedFields.last_name.trim().length === 0) {
+          validationErrors.push('Last name cannot be empty');
+        }
       }
 
       // Validate phone_number
@@ -4011,6 +4019,431 @@ export class UserService {
     }
   }
 
+  // Get trade button actions based on Laravel logic
+  static getTradeButtonActions(tradeData: any, userId: number) {
+    const actions: any = {
+      showViewButton: false,
+      showChatButton: true,
+      showSentBadge: false,
+      showReceivedBadge: false,
+      showCancelButton: false,
+      showDeclineButton: false,
+      showAcceptButton: false,
+      showCounterButton: false,
+      showCompleteButton: false,
+      showPaymentButton: false,
+      buttonText: '',
+      buttonClass: '',
+      buttonAction: '',
+      canCancel: false,
+      canDecline: false,
+      canAccept: false,
+      canCounter: false,
+      canComplete: false,
+      canPay: false
+    };
+
+    const isSender = tradeData.trade_sent_by === userId;
+    const isReceiver = tradeData.trade_sent_to === userId;
+    const tradeStatus = tradeData.trade_status;
+    const isPaymentReceived = tradeData.is_payment_received;
+    const tradeAmountPaidOn = tradeData.trade_amount_paid_on;
+    const askCash = tradeData.ask_cash || 0;
+    const addCash = tradeData.add_cash || 0;
+    const receiverConfirmation = tradeData.receiver_confirmation;
+    const senderConfirmation = tradeData.trade_sender_confrimation;
+
+    // Determine if user can cancel trade
+    const hasTrackingId = (tradeData.shipmenttrader && tradeData.shipmenttrader.length > 0 && tradeData.shipmenttrader[0].tracking_id) ||
+                         (tradeData.shipmentself && tradeData.shipmentself.length > 0 && tradeData.shipmentself[0].tracking_id);
+    const hasPayment = tradeAmountPaidOn && (askCash > 0 || addCash > 0);
+    const canCancelTrade = !hasTrackingId && !hasPayment && tradeData.is_payment_init === 0;
+
+    // Set badges
+    if (isSender) {
+      actions.showSentBadge = true;
+    } else if (isReceiver) {
+      actions.showReceivedBadge = true;
+    }
+
+    // Button logic based on trade status and user role
+    if (tradeStatus === 'new') {
+      actions.showViewButton = true;
+      actions.buttonText = 'VIEW';
+      actions.buttonClass = 'counter-btn';
+      actions.buttonAction = 'viewtrade';
+      
+      if (isReceiver) {
+        if (askCash > 0) {
+          actions.showAcceptButton = true;
+          actions.showPaymentButton = true;
+          actions.buttonText = 'Accept & Pay';
+          actions.buttonClass = 'light-grey-bg-black-text-btn';
+          actions.buttonAction = 'chngtrade_status_confirm_pay';
+          actions.canPay = true;
+        } else {
+          actions.showAcceptButton = true;
+          actions.buttonText = 'Accept Trade';
+          actions.buttonClass = 'light-grey-bg-black-text-btn';
+          actions.buttonAction = 'chngtrade_status';
+          actions.canAccept = true;
+        }
+        
+        actions.showDeclineButton = true;
+        actions.canDecline = true;
+        actions.showCounterButton = true;
+        actions.canCounter = true;
+      }
+    } else if (tradeStatus === 'counter_offer') {
+      actions.showViewButton = true;
+      actions.buttonText = 'VIEW COUNTER';
+      actions.buttonClass = 'counter-btn';
+      actions.buttonAction = 'viewcounter';
+      
+      if (isSender) {
+        if (addCash > 0) {
+          actions.showAcceptButton = true;
+          actions.showPaymentButton = true;
+          actions.buttonText = 'Accept Counter Offer';
+          actions.buttonClass = 'light-grey-bg-black-text-btn';
+          actions.buttonAction = 'chngtrade_status_confirm_pay_co';
+          actions.canPay = true;
+        } else {
+          actions.showAcceptButton = true;
+          actions.buttonText = 'Accept Counter Offer';
+          actions.buttonClass = 'light-grey-bg-black-text-btn';
+          actions.buttonAction = 'chngtrade_status';
+          actions.canAccept = true;
+        }
+        
+        actions.showDeclineButton = true;
+        actions.canDecline = true;
+      } else if (isReceiver) {
+        actions.showCancelButton = true;
+        actions.canCancel = true;
+      }
+    } else if (tradeStatus === 'accepted' || tradeStatus === 'counter_accepted') {
+      actions.showViewButton = true;
+      actions.buttonText = 'VIEW';
+      actions.buttonClass = 'counter-btn';
+      actions.buttonAction = 'viewtrade';
+      
+      // Check if payment is required
+      if ((tradeStatus === 'accepted' && askCash > 0 && !tradeAmountPaidOn) ||
+          (tradeStatus === 'counter_accepted' && addCash > 0 && !tradeAmountPaidOn)) {
+        actions.showPaymentButton = true;
+        actions.buttonText = 'Pay to Continue Trade';
+        actions.buttonClass = 'light-grey-bg-black-text-btn';
+        actions.buttonAction = 'chngtrade_status_confirm_pay_ow';
+        actions.canPay = true;
+      } else {
+        // Check if shipment is needed
+        const hasShipment = (tradeData.shipmenttrader && tradeData.shipmenttrader.length > 0) ||
+                           (tradeData.shipmentself && tradeData.shipmentself.length > 0);
+        
+        if (!hasShipment) {
+          actions.showShipButton = true;
+          actions.buttonText = 'Ship Product(s)';
+          actions.buttonClass = 'light-grey-bg-black-text-btn';
+          actions.buttonAction = 'ship_products';
+          actions.canShip = true;
+        }
+      }
+    } else if (tradeStatus === 'complete') {
+      if (senderConfirmation === '1' && receiverConfirmation === '1') {
+        actions.showViewButton = true;
+        actions.buttonText = 'COMPLETED';
+        actions.buttonClass = 'btn-primary';
+        actions.buttonAction = 'viewtrade';
+      } else {
+        // Check if both shipments have tracking IDs
+        const hasBothTrackingIds = (tradeData.shipmenttrader && tradeData.shipmenttrader.length > 0 && tradeData.shipmenttrader[0].tracking_id) &&
+                                  (tradeData.shipmentself && tradeData.shipmentself.length > 0 && tradeData.shipmentself[0].tracking_id);
+        
+        if (hasBothTrackingIds) {
+          const markedAsCompleted = isSender ? senderConfirmation === '1' : receiverConfirmation === '1';
+          
+          if (!markedAsCompleted) {
+            actions.showCompleteButton = true;
+            actions.buttonText = 'Complete Trade';
+            actions.buttonClass = 'new-green-btn-1';
+            actions.buttonAction = 'complete_trade_proposal_check';
+            actions.canComplete = true;
+          } else {
+            actions.showViewButton = true;
+            actions.buttonText = 'Trade Marked Completed';
+            actions.buttonClass = 'btn-dark';
+            actions.buttonAction = 'viewtrade';
+          }
+        }
+      }
+    } else if (tradeStatus === 'cancel' || tradeStatus === 'declined' || tradeStatus === 'counter_declined') {
+      actions.showViewButton = true;
+      actions.buttonText = 'VIEW';
+      actions.buttonClass = 'counter-btn';
+      actions.buttonAction = 'viewtrade';
+    }
+
+    // Set cancel/decline button
+    if (canCancelTrade) {
+      if (isSender) {
+        if (tradeStatus === 'counter_offer') {
+          actions.showDeclineButton = true;
+          actions.canDecline = true;
+          actions.declineText = 'Decline Offer';
+        } else {
+          actions.showCancelButton = true;
+          actions.canCancel = true;
+          actions.cancelText = 'Cancel Trade';
+        }
+      } else if (isReceiver) {
+        if (tradeStatus === 'counter_offer') {
+          actions.showCancelButton = true;
+          actions.canCancel = true;
+          actions.cancelText = 'Cancel Offer';
+        } else {
+          actions.showDeclineButton = true;
+          actions.canDecline = true;
+          actions.declineText = 'Decline Trade';
+        }
+      }
+    }
+
+    return actions;
+  }
+
+  // Get trade detail for modal (Laravel get_receive_trade_detail equivalent)
+  static async getTradeDetail(tradeId: number, userId: number, cardId: number | null = null) {
+    try {
+      // Validate inputs
+      if (!tradeId || isNaN(tradeId) || tradeId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid trade ID is required'
+          }
+        };
+      }
+
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Get trade proposal with all required associations
+      const tradeProposal = await TradeProposal.findOne({
+        where: { id: tradeId },
+        include: [
+          {
+            model: User,
+            as: 'tradeSender',
+            attributes: ['id', 'username', 'first_name', 'last_name', 'profile_picture'],
+            required: false
+          },
+          {
+            model: User,
+            as: 'tradeReceiver',
+            attributes: ['id', 'username', 'first_name', 'last_name', 'profile_picture'],
+            required: false
+          },
+          {
+            model: TradingCard,
+            as: 'mainTradingCard',
+            attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'search_param', 'trading_card_estimated_value'],
+            required: false,
+            include: [{
+              model: Category,
+              as: 'parentCategory',
+              attributes: ['id', 'sport_name'],
+              required: false
+            }]
+          },
+          {
+            model: TradeProposalStatus,
+            as: 'tradeProposalStatus',
+            attributes: ['id', 'alias', 'name', 'to_sender', 'to_receiver'],
+            required: false
+          },
+          {
+            model: Shipment,
+            as: 'shipmenttrader',
+            attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id', 'paymentId', 'selected_rate'],
+            required: false
+          },
+          {
+            model: Shipment,
+            as: 'shipmentself',
+            attributes: ['id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'user_id', 'paymentId', 'selected_rate'],
+            required: false
+          }
+        ]
+      });
+
+      if (!tradeProposal) {
+        return {
+          success: false,
+          error: {
+            message: 'Trade proposal not found'
+          }
+        };
+      }
+
+      const tradeData = tradeProposal.toJSON();
+
+      // Check if user has access to this trade
+      if (tradeData.trade_sent_by !== userId && tradeData.trade_sent_to !== userId) {
+        return {
+          success: false,
+          error: {
+            message: 'Access denied to this trade'
+          }
+        };
+      }
+
+      // Get trading card details for send_cards and receive_cards
+      const sendCardsDetails = await UserService.getTradingCardDetails(tradeData.send_cards || '');
+      const receiveCardsDetails = await UserService.getTradingCardDetails(tradeData.receive_cards || '');
+
+      // Apply Laravel logic: __getSendingAndReceivingCardNames
+      let finalSendCards = sendCardsDetails;
+      let finalReceiveCards = receiveCardsDetails;
+
+      if (tradeData.trade_sent_by === userId) {
+        // User is the sender: Sending = send_cards, Receiving = receive_cards
+        finalSendCards = sendCardsDetails;
+        finalReceiveCards = receiveCardsDetails;
+      } else if (tradeData.trade_sent_to === userId) {
+        // User is the receiver: Sending = receive_cards, Receiving = send_cards
+        finalSendCards = receiveCardsDetails;
+        finalReceiveCards = sendCardsDetails;
+      }
+
+      // Determine trade status display (Laravel trade-status.blade.php logic)
+      let tradeProposalStatus = '';
+      if ((tradeData as any).tradeProposalStatus) {
+        if (tradeData.trade_sent_by === userId) {
+          tradeProposalStatus = (tradeData as any).tradeProposalStatus.to_sender;
+        } else if (tradeData.trade_sent_to === userId) {
+          tradeProposalStatus = (tradeData as any).tradeProposalStatus.to_receiver;
+        }
+      }
+
+      // Determine button actions based on Laravel logic
+      const buttonActions = UserService.getTradeButtonActions(tradeData, userId);
+
+      // Get shipments for both users
+      const shipments = await Shipment.findAll({
+        where: { trade_id: tradeId },
+        include: [{
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'first_name', 'last_name', 'profile_picture'],
+          required: false
+        }]
+      });
+
+      // Transform shipment data
+      const transformedShipments = shipments.map((shipment: any) => {
+        const shipmentData = shipment.toJSON();
+        return {
+          id: shipmentData.id,
+          user_id: shipmentData.user_id,
+          tracking_id: shipmentData.tracking_id,
+          shipment_status: shipmentData.shipment_status,
+          estimated_delivery_date: shipmentData.estimated_delivery_date,
+          paymentId: shipmentData.paymentId,
+          selected_rate: shipmentData.selected_rate,
+          user: shipmentData.user
+        };
+      });
+
+      // Build response data
+      const responseData = {
+        id: tradeData.id,
+        code: tradeData.code,
+        trade_sent_by: tradeData.trade_sent_by,
+        trade_sent_to: tradeData.trade_sent_to,
+        main_card: tradeData.main_card,
+        send_cards: finalSendCards,
+        receive_cards: finalReceiveCards,
+        add_cash: tradeData.add_cash,
+        ask_cash: tradeData.ask_cash,
+        trade_amount_paid_on: tradeData.trade_amount_paid_on ? UserService.formatDateToMMDDYY(tradeData.trade_amount_paid_on) : null,
+        trade_amount_pay_id: tradeData.trade_amount_pay_id,
+        trade_amount_payer_id: tradeData.trade_amount_payer_id,
+        trade_amount_amount: tradeData.trade_amount_amount,
+        trade_amount_pay_status: tradeData.trade_amount_pay_status,
+        message: tradeData.message,
+        counter_personalized_message: tradeData.counter_personalized_message,
+        counter_offer: tradeData.counter_offer,
+        is_new: tradeData.is_new,
+        trade_status: tradeData.trade_status,
+        accepted_on: tradeData.accepted_on ? UserService.formatDateToMMDDYY(tradeData.accepted_on) : null,
+        is_payment_received: tradeData.is_payment_received,
+        payment_received_on: tradeData.payment_received_on ? UserService.formatDateToMMDDYY(tradeData.payment_received_on) : null,
+        shipped_by_trade_sent_by: tradeData.shipped_by_trade_sent_by,
+        shipped_on_by_trade_sent_by: tradeData.shipped_on_by_trade_sent_by ? UserService.formatDateToMMDDYY(tradeData.shipped_on_by_trade_sent_by) : null,
+        shipped_by_trade_sent_to: tradeData.shipped_by_trade_sent_to,
+        shipped_on_by_trade_sent_to: tradeData.shipped_on_by_trade_sent_to ? UserService.formatDateToMMDDYY(tradeData.shipped_on_by_trade_sent_to) : null,
+        is_payment_init: tradeData.is_payment_init,
+        payment_init_date: tradeData.payment_init_date ? UserService.formatDateToMMDDYY(tradeData.payment_init_date) : null,
+        trade_proposal_status_id: tradeData.trade_proposal_status_id,
+        receiver_confirmation: tradeData.receiver_confirmation,
+        trade_sender_confrimation: tradeData.trade_sender_confrimation,
+        created_at: tradeData.created_at ? UserService.formatDateToMMDDYY(tradeData.created_at) : null,
+        updated_at: tradeData.updated_at,
+        // Laravel aliases
+        tradereceivername: (tradeData as any).tradeReceiver ? {
+          id: (tradeData as any).tradeReceiver.id,
+          username: (tradeData as any).tradeReceiver.username,
+          first_name: (tradeData as any).tradeReceiver.first_name,
+          last_name: (tradeData as any).tradeReceiver.last_name,
+          profile_picture: (tradeData as any).tradeReceiver.profile_picture
+        } : null,
+        tradesendername: (tradeData as any).tradeSender ? {
+          id: (tradeData as any).tradeSender.id,
+          username: (tradeData as any).tradeSender.username,
+          first_name: (tradeData as any).tradeSender.first_name,
+          last_name: (tradeData as any).tradeSender.last_name,
+          profile_picture: (tradeData as any).tradeSender.profile_picture
+        } : null,
+        trade_proposal_status: (tradeData as any).tradeProposalStatus ? {
+          id: (tradeData as any).tradeProposalStatus.id,
+          alias: (tradeData as any).tradeProposalStatus.alias,
+          name: (tradeData as any).tradeProposalStatus.name,
+          to_sender: (tradeData as any).tradeProposalStatus.to_sender,
+          to_receiver: (tradeData as any).tradeProposalStatus.to_receiver
+        } : null,
+        // Shipment data
+        shipments: transformedShipments,
+        // Button actions for frontend
+        buttonActions: buttonActions,
+        // Trade status display
+        tradeProposalStatus: tradeProposalStatus
+      };
+
+      return {
+        success: true,
+        data: responseData
+      };
+
+    } catch (error: any) {
+      console.error('Get trade detail error:', error);
+      return {
+        success: false,
+        error: {
+          message: 'Failed to get trade detail',
+          details: error.message
+        }
+      };
+    }
+  }
+
+
   // Get cancelled trades for authenticated user
   static async getCancelledTrades(userId: number, filters: any = {}, page: number = 1, perPage: number = 5) {
     try {
@@ -4181,8 +4614,8 @@ export class UserService {
         return {
           id: tradeData.id,
           code: tradeData.code,
-          trade_sent_by: tradeData.trade_sent_by,
-          trade_sent_to: tradeData.trade_sent_to,
+          trade_sent_by: tradeData.trade_sent_by === userId ? tradeData.trade_sent_by : tradeData.trade_sent_to,
+          trade_sent_to: tradeData.trade_sent_by === userId ? tradeData.trade_sent_to : tradeData.trade_sent_by,
           sender_name: sender_name,
           receiver_name: receiver_name,
           main_card: tradeData.main_card,
@@ -4861,8 +5294,8 @@ export class UserService {
         return {
           id: tradeData.id,
           code: tradeData.order_id, // Use order_id as code for completed trades
-          trade_sent_by: userId, // logged in user ID
-          trade_sent_to: tradeData.trade_sent_by_key === userId ? tradeData.trade_sent_to_key : tradeData.trade_sent_by_key, // other user ID
+          trade_sent_by: tradeData.trade_sent_by_key,
+          trade_sent_to: tradeData.trade_sent_to_key,
           sender_name: sender_name,
           receiver_name: receiver_name,
           main_card: tradeData.main_card_id,
@@ -5388,6 +5821,83 @@ export class UserService {
         success: false,
         error: {
           message: error.message || 'Failed to submit rating'
+        }
+      };
+    }
+  }
+
+  // Cancel shipping payment for trade transaction (Laravel equivalent)
+  static async cancelShippingPayment(tradeId: number, userId: number) {
+    try {
+      // Validate inputs
+      if (!tradeId || isNaN(tradeId) || tradeId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid trade ID is required'
+          }
+        };
+      }
+
+      if (!userId || isNaN(userId) || userId <= 0) {
+        return {
+          success: false,
+          error: {
+            message: 'Valid user ID is required'
+          }
+        };
+      }
+
+      // Check if shipment exists for this trade_id
+      const existingShipment = await Shipment.findOne({
+        where: { trade_id: tradeId }
+      });
+
+      if (!existingShipment) {
+        return {
+          success: false,
+          error: {
+            message: 'No shipment found for this trade transaction'
+          }
+        };
+      }
+
+      // Update shipment payment status to cancelled (3) - Laravel equivalent
+      const updatedShipment = await Shipment.update(
+        { 
+          shipment_payment_status: 3,
+          updated_at: new Date()
+        },
+        { 
+          where: { trade_id: tradeId }
+        }
+      );
+
+      if (updatedShipment[0] > 0) {
+        return {
+          success: true,
+          data: {
+            trade_id: tradeId,
+            shipment_payment_status: 3,
+            message: 'Shipment payment cancelled successfully',
+            updated_at: new Date()
+          }
+        };
+      } else {
+        return {
+          success: false,
+          error: {
+            message: 'Failed to update shipment payment status'
+          }
+        };
+      }
+
+    } catch (error: any) {
+      console.error('Cancel shipping payment error:', error);
+      return {
+        success: false,
+        error: {
+          message: error.message || 'Failed to cancel shipping payment'
         }
       };
     }

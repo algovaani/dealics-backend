@@ -3930,7 +3930,12 @@ export class UserService {
             alias: tradeData.tradeProposalStatus.alias,
             name: tradeData.tradeProposalStatus.name,
             to_sender: tradeData.tradeProposalStatus.to_sender,
-            to_receiver: tradeData.tradeProposalStatus.to_receiver
+            to_receiver: tradeData.tradeProposalStatus.to_receiver,
+            // Add user-specific message based on role
+            user_message: tradeData.trade_sent_by === userId 
+              ? tradeData.tradeProposalStatus.to_sender 
+              : tradeData.tradeProposalStatus.to_receiver,
+            user_role: tradeData.trade_sent_by === userId ? 'sender' : 'receiver'
           } : null,
           // Shipment data - Laravel structure
           // Filter shipments by user_id to distinguish between trader and self shipments

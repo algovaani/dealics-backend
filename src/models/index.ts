@@ -5,6 +5,7 @@ import { TradingCard } from './tradingcard.model.js';
 import { CardCondition } from './cardCondition.model.js';
 import { CardImage } from './card_image.model.js';
 import { CategoryField } from './categoryField.model.js';
+import { ItemColumn } from './itemColumn.model.js';
 import { Follower } from './follower.model.js';
 import { CreditPurchaseLog } from './creditPurchaseLog.model.js';
 import { CreditDeductionLog } from './creditDeductionLog.model.js';
@@ -35,6 +36,7 @@ export const models = [
   CardCondition,
   CardImage,
   CategoryField,
+  ItemColumn,
   Follower,
   CreditPurchaseLog,
   CreditDeductionLog,
@@ -457,6 +459,7 @@ export {
   CardCondition,
   CardImage,
   CategoryField,
+  ItemColumn,
   Follower,
   CreditPurchaseLog,
   CreditDeductionLog,

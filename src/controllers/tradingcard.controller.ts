@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
 import { TradingCardService } from "../services/tradingcard.service.js";
-import { Category, TradingCard, BuyOfferAttempt } from "../models/index.js";
+import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn } from "../models/index.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
 import jwt from "jsonwebtoken";
 import { decodeJWTToken } from "../utils/jwt.js";
+// import { sendApiResponse } from "../utils/apiResponse.js"; // Already defined locally
 
 // Extend Request interface to include files property
 interface RequestWithFiles extends Request {
@@ -1326,7 +1327,7 @@ export const getPopularTradingCards = async (req: Request, res: Response) => {
         trader_id: card.trader_id,
         trader_name: card.trader_name,
         trade_card_status: card.trade_card_status,
-        interestedin: true,
+        interested_in: true,
         card_condition: card.card_condition
       }));
 
@@ -1424,7 +1425,7 @@ export const mainSearch = async (req: Request, res: Response) => {
         trader_id: card.trader_id,
         trader_name: card.trader_name,
         trade_card_status: card.trade_card_status,
-        interestedin: true,
+        interested_in: true,
         card_condition: card.card_condition
       }));
 
@@ -1610,4 +1611,310 @@ export const updateTradingCardStatus = async (req: Request, res: Response) => {
     console.error("Update trading card status error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
   }
+};
+
+// Copy Trading Card Complete API (Single API with all data - matches Laravel setFormFieldsByCategoryAndProductSlug)
+export const getCopyProductFormFields = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { product_code } = req.query;
+    const productCode = Array.isArray(product_code) ? product_code[0] : product_code;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!productCode) {
+      return sendApiResponse(res, 400, false, "Product code is required", []);
+    }
+
+    // Get existing trading card
+    const existingProduct = await TradingCard.findOne({
+      where: {
+        code: productCode,
+        mark_as_deleted: null
+      },
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'sport_name', 'slug']
+        }
+      ]
+    });
+
+    if (!existingProduct) {
+      return sendApiResponse(res, 404, false, "Trading card not found", []);
+    }
+
+    const categoryId = existingProduct.category_id;
+
+    // Get category fields
+    const categoryFields = await CategoryField.findAll({
+      where: { category_id: categoryId },
+      order: [['priority', 'ASC']],
+      attributes: ['fields', 'is_required', 'additional_information']
+    });
+
+    // Get category details
+    const category = await Category.findByPk(categoryId, {
+      attributes: ['id', 'sport_name', 'slug']
+    });
+
+    // Get all active categories
+    const categories = await Category.findAll({
+      where: { sport_status: '1' },
+      order: [['sport_name', 'ASC']],
+      attributes: ['id', 'sport_name', 'slug']
+    });
+
+    // Get master data for common fields (brands, teams, players, conditions, years)
+    const masterData = {
+      brands: await getMasterData('brands', categoryId),
+      teams: await getMasterData('teams', categoryId),
+      players: await getMasterData('players', categoryId),
+      conditions: await getMasterData('conditions', categoryId),
+      years: await getMasterData('years', categoryId)
+    };
+
+    // Process category fields (simplified version without ItemColumn relationship)
+    const categoryFieldCollection: any = {};
+    const categoryAjaxFieldCollection: string[] = [];
+    const categoryJSFieldCollection: string[] = [];
+    const selectDownMasterDataId: any = {};
+
+    // For now, we'll use a simplified approach without ItemColumn relationships
+    // This can be enhanced later when the proper relationships are established
+
+    // Prepare existing product data for copying (reset certain fields)
+    const existingProductData = existingProduct.toJSON();
+    const copyProductData = {
+      ...existingProductData,
+      can_buy: '0',
+      can_trade: '0',
+      trading_card_estimated_value: '0',
+      trading_card_asking_price: '0',
+      trading_card_status: '0',
+      seller_notes: '',
+      shipping_details: '',
+      trading_card_recent_trade_value: '',
+      trading_card_recent_sell_link: '',
+      free_shipping: '0',
+      // Remove user-specific fields
+      user_id: null,
+      created_at: null,
+      updated_at: null,
+      id: null
+    };
+
+    // Complete response with all data in one API
+    const responseData = {
+      // Basic info
+      category_id: categoryId,
+      
+      // Category fields
+      category_fields: categoryFields.map(field => ({
+        fields: field.fields,
+        is_required: field.is_required,
+        additional_information: field.additional_information
+      })),
+      
+      // Master data collections
+      category_field_collection: categoryFieldCollection,
+      category_ajax_field_collection: categoryAjaxFieldCollection,
+      category_js_field_collection: categoryJSFieldCollection,
+      select_down_master_data_id: selectDownMasterDataId,
+      
+      // Master data for dropdowns
+      master_data: masterData,
+      
+      // Category info
+      category: {
+        id: category?.id,
+        label: category?.sport_name,
+        slug: category?.slug
+      },
+      
+      // All categories
+      categories: categories.map(cat => ({
+        id: cat.id,
+        label: cat.sport_name,
+        slug: cat.slug
+      })),
+      
+      // Existing product data (ready for copying)
+      existing_product: copyProductData,
+      
+      // Additional useful data
+      product_by_code: existingProduct, // Original product data
+      
+      // Form configuration
+      form_config: {
+        can_copy: true,
+        reset_fields: ['can_buy', 'can_trade', 'trading_card_estimated_value', 'trading_card_asking_price', 'trading_card_status'],
+        required_fields: categoryFields.filter(field => field.is_required).map(field => field.fields)
+      }
+    };
+
+    return sendApiResponse(res, 200, true, "Complete copy product data retrieved successfully", responseData);
+
+  } catch (error: any) {
+    console.error('Get copy product form fields error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Get Master Data for Fields API
+export const getMasterDataForField = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { master_table, category_id } = req.query;
+    const masterTable = Array.isArray(master_table) ? master_table[0] : master_table;
+    const categoryId = Array.isArray(category_id) ? category_id[0] : category_id;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!masterTable) {
+      return sendApiResponse(res, 400, false, "Master table name is required", []);
+    }
+
+    const masterData = await getMasterData(masterTable as string, categoryId ? parseInt(categoryId as string) : null);
+
+    return sendApiResponse(res, 200, true, "Master data retrieved successfully", masterData);
+
+  } catch (error: any) {
+    console.error('Get master data error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Get Product by Code API
+export const getProductByCode = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { product_code } = req.query;
+    const productCode = Array.isArray(product_code) ? product_code[0] : product_code;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!productCode) {
+      return sendApiResponse(res, 400, false, "Product code is required", []);
+    }
+
+    const product = await TradingCard.findOne({
+      where: {
+        code: productCode,
+        mark_as_deleted: null
+      },
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'sport_name', 'slug']
+        }
+      ]
+    });
+
+    if (!product) {
+      return sendApiResponse(res, 404, false, "Product not found", []);
+    }
+
+    return sendApiResponse(res, 200, true, "Product retrieved successfully", product);
+
+  } catch (error: any) {
+    console.error('Get product by code error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Helper function to get master data (matches Laravel Helper::____getMasterDatas)
+const getMasterData = async (masterTable: string, categoryId: number | null = null) => {
+  try {
+    // This is a simplified version - you'll need to implement based on your actual master tables
+    // Common master tables might include: brands, teams, players, conditions, etc.
+    
+    switch (masterTable) {
+      case 'brands':
+        // Return brands data
+        return await getBrandsData(categoryId);
+      
+      case 'teams':
+        // Return teams data
+        return await getTeamsData(categoryId);
+      
+      case 'players':
+        // Return players data
+        return await getPlayersData(categoryId);
+      
+      case 'conditions':
+        // Return conditions data
+        return await getConditionsData();
+      
+      case 'years':
+        // Return years data
+        return await getYearsData();
+      
+      default:
+        // For unknown tables, return empty array
+        return [];
+    }
+
+  } catch (error: any) {
+    console.error(`Error getting master data for ${masterTable}:`, error);
+    return [];
+  }
+};
+
+// Helper functions for different master data types
+const getBrandsData = async (categoryId: number | null) => {
+  // Implement based on your brands table structure
+  // This is a placeholder - replace with actual implementation
+  return [
+    { id: 1, name: 'Topps', slug: 'topps' },
+    { id: 2, name: 'Panini', slug: 'panini' },
+    { id: 3, name: 'Upper Deck', slug: 'upper-deck' }
+  ];
+};
+
+const getTeamsData = async (categoryId: number | null) => {
+  // Implement based on your teams table structure
+  return [
+    { id: 1, name: 'Los Angeles Lakers', slug: 'lakers' },
+    { id: 2, name: 'Boston Celtics', slug: 'celtics' },
+    { id: 3, name: 'Chicago Bulls', slug: 'bulls' }
+  ];
+};
+
+const getPlayersData = async (categoryId: number | null) => {
+  // Implement based on your players table structure
+  return [
+    { id: 1, name: 'LeBron James', slug: 'lebron-james' },
+    { id: 2, name: 'Michael Jordan', slug: 'michael-jordan' },
+    { id: 3, name: 'Kobe Bryant', slug: 'kobe-bryant' }
+  ];
+};
+
+const getConditionsData = async () => {
+  return [
+    { id: 1, name: 'Mint', slug: 'mint' },
+    { id: 2, name: 'Near Mint', slug: 'near-mint' },
+    { id: 3, name: 'Excellent', slug: 'excellent' },
+    { id: 4, name: 'Very Good', slug: 'very-good' },
+    { id: 5, name: 'Good', slug: 'good' }
+  ];
+};
+
+const getYearsData = async () => {
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  
+  for (let year = currentYear; year >= 1950; year--) {
+    years.push({ id: year, name: year.toString(), slug: year.toString() });
+  }
+  
+  return years;
 };

@@ -1732,6 +1732,174 @@ const sendTradeNotifications = async (action: string, sentBy: number, sentTo: nu
   }
 };
 
+// Helper function to send trade email notifications (matches Laravel email functionality)
+const sendTradeEmailNotifications = async (tradeProposal: any, status: string, action: string): Promise<void> => {
+  try {
+    const sender = tradeProposal.tradeSender;
+    const receiver = tradeProposal.tradeReceiver;
+    
+    if (!sender || !receiver) return;
+
+    // Get card details
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+
+    const sentCards = await TradingCard.findAll({
+      where: { id: { [Op.in]: sendCards } },
+      attributes: ['search_param']
+    });
+
+    const receivedCards = await TradingCard.findAll({
+      where: { id: { [Op.in]: receiveCards } },
+      attributes: ['search_param']
+    });
+
+    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+
+    const proposedAmount = tradeProposal.add_cash || tradeProposal.ask_cash || 0;
+    const message = tradeProposal.message || 'N/A';
+
+    // Determine cash captions
+    let proposedAmountCaptionBy = '';
+    let proposedAmountCaptionTo = '';
+    
+    if (tradeProposal.add_cash && tradeProposal.add_cash > 0) {
+      proposedAmountCaptionTo = ' (You get)';
+      proposedAmountCaptionBy = ' (You pay)';
+    } else if (tradeProposal.ask_cash && tradeProposal.ask_cash > 0) {
+      proposedAmountCaptionTo = ' (You pay)';
+      proposedAmountCaptionBy = ' (You get)';
+    }
+
+    // Send email to receiver
+    const receiverEmailData = {
+      to: receiver.email,
+      tradebyname: `${sender.first_name || ''} ${sender.last_name || ''}`.trim(),
+      tradetoname: `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim(),
+      cardyousend: itemsReceived.replace(/\n/g, '<br>'),
+      cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
+      proposedamount: `${proposedAmount}${proposedAmountCaptionTo}`,
+      message: message,
+      reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      transaction_id: tradeProposal.code
+    };
+
+    // Send email to sender
+    const senderEmailData = {
+      to: sender.email,
+      tradebyname: `${sender.first_name || ''} ${sender.last_name || ''}`.trim(),
+      tradetoname: `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim(),
+      cardyousend: itemsSend.replace(/\n/g, '<br>'),
+      cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
+      proposedamount: `${proposedAmount}${proposedAmountCaptionBy}`,
+      message: message,
+      reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      transaction_id: tradeProposal.code
+    };
+
+    // Determine email template based on status
+    let receiverTemplate = '';
+    let senderTemplate = '';
+
+    if (status === 'accepted') {
+      receiverTemplate = 'trade-offer-accepted-receiver';
+      senderTemplate = 'trade-offer-accepted-sender';
+    } else if (status === 'counter_accepted') {
+      receiverTemplate = 'counter-trade-offer-accepted-receiver';
+      senderTemplate = 'counter-trade-offer-accepted-sender';
+    }
+
+    // Send emails (you'll need to implement your email service)
+    if (receiverTemplate) {
+      // await emailService.sendEmail(receiverTemplate, receiverEmailData);
+      console.log('Email to receiver:', receiverTemplate, receiverEmailData);
+    }
+    
+    if (senderTemplate) {
+      // await emailService.sendEmail(senderTemplate, senderEmailData);
+      console.log('Email to sender:', senderTemplate, senderEmailData);
+    }
+
+  } catch (error) {
+    console.error('Error sending trade email notifications:', error);
+  }
+};
+
+// Helper function to send pay-to-continue email notifications
+const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 'receiver'): Promise<void> => {
+  try {
+    const sender = tradeProposal.tradeSender;
+    const receiver = tradeProposal.tradeReceiver;
+    
+    if (!sender || !receiver) return;
+
+    // Get card details
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+
+    const sentCards = await TradingCard.findAll({
+      where: { id: { [Op.in]: sendCards } },
+      attributes: ['search_param']
+    });
+
+    const receivedCards = await TradingCard.findAll({
+      where: { id: { [Op.in]: receiveCards } },
+      attributes: ['search_param']
+    });
+
+    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+
+    const proposedAmount = tradeProposal.add_cash || tradeProposal.ask_cash || 0;
+    const message = tradeProposal.message || tradeProposal.counter_personalized_message || 'N/A';
+
+    // Determine who pays and send appropriate email
+    if (payerType === 'sender') {
+      const senderEmailData = {
+        to: sender.email,
+        tradebyname: `${sender.first_name || ''} ${sender.last_name || ''}`.trim(),
+        tradetoname: `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim(),
+        cardyousend: itemsSend.replace(/\n/g, '<br>'),
+        cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
+        proposedamount: proposedAmount,
+        message: message,
+        reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        transaction_id: tradeProposal.code
+      };
+
+      const template = tradeProposal.trade_status === 'counter_accepted' 
+        ? 'pay-to-continue-email-trade-counter-sender'
+        : 'pay-to-continue-email-trade-sender';
+
+      // await emailService.sendEmail(template, senderEmailData);
+      console.log('Pay-to-continue email to sender:', template, senderEmailData);
+    } else {
+      const receiverEmailData = {
+        to: receiver.email,
+        tradebyname: `${sender.first_name || ''} ${sender.last_name || ''}`.trim(),
+        tradetoname: `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim(),
+        cardyousend: itemsReceived.replace(/\n/g, '<br>'),
+        cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
+        proposedamount: proposedAmount,
+        message: message,
+        reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        transaction_id: tradeProposal.code
+      };
+
+      const template = tradeProposal.trade_status === 'counter_accepted' 
+        ? 'pay-to-continue-email-trade-counter-receiver'
+        : 'pay-to-continue-email-trade-receiver';
+
+      // await emailService.sendEmail(template, receiverEmailData);
+      console.log('Pay-to-continue email to receiver:', template, receiverEmailData);
+    }
+
+  } catch (error) {
+    console.error('Error sending pay-to-continue email:', error);
+  }
+};
+
 // Cancel Trade API
 export const cancelTrade = async (req: Request, res: Response) => {
   try {
@@ -1957,8 +2125,8 @@ export const editTradeProposalDetail = async (req: Request, res: Response) => {
     }
 
     // Parse send and receive cards
-    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
-    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
 
     // Get user closets (send cards) - include cards that are already selected or available for trade
     let userClosetsWhere: any = {
@@ -2348,8 +2516,8 @@ export const reviewTradeProposal = async (req: Request, res: Response) => {
     }
 
     // Parse send and receive cards
-    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
-    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
 
     // Get interested user closets (cards they're sending)
     const interestedClosets = await TradingCard.findAll({
@@ -2487,7 +2655,7 @@ export const reviewTradeProposal = async (req: Request, res: Response) => {
   }
 };
 
-// Accept Trade API
+// Accept Trade API (Enhanced to match Laravel functionality)
 export const acceptTrade = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -2506,8 +2674,22 @@ export const acceptTrade = async (req: Request, res: Response) => {
       return sendApiResponse(res, 400, false, "Trade proposal ID and status are required", []);
     }
 
-    // Get trade proposal
-    const tradeProposal = await TradeProposal.findByPk(modelid);
+    // Get trade proposal with relations
+    const tradeProposal = await TradeProposal.findByPk(modelid, {
+      include: [
+        {
+          model: User,
+          as: 'tradeSender',
+          attributes: ['id', 'first_name', 'last_name', 'email', 'username']
+        },
+        {
+          model: User,
+          as: 'tradeReceiver',
+          attributes: ['id', 'first_name', 'last_name', 'email', 'username']
+        }
+      ]
+    });
+
     if (!tradeProposal) {
       return sendApiResponse(res, 404, false, "Trade proposal not found", []);
     }
@@ -2520,9 +2702,6 @@ export const acceptTrade = async (req: Request, res: Response) => {
 
     // Handle different status types
     if (status === 'accepted' || status === 'counter_accepted') {
-      // Deduct coins logic would go here (commented out in Laravel)
-      // For now, we'll proceed with the trade acceptance
-      
       // Update trade status
       await tradeProposal.update({
         [columnname]: status,
@@ -2553,11 +2732,16 @@ export const acceptTrade = async (req: Request, res: Response) => {
         { where: { id: { [Op.in]: allCards } } }
       );
 
+      // Send email notifications
+      await sendTradeEmailNotifications(tradeProposal, status, 'accepted');
+
       // Handle payment notifications if cash is involved
       if (tradeProposal.add_cash && tradeProposal.add_cash > 0 && !tradeProposal.trade_amount_paid_on) {
         await setTradeProposalStatus(tradeProposal.id, status === 'accepted' ? 'trade-offer-accepted-sender-pay' : 'counter-offer-accepted-sender-pay');
+        await sendPayToContinueEmail(tradeProposal, 'sender');
       } else if (tradeProposal.ask_cash && tradeProposal.ask_cash > 0 && !tradeProposal.trade_amount_paid_on) {
         await setTradeProposalStatus(tradeProposal.id, status === 'accepted' ? 'trade-offer-accepted-receiver-pay' : 'counter-offer-accepted-receiver-pay');
+        await sendPayToContinueEmail(tradeProposal, 'receiver');
       }
 
       return sendApiResponse(res, 200, true, "Trade accepted successfully as per your request.", [], {
@@ -2749,8 +2933,8 @@ export const getShippingAddress = async (req: Request, res: Response) => {
     const tradeSentBy = tradeProposal.trade_sent_by;
     const tradeSentTo = tradeProposal.trade_sent_to;
 
-    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
-    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
 
     // Get trade cards based on user role
     if (tradeProposal.trade_sent_to === userId) {
@@ -3403,8 +3587,8 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
 
     // Calculate actual amount
     let actualAmount = 0;
-    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
-    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
 
     let sendTradeCards: any[] = [];
     let receiveTradeCards: any[] = [];

@@ -1,5 +1,8 @@
 import { Router } from "express";
 import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment } from "../controllers/user.controller.js";
+import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
+import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
+import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
 import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
@@ -71,6 +74,9 @@ router.get("/ongoing-trades/:id", getOngoingTrades);
 
 // Trade detail API for modal (requires authentication - handled in controller)
 router.get("/trade-detail", getTradeDetail);
+
+// Enhanced trade detail API (matches Laravel functionality)
+router.get("/trade-detail-enhanced", userAuth, getTradeDetailNew);
 
 // Completed trades API (requires authentication - handled in controller)
 router.get("/completed-trades", getCompletedTrades);
@@ -173,6 +179,16 @@ router.post("/shipping-trade-success/:trade_id", userAuth, shippingTradeSuccess)
 
 // Cancel shipping payment route
 router.post("/shipping-trade-cancel", userAuth, cancelShippingPayment);
+
+// Payment processing routes
+router.post("/pay-to-change-trade-status", userAuth, payToChangeTradeStatus);
+router.post("/pay-to-change-trade-status-counter-offer", userAuth, payToChangeTradeStatusCounterOffer);
+router.post("/handle-paypal-response", userAuth, handlePayPalResponse);
+router.get("/payment-success/:refId/:itemName", payPalPaymentSuccess);
+router.get("/payment-cancel/:refId", payPalPaymentCancel);
+
+// Product copy/form routes
+router.get("/copy-product-form-fields", userAuth, getCopyProductFormFields);
 
 // Other user routes (must be after specific routes to avoid conflicts)
 router.get("/:id", getUserById);

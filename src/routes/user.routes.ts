@@ -3,7 +3,7 @@ import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getT
 import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
 import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
-import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess } from "../controllers/cart.controller.js";
+import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess, confirmPaymentReceived } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -170,6 +170,9 @@ router.post("/pay-now", userAuth, payNowPayment);
 // PayPal Payment Return APIs (no authentication required - called by PayPal)
 router.get("/feed-paypal-payment-buysell/:type/:refId", feedPayPalPaymentReturn);
 router.post("/notify/feed-paypal-payment-buysell/:refId", feedPayPalPaymentNotify);
+
+// Payment Confirmation API (requires authentication)
+router.post("/confirm-payment-received/:id", userAuth, confirmPaymentReceived);
 
 // Trade counter detail route
 router.get("/trade-counter-detail/:card_id", userAuth, getTradeCounterDetail);

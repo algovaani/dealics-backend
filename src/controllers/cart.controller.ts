@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Cart, CartDetail, TradingCard, User, BuyOfferAttempt, CreditDeductionLog, Address, Category, BuySellCard, BuyOfferStatus, Follower, TradeProposal, TradeProposalStatus, TradeNotification, Shipment, TradeTransaction, CardCondition } from "../models/index.js";
+import { Cart, CartDetail, TradingCard, User, BuyOfferAttempt, CreditDeductionLog, Address, Category, BuySellCard, BuyOfferStatus, Follower, TradeProposal, TradeProposalStatus, TradeNotification, Shipment, TradeTransaction, CardCondition, BuyOfferProduct } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 import { exit } from "process";
@@ -1034,6 +1034,82 @@ const sendPaymentCompletionNotifications = async (buyOffer: any) => {
   }
 };
 
+// Send payment confirmation emails for buy sell (based on Laravel __sendPaymentConfirmationEmailsForBuySell)
+const sendPaymentConfirmationEmailsForBuySell = async (id: number) => {
+  try {
+    const buyOffer = await BuySellCard.findByPk(id);
+    
+    if (!buyOffer) {
+      console.error('Buy offer not found for email sending');
+      return;
+    }
+
+    const buyer = await User.findByPk(buyOffer.buyer);
+    const seller = await User.findByPk(buyOffer.seller);
+
+    if (!buyer || !seller) {
+      console.error('Buyer or seller not found for email sending');
+      return;
+    }
+
+    // Generate card name
+    let cardName = '';
+    if (buyOffer.main_card && buyOffer.main_card > 0) {
+      const tradingCard = await TradingCard.findByPk(buyOffer.main_card);
+      cardName = tradingCard ? (tradingCard.search_param || '') : '';
+    } else {
+      // Handle multiple products
+      const buyOfferProducts = await BuyOfferProduct.findAll({
+        where: { buy_sell_id: buyOffer.id },
+        include: [{ model: TradingCard, as: 'product' }]
+      });
+
+      if (buyOfferProducts && buyOfferProducts.length > 0) {
+        const cardNamesArray: string[] = [];
+        for (const item of buyOfferProducts) {
+          const itemWithProduct = item as any;
+          if (itemWithProduct.product && itemWithProduct.product.search_param) {
+            cardNamesArray.push(itemWithProduct.product.search_param || '');
+          }
+        }
+        if (cardNamesArray.length > 0) {
+          cardName = cardNamesArray.join(', ');
+        }
+      }
+    }
+
+    const proposedAmount = buyOffer.total_amount;
+    const transactionListUrl = '/bought-and-sold-products';
+
+    // Send email to buyer
+    const buyerMailInputs = {
+      to: buyer.email,
+      tradebyname: `${buyer.first_name || ''} ${buyer.last_name || ''}`.trim(),
+      tradetoname: `${seller.first_name || ''} ${seller.last_name || ''}`.trim(),
+      cardyoureceive: cardName,
+      proposedamount: proposedAmount,
+      transactionListUrl: transactionListUrl,
+    };
+
+    // Send email to seller
+    const sellerMailInputs = {
+      to: seller.email,
+      tradebyname: `${buyer.first_name || ''} ${buyer.last_name || ''}`.trim(),
+      tradetoname: `${seller.first_name || ''} ${seller.last_name || ''}`.trim(),
+      cardyousend: cardName,
+      proposedamount: proposedAmount,
+      transactionListUrl: transactionListUrl,
+    };
+
+    // Execute email sending (you can implement the actual email sending logic here)
+    console.log('Sending payment confirmation email to buyer:', buyerMailInputs);
+    console.log('Sending payment confirmation email to seller:', sellerMailInputs);
+
+  } catch (error) {
+    console.error('Error sending payment confirmation emails:', error);
+  }
+};
+
 // Make offer payment function (internal)
 const makeOfferPayment = async (id: number) => {
   try {
@@ -1215,6 +1291,45 @@ export const feedPayPalPaymentNotify = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('PayPal payment notify error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Payment Confirmation API (based on Laravel ___isPaymentReceive function)
+export const confirmPaymentReceived = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return sendApiResponse(res, 400, false, "Buy offer ID is required", []);
+    }
+
+    // Find the buy offer
+    const buyOffer = await BuySellCard.findByPk(id);
+
+    if (!buyOffer) {
+      return sendApiResponse(res, 404, false, "Buy offer not found", []);
+    }
+
+    // Update payment received status
+    await buyOffer.update({
+      is_payment_received: 1,
+      payment_received_on: new Date()
+    });
+
+    // Set trade and offer status
+    await setTradeAndOfferStatus('payment-confirmed', 'offer', buyOffer.id);
+
+    // Send notification
+    await setTradersNotificationOnVariousActionBasis('payment-received', buyOffer.buyer!, buyOffer.seller!, buyOffer.id, 'Offer');
+
+    // Send payment confirmation emails
+    await sendPaymentConfirmationEmailsForBuySell(buyOffer.id);
+
+    return sendApiResponse(res, 200, true, "Payment confirmation received", []);
+
+  } catch (error: any) {
+    console.error('Payment confirmation error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };

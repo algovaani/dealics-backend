@@ -85,6 +85,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
     const pageParam = req.query.page as string;
     const perPageParam = req.query.perPage as string;
     const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
+    const gradedParam = req.query.graded as string;
     
     // Extract user ID from JWT token if available
     let authenticatedUserId: number | undefined;
@@ -104,6 +105,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
     const page = pageParam ? parseInt(pageParam, 10) : 1;
     const perPage = perPageParam ? parseInt(perPageParam, 10) : 100;
     const categoryId: number | undefined = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
+    const graded: string | undefined = gradedParam;
     const loggedInUserId: number | undefined = authenticatedUserId;
 
     // Validate pagination parameters
@@ -237,6 +239,7 @@ export const getTradingCards = async (req: Request, res: Response) => {
     const pageParam = req.query.page as string;
     const perPageParam = req.query.perPage as string;
     const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
+    const gradedParam = req.query.graded as string;
     
     // Extract user ID from JWT token if available
     let authenticatedUserId: number | undefined;
@@ -256,6 +259,7 @@ export const getTradingCards = async (req: Request, res: Response) => {
     const page = pageParam ? parseInt(pageParam, 10) : 1;
     const perPage = perPageParam ? parseInt(perPageParam, 10) : 100;
     const categoryId: number | undefined = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
+    const graded: string | undefined = gradedParam;
     const loggedInUserId: number | undefined = authenticatedUserId;
 
     // Validate pagination parameters
@@ -292,7 +296,8 @@ export const getTradingCards = async (req: Request, res: Response) => {
       page,
       perPage,
       categoryId,
-      loggedInUserId
+      loggedInUserId,
+      graded
     );
 
     // Transform the data - result.data contains the trading cards array
@@ -330,6 +335,7 @@ export const getTradingCards = async (req: Request, res: Response) => {
         trader_id: card.trader_id || null,
         trader_name: card.trader_name || null,
         card_condition: card.card_condition || null,
+        graded: card.graded || '0',
         canTradeOrOffer: canTradeOrOffer
       };
 
@@ -480,7 +486,11 @@ export const getTradingCard = async (req: Request, res: Response) => {
       // Add interested_in status
       interested_in: interested_in,
       // Add offer limit text for authenticated users
-      offer_limit_text: offerLimitText
+      offer_limit_text: offerLimitText,
+      // Add eBay link search parameter
+      ebayLinkSearch: tradingCard.search_param ? 
+        `https://www.ebay.com/sch/i.html?_nkw=${tradingCard.search_param.replace(/\s+/g, '+')}&rt=nc&LH_Complete=1&LH_Sold=1` : 
+        null
     };
     
     return sendApiResponse(res, 200, true, "Trading card retrieved successfully", transformedCard);

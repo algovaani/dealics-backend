@@ -6,13 +6,14 @@ import { sequelize } from "../config/db.js";
 
 export class TradingCardService {
   // Get all trading cards EXCEPT user's own cards (for public listing)
-  async getAllTradingCardsExceptOwn(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
+  async getAllTradingCardsExceptOwn(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number, graded?: string) {
     try {
     // Validate and sanitize input parameters
     const validPage = isNaN(page) || page < 1 ? 1 : page;
     const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
     const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
     const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+    const validGraded = graded && (graded === 'graded' || graded === 'ungraded') ? graded : null;
     
     const offset = (validPage - 1) * validPerPage;
       
@@ -30,9 +31,17 @@ export class TradingCardService {
       whereClause += ` AND tc.category_id = ${validCategoryId}`;
     }
     
+    if (validGraded) {
+      if (validGraded === 'graded') {
+        whereClause += ` AND tc.graded = '1'`;
+      } else if (validGraded === 'ungraded') {
+        whereClause += ` AND (tc.graded = '0' OR tc.graded IS NULL)`;
+      }
+    }
+    
       // Debug: Log the where clause
       console.log('getAllTradingCardsExceptOwn - Where clause:', whereClause);
-      console.log('getAllTradingCardsExceptOwn - Parameters:', { validPage, validPerPage, validCategoryId, validLoggedInUserId });
+      console.log('getAllTradingCardsExceptOwn - Parameters:', { validPage, validPerPage, validCategoryId, validLoggedInUserId, validGraded });
 
       // Use raw SQL to get data with sport_name and interested_in status (match original structure)
       let interestedJoin = '';
@@ -61,6 +70,7 @@ export class TradingCardService {
           tc.can_trade,
           tc.can_buy,
           tc.trading_card_status,
+          tc.graded,
           CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
           CASE 
             WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
@@ -125,12 +135,13 @@ export class TradingCardService {
   }
 
   // Get all TradingCard with pagination and category_name
-    async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
+    async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number, graded?: string) {
     // Validate and sanitize input parameters
     const validPage = isNaN(page) || page < 1 ? 1 : page;
     const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
     const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
     const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+    const validGraded = graded && (graded === 'graded' || graded === 'ungraded') ? graded : null;
     
     const offset = (validPage - 1) * validPerPage;
     
@@ -820,13 +831,15 @@ export class TradingCardService {
     page: number = 1,
     perPage: number = 10,
     loggedInUserId?: number,
-    categoryId?: number
+    categoryId?: number,
+    graded?: string
   ) {
     // Validate and sanitize input parameters
     const validUserId = userId && !isNaN(userId) && userId > 0 ? userId : null;
     const validPage = isNaN(page) || page < 1 ? 1 : page;
     const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
     const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+    const validGraded = graded && (graded === 'graded' || graded === 'ungraded') ? graded : null;
     const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
     
     if (!validUserId) {

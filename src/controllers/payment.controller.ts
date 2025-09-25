@@ -102,8 +102,9 @@ export const payToChangeTradeStatus = async (req: Request, res: Response) => {
       await tradeProposal.update({
         is_payment_init: 1,
         payment_init_date: new Date(),
-        is_payment_received: 1,
-        payment_received_on: new Date()
+        is_payment_received: 2
+        // COMMENTED OUT: payment_received_on should only be set in confirm-payment API
+        // payment_received_on: new Date()
       });
 
       // Generate PayPal payment data
@@ -634,8 +635,9 @@ export const handlePayPalResponse = async (req: Request, res: Response) => {
         trade_amount_amount: amount,
         trade_amount_pay_status: 'approved',
         trade_amount_paid_on: new Date(),
-        is_payment_received: 1,
-        payment_received_on: new Date(),
+        // COMMENTED OUT: These fields should only be set in confirm-payment API
+        // is_payment_received: 1,
+        // payment_received_on: new Date(),
         trade_status: 'accepted'
       });
 
@@ -699,8 +701,9 @@ export const payPalPaymentSuccess = async (req: Request, res: Response) => {
       trade_amount_amount: String((Array.isArray(paymentData.amount) ? paymentData.amount[0] : paymentData.amount) || ''),
       trade_amount_pay_status: 'approved',
       trade_amount_paid_on: new Date(),
-      is_payment_received: 1,
-      payment_received_on: new Date(),
+      // COMMENTED OUT: These fields should only be set in confirm-payment API
+      // is_payment_received: 1,
+      // payment_received_on: new Date(),
       trade_status: 'accepted'
     });
 

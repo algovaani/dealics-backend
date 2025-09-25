@@ -3427,6 +3427,7 @@ export class UserService {
           attributes: ['id', 'username', 'first_name', 'last_name'],
           required: false
         },
+        // Removed Shipment include - using separate query instead
         {
           model: TradingCard,
           as: 'tradingCard',
@@ -3500,21 +3501,27 @@ export class UserService {
             `${cardData.buyerUser.first_name || ''} ${cardData.buyerUser.last_name || ''}`.trim();
         }
 
-        // Format shipment details
-        const shipmentDetail = cardData.shipmentDetails && cardData.shipmentDetails.length > 0 
-          ? cardData.shipmentDetails.map((shipment: any) => ({
-              id: shipment.id,
-              estimated_delivery_date: shipment.estimated_delivery_date 
-                ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) 
-                : shipment.cron_shipment_date 
-                  ? UserService.formatDateToMMDDYY(shipment.cron_shipment_date)
-                  : shipment.created_at 
-                    ? UserService.formatDateToMMDDYY(shipment.created_at)
-                    : null,
-              tracking_number: shipment.tracking_id,
-              status: shipment.shipment_status
-            }))
-          : [];
+        // Get shipment details separately to avoid duplicates
+        const shipments = await Shipment.findAll({
+          where: { buy_sell_id: cardData.id },
+          attributes: ['id', 'user_id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'cron_shipment_date', 'created_at'],
+          order: [['created_at', 'DESC']]
+        });
+
+        // Format shipment details according to Laravel structure
+        const shipmentDetail = shipments.map((shipment: any) => ({
+          id: shipment.id,
+          estimated_delivery_date: shipment.estimated_delivery_date 
+            ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) 
+            : shipment.cron_shipment_date 
+              ? UserService.formatDateToMMDDYY(shipment.cron_shipment_date)
+              : shipment.created_at 
+                ? UserService.formatDateToMMDDYY(shipment.created_at)
+                : null,
+          tracking_number: shipment.tracking_id,
+          status: shipment.shipment_status,
+          user_id: shipment.user_id
+        }));
 
         // Get category name if trading card exists
         let category_name = null;
@@ -4761,6 +4768,7 @@ export class UserService {
           received_on: notificationData.created_at ? UserService.formatDateToMMDDYY(notificationData.created_at) : null,
           received_on_date: notificationData.created_at,
           seen_date: notificationData.seen ? (notificationData.updated_at ? UserService.formatDateToMMDDYY(notificationData.updated_at) : null) : null,
+          seen: notificationData.seen || 0, // Add seen parameter
           trade_proposal_id: notificationData.trade_proposal_id,
           buy_sell_card_id: notificationData.buy_sell_card_id
         };

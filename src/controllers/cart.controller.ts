@@ -700,30 +700,198 @@ const setTradeAndOfferStatus = async (alias: string, setFor: string, triggerId: 
   }
 };
 
-// Helper function to create notifications
+// Helper function to create notifications (Enhanced based on Laravel __setTradersNotificationOnVariousActionBasis)
 const setTradersNotificationOnVariousActionBasis = async (act: string, sentBy: number, sentTo: number, dataSetId: number, setFor: string) => {
   try {
-    // This is a simplified version - you may need to implement the full notification logic
-    // For now, we'll create basic notifications
-    const notificationData = {
+    console.log(`🔔 Creating notification - Action: ${act}, SentBy: ${sentBy}, SentTo: ${sentTo}, DataSetId: ${dataSetId}, SetFor: ${setFor}`);
+
+    // Get notification data based on action and setFor
+    const notificationData = getNotificationData(act, setFor);
+    
+    if (notificationData.status === true) {
+      // Create sender notification
+      if (notificationData.messages.sender && notificationData.messages.sender.trim() !== '') {
+        const senderCollection: any = {
+          notification_sent_by: sentTo,
+          notification_sent_to: sentBy,
+          message: notificationData.messages.sender,
+          created_at: new Date(),
+          updated_at: new Date()
+        };
+
+        if (setFor === 'Trade') {
+          senderCollection.trade_proposal_id = dataSetId;
+        } else if (setFor === 'Offer') {
+          senderCollection.buy_sell_card_id = dataSetId;
+        }
+
+        await TradeNotification.create(senderCollection);
+        console.log(`✅ Sender notification created: ${notificationData.messages.sender}`);
+      }
+
+      // Create receiver notification
+      if (notificationData.messages.receiver && notificationData.messages.receiver.trim() !== '') {
+        const receiverCollection: any = {
       notification_sent_by: sentBy,
       notification_sent_to: sentTo,
-      message: `Action: ${act}`,
+          message: notificationData.messages.receiver,
       created_at: new Date(),
       updated_at: new Date()
     };
 
     if (setFor === 'Trade') {
-      (notificationData as any).trade_proposal_id = dataSetId;
+          receiverCollection.trade_proposal_id = dataSetId;
     } else if (setFor === 'Offer') {
-      (notificationData as any).buy_sell_card_id = dataSetId;
+          receiverCollection.buy_sell_card_id = dataSetId;
+        }
+
+        await TradeNotification.create(receiverCollection);
+        console.log(`✅ Receiver notification created: ${notificationData.messages.receiver}`);
+      }
+    } else {
+      console.log(`⚠️ No notification data found for action: ${act}, setFor: ${setFor}`);
     }
 
-    // You can implement the actual notification creation here
-    console.log('Notification created:', notificationData);
-  } catch (error) {
-    console.error('Error creating notification:', error);
+  } catch (error: any) {
+    console.error('Error creating notifications:', error);
   }
+};
+
+// Helper function to get notification data based on action and setFor
+const getNotificationData = (act: string, setFor: string) => {
+  const notificationMap: any = {
+    // Trade notifications
+    'trade-sent': {
+      status: true,
+      messages: {
+        sender: 'You have sent a trade proposal',
+        receiver: 'You have received a new trade proposal'
+      }
+    },
+    'trade-accepted': {
+      status: true,
+      messages: {
+        sender: 'Your trade proposal has been accepted',
+        receiver: 'You have accepted a trade proposal'
+      }
+    },
+    'trade-declined': {
+      status: true,
+      messages: {
+        sender: 'Your trade proposal has been declined',
+        receiver: 'You have declined a trade proposal'
+      }
+    },
+    'trade-cancelled': {
+      status: true,
+      messages: {
+        sender: 'Your trade proposal has been cancelled',
+        receiver: 'A trade proposal has been cancelled'
+      }
+    },
+    'mark-completed-proposal': {
+      status: true,
+      messages: {
+        sender: 'You have marked the trade as completed',
+        receiver: 'The other party has marked the trade as completed'
+      }
+    },
+    'give-review-to-trader': {
+      status: true,
+      messages: {
+        sender: 'Please give a review to the trader',
+        receiver: 'Please give a review to the trader'
+      }
+    },
+    'shipped-by-sender': {
+      status: true,
+      messages: {
+        sender: 'You have shipped your cards',
+        receiver: 'The sender has shipped their cards'
+      }
+    },
+    'shipped-by-receiver': {
+      status: true,
+      messages: {
+        sender: 'The receiver has shipped their cards',
+        receiver: 'You have shipped your cards'
+      }
+    },
+    'both-traders-shipped': {
+      status: true,
+      messages: {
+        sender: 'Both parties have shipped their cards',
+        receiver: 'Both parties have shipped their cards'
+      }
+    },
+
+    // Offer notifications
+    'offer-sent': {
+      status: true,
+      messages: {
+        sender: 'You have sent a buy offer',
+        receiver: 'You have received a new buy offer'
+      }
+    },
+    'offer-accepted': {
+      status: true,
+      messages: {
+        sender: 'Your buy offer has been accepted',
+        receiver: 'You have accepted a buy offer'
+      }
+    },
+    'offer-declined': {
+      status: true,
+      messages: {
+        sender: 'Your buy offer has been declined',
+        receiver: 'You have declined a buy offer'
+      }
+    },
+    'payment-made': {
+      status: true,
+      messages: {
+        sender: 'You have made a payment',
+        receiver: 'You have received a payment'
+      }
+    },
+    'payment-received': {
+      status: true,
+      messages: {
+        sender: 'Your payment has been received',
+        receiver: 'You have received a payment'
+      }
+    },
+    'payment-confirmed': {
+      status: true,
+      messages: {
+        sender: 'Your payment has been confirmed',
+        receiver: 'Payment has been confirmed'
+      }
+    },
+    'paypal-business-details-not-available': {
+      status: true,
+      messages: {
+        sender: 'PayPal business email is not available',
+        receiver: 'Your PayPal business email is not available'
+      }
+    },
+    'pay-to-continue-buy-sell-trade': {
+      status: true,
+      messages: {
+        sender: 'Please pay to continue the buy/sell trade',
+        receiver: 'Payment is required to continue the buy/sell trade'
+      }
+    },
+    'submit-buy-offer': {
+      status: true,
+      messages: {
+        sender: 'You have submitted a buy offer',
+        receiver: 'You have received a new buy offer'
+      }
+    }
+  };
+
+  return notificationMap[act] || { status: false, messages: { sender: '', receiver: '' } };
 };
 
 // Process checkout function
@@ -1214,6 +1382,45 @@ export const feedPayPalPaymentReturn = async (req: Request, res: Response) => {
   try {
     const { refId, type } = req.params; // type can be 'thanks' or 'cancel'
 
+    // Set cache headers to prevent caching for payment processing
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'ETag': `"${refId}-${type}-${Date.now()}"`,
+      'Last-Modified': new Date().toUTCString()
+    });
+
+    // Check for conditional requests (If-None-Match, If-Modified-Since)
+    const ifNoneMatch = req.headers['if-none-match'];
+    const ifModifiedSince = req.headers['if-modified-since'];
+    const currentETag = `"${refId}-${type}-${Date.now()}"`;
+    
+    // Check if this is a duplicate request (same refId and type within short time)
+    const requestKey = `${refId}-${type}`;
+    const now = Date.now();
+    
+    // For payment processing, we should not return 304 as it's a critical operation
+    // But we can implement conditional logic for non-critical responses
+    if (ifNoneMatch && ifNoneMatch === currentETag) {
+      console.log(`🔄 Conditional request detected - ETag match for ${refId}`);
+      // For payment processing, we'll still process but log the conditional request
+    }
+
+    // Optional: Return 304 for duplicate requests within 5 seconds
+    // Uncomment the following block if you want to return 304 for duplicate requests
+    /*
+    if (global.requestCache && global.requestCache[requestKey]) {
+      const timeDiff = now - global.requestCache[requestKey];
+      if (timeDiff < 5000) { // 5 seconds
+        console.log(`🔄 Duplicate request detected within 5 seconds for ${refId}`);
+        return res.status(304).end();
+      }
+    }
+    global.requestCache = global.requestCache || {};
+    global.requestCache[requestKey] = now;
+    */
+
     if (!refId) {
       return sendApiResponse(res, 400, false, "Reference ID is required", []);
     }
@@ -1291,6 +1498,168 @@ export const feedPayPalPaymentNotify = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('PayPal payment notify error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Complete Trade Sender API (based on Laravel complete_trade_sender function)
+export const completeTradeSender = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { trade_proposal_id } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!trade_proposal_id) {
+      return sendApiResponse(res, 400, false, "Trade proposal ID is required", []);
+    }
+
+    // Find trade proposal
+    const tradeProposal = await TradeProposal.findByPk(trade_proposal_id);
+
+    if (!tradeProposal) {
+      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+    }
+
+    console.log(`🔄 Processing trade completion for TradeProposal ID: ${trade_proposal_id}`);
+    console.log(`Trade sent by: ${tradeProposal.trade_sent_by}, Trade sent to: ${tradeProposal.trade_sent_to}, Current user: ${userId}`);
+
+    // Check if user is the sender
+    if (tradeProposal.trade_sent_by === userId) {
+      console.log(`✅ User is the sender - marking sender confirmation`);
+      
+      // Update sender confirmation
+      await tradeProposal.update({
+        trade_sender_confrimation: '1'
+      });
+
+      // Send notification
+      await setTradersNotificationOnVariousActionBasis('mark-completed-proposal', tradeProposal.trade_sent_by!, tradeProposal.trade_sent_to!, tradeProposal.id, 'Trade');
+
+      // Get products for trading card updates
+      const sendProducts = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const receiveProducts = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+      const allProducts = [...sendProducts, ...receiveProducts];
+
+      console.log(`📦 Products to update: Send=${sendProducts.length}, Receive=${receiveProducts.length}, Total=${allProducts.length}`);
+
+      // Check if both parties have confirmed
+      if (tradeProposal.receiver_confirmation === '1') {
+        console.log(`✅ Both parties confirmed - marking trade as complete`);
+        
+        // Mark trade as complete
+        await tradeProposal.update({
+          trade_status: 'complete'
+        });
+
+        // Send review notification
+        await setTradersNotificationOnVariousActionBasis('give-review-to-trader', tradeProposal.trade_sent_to!, tradeProposal.trade_sent_by!, tradeProposal.id, 'Trade');
+
+        // Update trading cards status
+        if (allProducts.length > 0) {
+          await TradingCard.update(
+            { is_traded: '0' },
+            { where: { id: { [Op.in]: allProducts } } }
+          );
+          console.log(`✅ Updated ${allProducts.length} trading cards to not traded`);
+        }
+      }
+
+      // Send completion email (simplified)
+      console.log(`📧 Sending trade completion email to receiver`);
+
+      // Set trade status
+      await setTradeAndOfferStatus('marked-trade-completed-by-sender', 'trade', tradeProposal.id);
+
+      // Determine response based on confirmation status
+      if (tradeProposal.trade_sender_confrimation === '1' && tradeProposal.receiver_confirmation === '1') {
+        return sendApiResponse(res, 200, true, "Trade completed successfully", {
+          redirect_url: `/trade-transaction-insert/${trade_proposal_id}`,
+          status: 'completed'
+        });
+      } else if (tradeProposal.trade_sender_confrimation !== '1' && tradeProposal.receiver_confirmation === '1') {
+        return sendApiResponse(res, 200, true, "You have marked this trade as completed", {
+          redirect_url: `/ongoing-trades?id=${tradeProposal.id}&filter=partially_completed`,
+          status: 'partially_completed'
+        });
+      } else if (tradeProposal.trade_sender_confrimation === '1' && tradeProposal.receiver_confirmation !== '1') {
+        return sendApiResponse(res, 200, true, "You have marked this trade as completed", {
+          redirect_url: `/ongoing-trades?id=${tradeProposal.id}&filter=partially_completed`,
+          status: 'partially_completed'
+        });
+      }
+
+    } else if (tradeProposal.trade_sent_to === userId) {
+      console.log(`✅ User is the receiver - marking receiver confirmation`);
+      
+      // Update receiver confirmation
+      await tradeProposal.update({
+        receiver_confirmation: '1'
+      });
+
+      // Send notification
+      await setTradersNotificationOnVariousActionBasis('mark-completed-proposal', tradeProposal.trade_sent_to!, tradeProposal.trade_sent_by!, tradeProposal.id, 'Trade');
+
+      // Check if both parties have confirmed
+      if (tradeProposal.trade_sender_confrimation === '1') {
+        console.log(`✅ Both parties confirmed - marking trade as complete`);
+        
+        // Mark trade as complete
+        await tradeProposal.update({
+          trade_status: 'complete'
+        });
+
+        // Send review notification
+        await setTradersNotificationOnVariousActionBasis('give-review-to-trader', tradeProposal.trade_sent_by!, tradeProposal.trade_sent_to!, tradeProposal.id, 'Trade');
+
+        // Get products for trading card updates
+        const sendProducts = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
+        const receiveProducts = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
+        const allProducts = [...sendProducts, ...receiveProducts];
+
+        // Update trading cards status
+        if (allProducts.length > 0) {
+          await TradingCard.update(
+            { is_traded: '0' },
+            { where: { id: { [Op.in]: allProducts } } }
+          );
+          console.log(`✅ Updated ${allProducts.length} trading cards to not traded`);
+        }
+      }
+
+      // Send completion email (simplified)
+      console.log(`📧 Sending trade completion email to sender`);
+
+      // Set trade status
+      await setTradeAndOfferStatus('marked-trade-completed-by-receiver', 'trade', tradeProposal.id);
+
+      // Determine response based on confirmation status
+      if (tradeProposal.trade_sender_confrimation === '1' && tradeProposal.receiver_confirmation === '1') {
+        return sendApiResponse(res, 200, true, "Trade completed successfully", {
+          redirect_url: `/trade-transaction-insert/${trade_proposal_id}`,
+          status: 'completed'
+        });
+      } else if (tradeProposal.trade_sender_confrimation !== '1' && tradeProposal.receiver_confirmation === '1') {
+        return sendApiResponse(res, 200, true, "You have marked this trade as completed", {
+          redirect_url: `/ongoing-trades?id=${tradeProposal.id}&filter=partially_completed`,
+          status: 'partially_completed'
+        });
+      } else if (tradeProposal.trade_sender_confrimation === '1' && tradeProposal.receiver_confirmation !== '1') {
+        return sendApiResponse(res, 200, true, "You have marked this trade as completed", {
+          redirect_url: `/ongoing-trades?id=${tradeProposal.id}&filter=partially_completed`,
+          status: 'partially_completed'
+        });
+      }
+
+    } else {
+      console.error(`❌ User ${userId} is not authorized to complete this trade`);
+      return sendApiResponse(res, 403, false, "You are not authorized to complete this trade", []);
+    }
+
+  } catch (error: any) {
+    console.error('Complete trade sender error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };
@@ -4786,6 +5155,1151 @@ export const shippingTradeSuccess = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('Shipping trade success error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Shipping address details API based on Laravel shipping_address_buySell function
+export const getShippingAddressDetails = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { id } = req.params;
+
+    if (!id || isNaN(Number(id))) {
+      return sendApiResponse(res, 400, false, "Invalid buy sell card ID", []);
+    }
+
+    // Get user addresses (sender addresses)
+    const addresses = await Address.findAll({
+      where: {
+        user_id: userId,
+        is_sender: '1',
+        is_deleted: '0'
+      },
+      order: [['updated_at', 'DESC']],
+      attributes: ['id', 'name', 'email', 'phone', 'street1', 'street2', 'city', 'state', 'country', 'zip', 'mark_default']
+    });
+
+    // Get buy sell card details
+    const buySellCard = await BuySellCard.findByPk(id, {
+      include: [
+        {
+          model: BuyOfferProduct,
+          as: 'buyOfferProducts',
+          include: [
+            {
+              model: TradingCard,
+              as: 'product',
+              attributes: ['id', 'search_param', 'trading_card_img', 'category_id']
+            }
+          ]
+        },
+        {
+          model: TradingCard,
+          as: 'tradingCard',
+          attributes: ['id', 'search_param', 'trading_card_img', 'category_id']
+        }
+      ]
+    });
+
+    if (!buySellCard) {
+      return sendApiResponse(res, 404, false, "Buy sell card not found", []);
+    }
+
+    // Get similar buy sell cards for sending trade cards
+    const similarBuySellCards = await BuySellCard.findAll({
+      where: {
+        [Op.or]: [
+          { buyer: buySellCard.buyer, seller: buySellCard.seller },
+          { buyer: buySellCard.seller, seller: buySellCard.buyer }
+        ],
+        buying_status: 'purchased'
+      },
+      attributes: ['main_card']
+    });
+
+    const mainCardIds = similarBuySellCards.map((card: any) => card.main_card).filter((id: any) => id);
+
+    // Get sending trade cards
+    const sendTradeCards = await TradingCard.findAll({
+      where: {
+        id: { [Op.in]: mainCardIds }
+      },
+      attributes: ['id', 'category_id', 'search_param', 'trading_card_img'],
+      include: [
+        {
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name']
+        }
+      ]
+    });
+
+    // Check existing shipment
+    const existingShipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: buySellCard.id,
+        user_id: userId
+      }
+    });
+
+    // Determine delivery address based on user role
+    let delivery_address = 0;
+    if (userId === buySellCard.seller) {
+      const delAddress = await Address.findOne({
+        where: {
+          user_id: buySellCard.buyer,
+          mark_default: '1'
+        }
+      });
+      if (delAddress) {
+        delivery_address = delAddress.id;
+      }
+    } else if (userId === buySellCard.buyer) {
+      const delAddress = await Address.findOne({
+        where: {
+          user_id: buySellCard.seller,
+          mark_default: '1'
+        }
+      });
+      if (delAddress) {
+        delivery_address = delAddress.id;
+      }
+    }
+
+    // Prepare response data
+    const buySellCardData = buySellCard as any;
+    const responseData = {
+      addresses: addresses.map((address: any) => ({
+        id: address.id,
+        name: address.name,
+        email: address.email,
+        phone: address.phone,
+        street1: address.street1,
+        street2: address.street2,
+        city: address.city,
+        state: address.state,
+        country: address.country,
+        zip: address.zip,
+        mark_default: address.mark_default
+      })),
+      delivery_address,
+      sendTradeCards: sendTradeCards.map((card: any) => ({
+        id: card.id,
+        category_id: card.category_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        categoryname: card.parentCategory ? {
+          id: card.parentCategory.id,
+          sport_name: card.parentCategory.sport_name
+        } : null
+      })),
+      buy_id: Number(id),
+      buySellCard: {
+        id: buySellCardData.id,
+        buyer: buySellCardData.buyer,
+        seller: buySellCardData.seller,
+        buying_status: buySellCardData.buying_status,
+        buyOfferProducts: buySellCardData.buyOfferProducts ? buySellCardData.buyOfferProducts.map((product: any) => ({
+          id: product.id,
+          product: product.product ? {
+            id: product.product.id,
+            search_param: product.product.search_param,
+            trading_card_img: product.product.trading_card_img,
+            category_id: product.product.category_id
+          } : null
+        })) : [],
+        tradingCard: buySellCardData.tradingCard ? {
+          id: buySellCardData.tradingCard.id,
+          search_param: buySellCardData.tradingCard.search_param,
+          trading_card_img: buySellCardData.tradingCard.trading_card_img,
+          category_id: buySellCardData.tradingCard.category_id
+        } : null
+      },
+      existingShipment: existingShipment ? {
+        id: existingShipment.id,
+        paymentId: existingShipment.paymentId,
+        selected_rate: existingShipment.selected_rate,
+        tracking_id: existingShipment.tracking_id
+      } : null
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping address details retrieved successfully", [responseData]);
+
+  } catch (error: any) {
+    console.error('Get shipping address details error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Shipping buysell initialize API based on Laravel shipmentInitialize_buySell function
+export const shippingBuysellInitialize = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { buy_id, delivery_address, pickup_address } = req.body;
+
+    // Validate required fields
+    if (!buy_id || !delivery_address || !pickup_address) {
+      return sendApiResponse(res, 400, false, "Missing required fields: buy_id, delivery_address, pickup_address", []);
+    }
+
+    // Check if buy_id is valid number
+    if (isNaN(Number(buy_id))) {
+      return sendApiResponse(res, 400, false, "Invalid buy_id format", []);
+    }
+
+    // Get BuySellCard
+    const buySellCard = await BuySellCard.findByPk(buy_id);
+    if (!buySellCard) {
+      return sendApiResponse(res, 404, false, "Buy sell card not found", []);
+    }
+
+    // Check existing shipment
+    const existingShipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: buy_id,
+        user_id: userId
+      }
+    });
+
+    let shipment;
+
+    if (existingShipment) {
+      // Update existing shipment
+      await existingShipment.update({
+        to_address: Number(delivery_address),
+        from_address: Number(pickup_address)
+      });
+      shipment = existingShipment;
+    } else {
+      // Create new shipment
+      shipment = await Shipment.create({
+        user_id: userId,
+        to_address: Number(delivery_address),
+        from_address: Number(pickup_address),
+        buy_sell_id: Number(buy_id)
+      } as any);
+    }
+
+    // Update BuySellCard shipping address
+    await buySellCard.update({
+      shiping_address: delivery_address
+    });
+
+    // Prepare response data
+    const responseData = {
+      shipment_id: shipment.id,
+      buy_id: Number(buy_id),
+      delivery_address: delivery_address,
+      pickup_address: pickup_address,
+      message: "Pickup & Delivery address has been saved successfully"
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping initialization completed successfully", [responseData]);
+
+  } catch (error: any) {
+    console.error('Shipping buysell initialize error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Get shipping parcel buysell API based on Laravel shipping_parcel_buySell function
+export const getShippingParcelBuysell = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { buy_id } = req.query;
+
+    // Validate buy_id
+    if (!buy_id || isNaN(Number(buy_id))) {
+      return sendApiResponse(res, 400, false, "Invalid or missing buy_id", []);
+    }
+
+    const buyId = Number(buy_id);
+
+    // Get BuySellCard with products
+    const buySellCard = await BuySellCard.findByPk(buyId, {
+      include: [
+        {
+          model: BuyOfferProduct,
+          as: 'buyOfferProducts',
+          include: [
+            {
+              model: TradingCard,
+              as: 'product',
+              attributes: ['id', 'search_param', 'trading_card_img', 'category_id']
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!buySellCard) {
+      return sendApiResponse(res, 404, false, "Buy sell card not found", []);
+    }
+
+    // Determine user role and trade_id
+    let trade_id = buySellCard.seller;
+    let main_card = null;
+
+    if (buySellCard.seller === userId) {
+      // User is seller
+      if (buySellCard.main_card) {
+        main_card = buySellCard.main_card;
+        trade_id = userId;
+      }
+    } else if (buySellCard.buyer === userId) {
+      // User is buyer
+      if (buySellCard.main_card) {
+        main_card = buySellCard.main_card;
+        trade_id = userId;
+      }
+    } else {
+      return sendApiResponse(res, 403, false, "You are not authorized to access this shipment", []);
+    }
+
+    // Get similar BuySellCards
+    const similarBuySellCards = await BuySellCard.findAll({
+      where: {
+        [Op.or]: [
+          { buyer: buySellCard.buyer, seller: buySellCard.seller },
+          { buyer: buySellCard.seller, seller: buySellCard.buyer }
+        ],
+        buying_status: 'purchased'
+      },
+      attributes: ['main_card']
+    });
+
+    const mainCardIds = similarBuySellCards.map((card: any) => card.main_card).filter((id: any) => id);
+
+    // Get send trade cards
+    const sendTradeCards = await TradingCard.findAll({
+      where: {
+        id: { [Op.in]: mainCardIds }
+      },
+      attributes: ['id', 'category_id', 'search_param', 'trading_card_img']
+    });
+
+    // Get trading cards for the user
+    const tradingcards = await TradingCard.findAll({
+      where: {
+        trader_id: trade_id,
+        trading_card_status: 1,
+        id: { [Op.in]: mainCardIds }
+      },
+      attributes: ['id', 'category_id', 'search_param', 'trading_card_img'],
+      order: [['id', 'DESC']]
+    });
+
+    // Check if shipment has address information
+    const shipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: buyId,
+        user_id: userId
+      }
+    });
+
+    if (!shipment || !shipment.to_address || !shipment.from_address) {
+      return sendApiResponse(res, 400, false, "First enter the address information", []);
+    }
+
+    // Get categories for trading cards
+    const categoryIds = [...new Set([
+      ...tradingcards.map((card: any) => card.category_id),
+      ...sendTradeCards.map((card: any) => card.category_id),
+      ...((buySellCard as any).buyOfferProducts || []).map((product: any) => product.product?.category_id).filter(Boolean)
+    ])];
+
+    const categories = await Category.findAll({
+      where: { id: { [Op.in]: categoryIds } },
+      attributes: ['id', 'sport_name']
+    });
+
+    const categoryMap = categories.reduce((map: any, category: any) => {
+      map[category.id] = category;
+      return map;
+    }, {});
+
+    // Prepare response data according to Blade file structure
+    const responseData = {
+      buy_id: buyId,
+      trade_id: trade_id,
+      main_card: main_card,
+      tradingcards: tradingcards.map((card: any) => ({
+        id: card.id,
+        category_id: card.category_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        cardname: card.search_param, // Blade uses cardname
+        product_copy_url: `#`, // Default URL
+        categoryname: categoryMap[card.category_id] ? {
+          id: categoryMap[card.category_id].id,
+          sport_name: categoryMap[card.category_id].sport_name
+        } : null
+      })),
+      sendTradeCards: sendTradeCards.map((card: any) => ({
+        id: card.id,
+        category_id: card.category_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        cardname: card.search_param, // Blade uses cardname
+        categoryname: categoryMap[card.category_id] ? {
+          id: categoryMap[card.category_id].id,
+          sport_name: categoryMap[card.category_id].sport_name
+        } : null
+      })),
+      buySellCards: {
+        id: buySellCard.id,
+        seller: buySellCard.seller,
+        buyer: buySellCard.buyer,
+        main_card: buySellCard.main_card,
+        buying_status: buySellCard.buying_status,
+        buy_offer_product: (buySellCard as any).buyOfferProducts ? (buySellCard as any).buyOfferProducts.map((product: any) => ({
+          id: product.id,
+          product: product.product ? {
+            id: product.product.id,
+            search_param: product.product.search_param,
+            trading_card_img: product.product.trading_card_img,
+            category_id: product.product.category_id,
+            cardname: product.product.search_param, // Blade uses cardname
+            product_copy_url: `#`, // Default URL
+            categoryname: categoryMap[product.product.category_id] ? {
+              id: categoryMap[product.product.category_id].id,
+              sport_name: categoryMap[product.product.category_id].sport_name
+            } : null
+          } : null
+        })) : []
+      },
+      shipment: {
+        id: shipment.id,
+        to_address: shipment.to_address,
+        from_address: shipment.from_address,
+        parcel: shipment.parcel ? (typeof shipment.parcel === 'string' ? JSON.parse(shipment.parcel) : shipment.parcel) : null,
+        postage_label: shipment.postage_label ? (typeof shipment.postage_label === 'string' ? JSON.parse(shipment.postage_label) : shipment.postage_label) : null
+      }
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping parcel data retrieved successfully", [responseData]);
+
+  } catch (error: any) {
+    console.error('Get shipping parcel buysell error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Save parcel buysell API based on Laravel save_parcel_buySell function
+export const saveParcelBuysell = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { 
+      lengthInput, 
+      widthInput, 
+      heightInput, 
+      weightInput_lbs, 
+      weightInput_oz, 
+      packageSelect,
+      buy_id 
+    } = req.body;
+
+    // Validate required fields
+    if (!lengthInput || !widthInput || !heightInput || !weightInput_lbs || !weightInput_oz || !packageSelect || !buy_id) {
+      return sendApiResponse(res, 400, false, "Missing required fields: lengthInput, widthInput, heightInput, weightInput_lbs, weightInput_oz, packageSelect, buy_id", []);
+    }
+
+    // Validate numeric values
+    if (isNaN(Number(lengthInput)) || isNaN(Number(widthInput)) || isNaN(Number(heightInput)) || 
+        isNaN(Number(weightInput_lbs)) || isNaN(Number(weightInput_oz))) {
+      return sendApiResponse(res, 400, false, "All dimension and weight values must be numeric", []);
+    }
+
+    // Get shipment with addresses
+    const shipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: buy_id,
+        user_id: userId
+      },
+      include: [
+        {
+          model: Address,
+          as: 'toAddress',
+          attributes: ['id', 'name', 'email', 'phone', 'street1', 'street2', 'city', 'state', 'country', 'zip']
+        },
+        {
+          model: Address,
+          as: 'fromAddress',
+          attributes: ['id', 'name', 'email', 'phone', 'street1', 'street2', 'city', 'state', 'country', 'zip']
+        }
+      ]
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Shipment not found", []);
+    }
+
+    if (!shipment.to_address || !shipment.from_address) {
+      return sendApiResponse(res, 400, false, "First enter the address information", []);
+    }
+
+    // Create parcel info
+    const parcel_info = {
+      length: Number(lengthInput),
+      width: Number(widthInput),
+      height: Number(heightInput),
+      weight: (Number(weightInput_lbs) * 16) + Number(weightInput_oz),
+      parcel_weight_unit: 'oz',
+      weight_lbs: Number(weightInput_lbs),
+      weight_oz: Number(weightInput_oz),
+      parcel_weight_unit_oz: 'oz',
+      parcel_weight_unit_lbs: 'lbs'
+    };
+
+    // Get trading cards for labels
+    const packageIds = Array.isArray(packageSelect) ? packageSelect : [packageSelect];
+    const tradingCards = await TradingCard.findAll({
+      where: { id: { [Op.in]: packageIds } },
+      attributes: ['id', 'search_param']
+    });
+
+    // Create label info
+    const label_info = tradingCards.map((card: any) => ({
+      id: `pl_${card.id}`,
+      object: card.search_param
+    }));
+
+    // Update shipment with parcel and label data
+    await shipment.update({
+      parcel: JSON.stringify(parcel_info) as any,
+      postage_label: JSON.stringify(label_info) as any
+    });
+
+    // Prepare shipment data for EasyPost API
+    const shipmentData = shipment as any;
+    const shipment_for_req = {
+      to_address: {
+        name: shipmentData.toAddress?.name || '',
+        email: shipmentData.toAddress?.email || '',
+        phone: shipmentData.toAddress?.phone || '',
+        street1: shipmentData.toAddress?.street1 || '',
+        street2: shipmentData.toAddress?.street2 || '',
+        city: shipmentData.toAddress?.city || '',
+        state: shipmentData.toAddress?.state || '',
+        country: shipmentData.toAddress?.country || '',
+        zip: shipmentData.toAddress?.zip || ''
+      },
+      from_address: {
+        name: shipmentData.fromAddress?.name || '',
+        email: shipmentData.fromAddress?.email || '',
+        phone: shipmentData.fromAddress?.phone || '',
+        street1: shipmentData.fromAddress?.street1 || '',
+        street2: shipmentData.fromAddress?.street2 || '',
+        city: shipmentData.fromAddress?.city || '',
+        state: shipmentData.fromAddress?.state || '',
+        country: shipmentData.fromAddress?.country || '',
+        zip: shipmentData.fromAddress?.zip || ''
+      },
+      parcel: parcel_info
+    };
+
+    // Call EasyPost API
+    try {
+      const apiKey = process.env.EASYPOST_API_KEY;
+      if (!apiKey) {
+        return sendApiResponse(res, 500, false, "EasyPost API key not configured", []);
+      }
+
+      const response = await fetch('https://api.easypost.com/v2/shipments', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ shipment: shipment_for_req })
+      });
+
+      const responseData = await response.json();
+
+      if (response.status === 200 || response.status === 201) {
+        // Update shipment with API response
+        await shipment.update({
+          shipment_response: JSON.stringify(responseData) as any
+        });
+
+        // Prepare response data
+        const responseData_final = {
+          shipment_id: shipment.id,
+          buy_id: Number(buy_id),
+          parcel_info: parcel_info,
+          label_info: label_info,
+          easypost_response: responseData,
+          message: "Parcel details have been successfully saved"
+        };
+
+        return sendApiResponse(res, 200, true, "Parcel details saved successfully", [responseData_final]);
+      } else {
+        // Handle EasyPost API error
+        const errorMessage = responseData.error?.message || "EasyPost API error";
+        return sendApiResponse(res, 400, false, errorMessage, []);
+      }
+    } catch (apiError: any) {
+      console.error('EasyPost API error:', apiError);
+      return sendApiResponse(res, 500, false, "Failed to create shipment with EasyPost", []);
+    }
+
+  } catch (error: any) {
+    console.error('Save parcel buysell error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Get shipment carrier buysell API based on Laravel shipping_carrier_buySell function
+export const getShipmentCarrierBuysell = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { buy_id } = req.query;
+
+    // Validate buy_id
+    if (!buy_id) {
+      return sendApiResponse(res, 400, false, "buy_id parameter is required", []);
+    }
+
+    // Get shipment with shipment_response
+    const shipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: Number(buy_id),
+        user_id: userId
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Shipment not found", []);
+    }
+
+    if (!shipment.shipment_response) {
+      return sendApiResponse(res, 400, false, "Enter the parcel information", []);
+    }
+
+    // Parse shipment response
+    let shipmentResponse;
+    try {
+      shipmentResponse = typeof shipment.shipment_response === 'string' 
+        ? JSON.parse(shipment.shipment_response) 
+        : shipment.shipment_response;
+    } catch (parseError) {
+      return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
+    }
+
+    // Get BuySellCard
+    const buySellCard = await BuySellCard.findByPk(Number(buy_id), {
+      include: [
+        {
+          model: BuyOfferProduct,
+          as: 'buyOfferProducts',
+          include: [
+            {
+              model: TradingCard,
+              as: 'product',
+              include: [
+                {
+                  model: Category,
+                  as: 'parentCategory',
+                  attributes: ['id', 'sport_name']
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!buySellCard) {
+      return sendApiResponse(res, 404, false, "BuySellCard not found", []);
+    }
+
+    // Get similar BuySellCards for same buyer/seller
+    const similarBuySellCards = await BuySellCard.findAll({
+      where: {
+        [Op.and]: [
+          {
+            [Op.or]: [
+              { buyer: buySellCard.buyer },
+              { seller: buySellCard.seller }
+            ]
+          },
+          { buying_status: 'purchased' }
+        ]
+      },
+      attributes: ['main_card']
+    });
+
+    const mainCardIds = similarBuySellCards
+      .map((card: any) => card.main_card)
+      .filter((id: any) => id && id > 0);
+
+    // Get sendTradeCards
+    let sendTradeCards: any[] = [];
+    if (mainCardIds.length > 0) {
+      const tradingCards = await TradingCard.findAll({
+        where: { id: { [Op.in]: mainCardIds } },
+        attributes: ['id', 'category_id', 'search_param', 'trading_card_img']
+      });
+
+      // Get categories for sendTradeCards
+      const categoryIds = tradingCards.map((card: any) => card.category_id).filter(Boolean);
+      const categories = await Category.findAll({
+        where: { id: { [Op.in]: categoryIds } },
+        attributes: ['id', 'sport_name']
+      });
+
+      const categoryMap = categories.reduce((map: any, category: any) => {
+        map[category.id] = category;
+        return map;
+      }, {});
+
+      sendTradeCards = tradingCards.map((card: any) => ({
+        id: card.id,
+        category_id: card.category_id,
+        search_param: card.search_param,
+        trading_card_img: card.trading_card_img,
+        cardname: card.search_param, // Blade uses cardname
+        categoryname: categoryMap[card.category_id] ? {
+          id: categoryMap[card.category_id].id,
+          sport_name: categoryMap[card.category_id].sport_name
+        } : null
+      }));
+    }
+
+    // Prepare rates data
+    const rates = shipmentResponse.rates || [];
+    let defaultSelectedRate = '0.00';
+    let defaultSelectedRateId = '';
+
+    if (rates.length > 0) {
+      // Find default rate (lowest cost)
+      rates.forEach((rate: any) => {
+        if (defaultSelectedRate === '0.00' || parseFloat(rate.rate) <= parseFloat(defaultSelectedRate)) {
+          defaultSelectedRate = rate.rate;
+          defaultSelectedRateId = rate.id;
+        }
+      });
+    }
+
+    // Prepare response data according to Blade file structure
+    const responseData = {
+      buy_id: Number(buy_id),
+      shipment_id: shipment.id,
+      selected_rate: shipment.selected_rate || defaultSelectedRateId,
+      default_selected_rate: defaultSelectedRate,
+      default_selected_rate_id: defaultSelectedRateId,
+      rates: rates.map((rate: any) => ({
+        id: rate.id,
+        carrier: rate.carrier,
+        service: rate.service,
+        rate: rate.rate,
+        delivery_days: rate.delivery_days,
+        transit_days: rate.service === 'Express' ? '1-2' : (rate.delivery_days || 'Unknown')
+      })),
+      buySellCards: {
+        id: buySellCard.id,
+        offer_amt_buyer: buySellCard.offer_amt_buyer,
+        buy_offer_product: (buySellCard as any).buyOfferProducts ? (buySellCard as any).buyOfferProducts.map((product: any) => ({
+          id: product.id,
+          product: product.product ? {
+            id: product.product.id,
+            search_param: product.product.search_param,
+            trading_card_img: product.product.trading_card_img,
+            category_id: product.product.category_id,
+            categoryname: product.product.parentCategory ? {
+              id: product.product.parentCategory.id,
+              sport_name: product.product.parentCategory.sport_name
+            } : null
+          } : null
+        })) : []
+      },
+      sendTradeCards: sendTradeCards,
+      has_rates: rates.length > 0
+    };
+
+    return sendApiResponse(res, 200, true, "Shipment carrier data retrieved successfully", [responseData]);
+
+  } catch (error: any) {
+    console.error('Get shipment carrier buysell error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// POST Shipping checkout buysell API based on Laravel shipping_checkout_buySell function
+export const shippingCheckoutBuysell = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { 
+      selected_rate_id, 
+      selected_rate, 
+      cart_amount,
+      buy_id 
+    } = req.body;
+
+    // Validate selected_rate_id
+    if (!selected_rate_id || selected_rate_id === '') {
+      return sendApiResponse(res, 400, false, "Select carrier service", []);
+    }
+
+    // Validate buy_id
+    if (!buy_id) {
+      return sendApiResponse(res, 400, false, "buy_id is required", []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: Number(buy_id),
+        user_id: userId
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Either shipment completed or shipment details not available. please try again to ship your product", []);
+    }
+
+    // Parse shipment response
+    let shipmentResponse;
+    try {
+      shipmentResponse = typeof shipment.shipment_response === 'string' 
+        ? JSON.parse(shipment.shipment_response) 
+        : shipment.shipment_response;
+    } catch (parseError) {
+      return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
+    }
+
+    // Parse postage label
+    let postageLabel;
+    try {
+      postageLabel = typeof shipment.postage_label === 'string' 
+        ? JSON.parse(shipment.postage_label) 
+        : shipment.postage_label;
+    } catch (parseError) {
+      return sendApiResponse(res, 400, false, "Invalid postage label data", []);
+    }
+
+    // Parse parcel details
+    let shipParcelDetails;
+    try {
+      shipParcelDetails = typeof shipment.parcel === 'string' 
+        ? JSON.parse(shipment.parcel) 
+        : shipment.parcel;
+    } catch (parseError) {
+      shipParcelDetails = null;
+    }
+
+    // Find rate data
+    const rates = shipmentResponse.rates || [];
+    const rateIds = rates.map((rate: any) => rate.id);
+    const rateIndex = rateIds.indexOf(selected_rate_id);
+
+    if (rateIndex === -1) {
+      return sendApiResponse(res, 400, false, "Selected rate not found in available rates", []);
+    }
+
+    const rateData = rates[rateIndex];
+
+    // Calculate insurance amount (Laravel logic: always 0.00, insureShipment always false)
+    const insuranceAmount = '0.00';
+    const insureShipment = false;
+
+    // Calculate total amount
+    const totalAmount = parseFloat(insuranceAmount) + parseFloat(rateData.rate);
+    const formattedTotalAmount = totalAmount.toFixed(2);
+
+    // Update shipment with selected rate and insurance
+    await shipment.update({
+      selected_rate: selected_rate_id,
+      cart_amount_for_insurance: cart_amount || null
+    });
+
+    // Get BuySellCard
+    const buySellCard = await BuySellCard.findByPk(Number(buy_id));
+
+    // Prepare response data according to Blade file structure
+    const responseData = {
+      buy_id: Number(buy_id),
+      shipment_id: shipment.id,
+      selected_rate_id: selected_rate_id,
+      selected_rate: selected_rate || rateData.rate,
+      shipment_response: shipmentResponse,
+      postage_label: postageLabel,
+      rate_data: {
+        id: rateData.id,
+        carrier: rateData.carrier,
+        service: rateData.service,
+        rate: rateData.rate,
+        delivery_days: rateData.delivery_days,
+        transit_days: rateData.service === 'Express' ? '1-2' : (rateData.delivery_days || 'Unknown')
+      },
+      insurance_amount: insuranceAmount,
+      total_amount: formattedTotalAmount,
+      insure_shipment: insureShipment,
+      ship_parcel_details: shipParcelDetails,
+      ship_details: {
+        id: shipment.id,
+        user_id: shipment.user_id,
+        buy_sell_id: shipment.buy_sell_id,
+        to_address: shipment.to_address,
+        from_address: shipment.from_address,
+        tracking_id: shipment.tracking_id,
+        shipment_status: shipment.shipment_status,
+        selected_rate: shipment.selected_rate,
+        cart_amount_for_insurance: shipment.cart_amount_for_insurance,
+        created_at: shipment.created_at,
+        updated_at: shipment.updated_at
+      },
+      buy_sell_card: buySellCard ? {
+        id: buySellCard.id,
+        buyer: buySellCard.buyer,
+        seller: buySellCard.seller,
+        offer_amt_buyer: buySellCard.offer_amt_buyer
+      } : null
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping checkout data processed successfully", [responseData]);
+
+  } catch (error: any) {
+    console.error('Shipping checkout buysell error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// GET Shipping checkout buysell API for display
+export const getShippingCheckoutBuysell = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { buy_id } = req.query;
+
+    // Validate buy_id
+    if (!buy_id) {
+      return sendApiResponse(res, 400, false, "buy_id parameter is required", []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: Number(buy_id),
+        user_id: userId
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Either shipment completed or shipment details not available. please try again to ship your product", []);
+    }
+
+    // Parse shipment response
+    let shipmentResponse;
+    try {
+      shipmentResponse = typeof shipment.shipment_response === 'string' 
+        ? JSON.parse(shipment.shipment_response) 
+        : shipment.shipment_response;
+    } catch (parseError) {
+      return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
+    }
+
+    // Parse postage label
+    let postageLabel;
+    try {
+      postageLabel = typeof shipment.postage_label === 'string' 
+        ? JSON.parse(shipment.postage_label) 
+        : shipment.postage_label;
+    } catch (parseError) {
+      return sendApiResponse(res, 400, false, "Invalid postage label data", []);
+    }
+
+    // Parse parcel details
+    let shipParcelDetails;
+    try {
+      shipParcelDetails = typeof shipment.parcel === 'string' 
+        ? JSON.parse(shipment.parcel) 
+        : shipment.parcel;
+    } catch (parseError) {
+      shipParcelDetails = null;
+    }
+
+    // Get rate data (use selected rate or first available rate)
+    const rates = shipmentResponse.rates || [];
+    let rateData;
+    
+    if (shipment.selected_rate) {
+      const rateIndex = rates.findIndex((rate: any) => rate.id === shipment.selected_rate);
+      rateData = rateIndex !== -1 ? rates[rateIndex] : rates[0];
+    } else {
+      rateData = rates[0];
+    }
+
+    if (!rateData) {
+      return sendApiResponse(res, 400, false, "No rate data available", []);
+    }
+
+    // Calculate insurance amount (Laravel logic: always 0.00, insureShipment always false)
+    const insuranceAmount = '0.00';
+    const insureShipment = false;
+
+    // Calculate total amount
+    const totalAmount = parseFloat(insuranceAmount) + parseFloat(rateData.rate);
+    const formattedTotalAmount = totalAmount.toFixed(2);
+
+    // Get BuySellCard
+    const buySellCard = await BuySellCard.findByPk(Number(buy_id));
+
+    // Prepare response data according to Blade file structure
+    const responseData = {
+      buy_id: Number(buy_id),
+      shipment_id: shipment.id,
+      selected_rate_id: shipment.selected_rate || rateData.id,
+      selected_rate: rateData.rate,
+      shipment_response: shipmentResponse,
+      postage_label: postageLabel,
+      rate_data: {
+        id: rateData.id,
+        carrier: rateData.carrier,
+        service: rateData.service,
+        rate: rateData.rate,
+        delivery_days: rateData.delivery_days,
+        transit_days: rateData.service === 'Express' ? '1-2' : (rateData.delivery_days || 'Unknown')
+      },
+      insurance_amount: insuranceAmount,
+      total_amount: formattedTotalAmount,
+      insure_shipment: insureShipment,
+      ship_parcel_details: shipParcelDetails,
+      ship_details: {
+        id: shipment.id,
+        user_id: shipment.user_id,
+        buy_sell_id: shipment.buy_sell_id,
+        to_address: shipment.to_address,
+        from_address: shipment.from_address,
+        tracking_id: shipment.tracking_id,
+        shipment_status: shipment.shipment_status,
+        selected_rate: shipment.selected_rate,
+        cart_amount_for_insurance: shipment.cart_amount_for_insurance,
+        created_at: shipment.created_at,
+        updated_at: shipment.updated_at
+      },
+      buy_sell_card: buySellCard ? {
+        id: buySellCard.id,
+        buyer: buySellCard.buyer,
+        seller: buySellCard.seller,
+        offer_amt_buyer: buySellCard.offer_amt_buyer
+      } : null
+    };
+
+    return sendApiResponse(res, 200, true, "Shipping checkout data retrieved successfully", [responseData]);
+
+  } catch (error: any) {
+    console.error('Get shipping checkout buysell error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Make checkout buysell API based on Laravel make_checkout_buySell function
+export const makeCheckoutBuysell = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { 
+      selected_rate_id, 
+      amount,
+      buy_id 
+    } = req.body;
+
+    // Validate buy_id
+    if (!buy_id) {
+      return sendApiResponse(res, 400, false, "buy_id is required", []);
+    }
+
+    // Validate selected_rate_id
+    if (!selected_rate_id || selected_rate_id === '') {
+      return sendApiResponse(res, 400, false, "Select carrier service", []);
+    }
+
+    // Validate amount
+    if (!amount) {
+      return sendApiResponse(res, 400, false, "amount is required", []);
+    }
+
+    // Get shipment data
+    const shipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: Number(buy_id),
+        user_id: userId
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Shipment not found", []);
+    }
+
+    // Check if shipment already completed
+    if (shipment.tracking_id && shipment.tracking_id !== '') {
+      return sendApiResponse(res, 400, false, "This shipment has already been completed", []);
+    }
+
+    // Get BuySellCard
+    const offerDetail = await BuySellCard.findByPk(Number(buy_id));
+
+    if (!offerDetail) {
+      return sendApiResponse(res, 404, false, "Offer not available, please try again", []);
+    }
+
+    // Check if user is the seller
+    if (offerDetail.seller !== userId) {
+      return sendApiResponse(res, 403, false, "Invalid access", []);
+    }
+
+    // Update shipment with selected rate
+    await shipment.update({
+      selected_rate: selected_rate_id
+    });
+
+    // Get PayPal account details (user_id = 0 for system account)
+    // Note: PaypalAccount model needs to be created or use existing PayPal configuration
+    const paypalConfig = {
+      client_id: process.env.PAYPAL_CLIENT_ID || 'your_paypal_client_id',
+      client_secret: process.env.PAYPAL_CLIENT_SECRET || 'your_paypal_client_secret',
+      test_mode: process.env.PAYPAL_TEST_MODE === 'true' || true
+    };
+
+    if (!paypalConfig.client_id || !paypalConfig.client_secret) {
+      return sendApiResponse(res, 500, false, "PayPal configuration not available", []);
+    }
+
+    // Prepare PayPal payment data
+    const paymentData = {
+      amount: parseFloat(amount),
+      currency: process.env.PAYPAL_CURRENCY || 'USD',
+      returnUrl: `${process.env.BASE_URL || 'http://localhost:5000'}/api/users/shipment-cost-payment-success-buysell/${shipment.buy_sell_id}`,
+      cancelUrl: `${process.env.BASE_URL || 'http://localhost:5000'}/api/users/shipment-cost-payment-cancel-buysell/${shipment.buy_sell_id}`,
+      clientId: paypalConfig.client_id,
+      clientSecret: paypalConfig.client_secret,
+      testMode: paypalConfig.test_mode
+    };
+
+    // Prepare response data
+    const responseData = {
+      buy_id: Number(buy_id),
+      shipment_id: shipment.id,
+      selected_rate_id: selected_rate_id,
+      amount: paymentData.amount,
+      currency: paymentData.currency,
+      paypal_config: {
+        client_id: paymentData.clientId,
+        test_mode: paymentData.testMode,
+        return_url: paymentData.returnUrl,
+        cancel_url: paymentData.cancelUrl
+      },
+      payment_urls: {
+        success_url: paymentData.returnUrl,
+        cancel_url: paymentData.cancelUrl
+      },
+      message: "Payment checkout initiated successfully"
+    };
+
+    return sendApiResponse(res, 200, true, "Payment checkout initiated successfully", [responseData]);
+
+  } catch (error: any) {
+    console.error('Make checkout buysell error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };

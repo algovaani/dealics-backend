@@ -3,7 +3,7 @@ import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getT
 import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
 import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
-import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess, confirmPaymentReceived } from "../controllers/cart.controller.js";
+import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess, confirmPaymentReceived, completeTradeSender, getShippingAddressDetails, shippingBuysellInitialize, getShippingParcelBuysell, saveParcelBuysell, getShipmentCarrierBuysell, shippingCheckoutBuysell, getShippingCheckoutBuysell, makeCheckoutBuysell } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -174,6 +174,9 @@ router.post("/notify/feed-paypal-payment-buysell/:refId", feedPayPalPaymentNotif
 // Payment Confirmation API (requires authentication)
 router.post("/confirm-payment-received/:id", userAuth, confirmPaymentReceived);
 
+// Complete Trade Sender API (requires authentication)
+router.post("/complete-trade-sender", userAuth, completeTradeSender);
+
 // Trade counter detail route
 router.get("/trade-counter-detail/:card_id", userAuth, getTradeCounterDetail);
 
@@ -182,6 +185,30 @@ router.post("/shipping-trade-success/:trade_id", userAuth, shippingTradeSuccess)
 
 // Cancel shipping payment route
 router.post("/shipping-trade-cancel", userAuth, cancelShippingPayment);
+
+// Shipping address details route
+router.get("/shipping-address-details/:id", userAuth, getShippingAddressDetails);
+
+// Shipping buysell initialize route
+router.post("/shipping-buysell-initialize", userAuth, shippingBuysellInitialize);
+
+// Get shipping parcel buysell route
+router.get("/shipping-parcel-buysell", userAuth, getShippingParcelBuysell);
+
+// Save parcel buysell route
+router.post("/save-parcel-buysell", userAuth, saveParcelBuysell);
+
+// Get shipment carrier buysell route
+router.get("/shipment-carrier-buysell", userAuth, getShipmentCarrierBuysell);
+
+// Shipping checkout buysell route
+router.post("/shipping-checkout-buysell", userAuth, shippingCheckoutBuysell);
+
+// Get shipping checkout buysell route
+router.get("/shipping-checkout-buysell", userAuth, getShippingCheckoutBuysell);
+
+// Make checkout buysell route
+router.post("/make-checkout-buysell", userAuth, makeCheckoutBuysell);
 
 // Payment processing routes
 router.post("/pay-to-change-trade-status", userAuth, payToChangeTradeStatus);

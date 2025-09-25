@@ -263,6 +263,29 @@ export function setupAssociations() {
     as: 'buySellCard'
   });
 
+  // BuyOfferProduct associations
+  BuyOfferProduct.belongsTo(BuySellCard, {
+    foreignKey: 'buy_sell_id',
+    as: 'buySellCard'
+  });
+
+  BuyOfferProduct.belongsTo(TradingCard, {
+    foreignKey: 'main_card',
+    as: 'product'
+  });
+
+  // BuySellCard associations for BuyOfferProduct
+  BuySellCard.hasMany(BuyOfferProduct, {
+    foreignKey: 'buy_sell_id',
+    as: 'buyOfferProducts'
+  });
+
+  // TradingCard associations for BuyOfferProduct
+  TradingCard.hasMany(BuyOfferProduct, {
+    foreignKey: 'main_card',
+    as: 'buyOfferProducts'
+  });
+
   // TradeProposal associations
   TradeProposal.belongsTo(User, {
     foreignKey: 'trade_sent_by',

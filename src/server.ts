@@ -6,13 +6,6 @@ import cors from "cors";
 // Load environment variables
 dotenv.config();
 
-// Debug: Check if email environment variables are loaded
-console.log('🔧 Email Configuration Check:');
-console.log('MAIL_HOST:', process.env.MAIL_HOST);
-console.log('MAIL_PORT:', process.env.MAIL_PORT);
-console.log('MAIL_USERNAME:', process.env.MAIL_USERNAME);
-console.log('MAIL_PASSWORD:', process.env.MAIL_PASSWORD ? '***SET***' : '***NOT SET***');
-console.log('MAIL_FROM_ADDRESS:', process.env.MAIL_FROM_ADDRESS);
 import { sequelize } from "./config/db.js";
 import { fixDatabaseSchema } from "./config/fixDatabaseSchema.js";
 import { models, setupAssociations } from "./models/index.js";
@@ -79,28 +72,7 @@ app.use(express.urlencoded({
 // Serve static files from public folder
 app.use('/user', express.static('public/user'));
 
-// Parse PORT with error handling
-let PORT: number;
-try {
-  // Clean the PORT string by removing any invalid characters
-  const portString = (process.env.PORT || '5000').replace(/[^0-9]/g, '');
-  PORT = parseInt(portString, 10);
-  
-  // Validate PORT range
-  if (isNaN(PORT) || PORT < 0 || PORT >= 65536) {
-    console.warn('⚠️ Invalid PORT value, using default 5000');
-    PORT = 5000;
-  }
-} catch (error) {
-  console.warn('⚠️ Error parsing PORT, using default 5000:', error);
-  PORT = 5000;
-}
-
-// Debug: Check PORT configuration
-console.log('🔧 Server Configuration Check:');
-console.log('PORT from env:', process.env.PORT);
-console.log('PORT parsed:', PORT);
-console.log('PORT type:', typeof PORT);
+const PORT = process.env.PORT || 5000;
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
@@ -116,38 +88,6 @@ app.get("/", (req, res) => {
   res.send("TypeScript + MySQL API running 🚀");
 });
 
-// Health check endpoint for CORS testing
-app.get("/health", (req, res) => {
-  res.json({
-    status: "OK",
-    message: "Server is running",
-    timestamp: new Date().toISOString(),
-    cors: "Enabled"
-  });
-});
-
-// Handle CORS preflight requests manually
-app.options('*', (req, res) => {
-  console.log(`🔄 CORS Preflight: ${req.method} ${req.originalUrl}`);
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.status(200).end();
-});
-
-// Add request logging middleware BEFORE routes
-app.use((req, res, next) => {
-  console.log(`🔍 Request: ${req.method} ${req.originalUrl}`);
-  console.log(`   Headers:`, req.headers);
-  // Don't log body for large requests to avoid timeout
-  if (req.body && Object.keys(req.body).length < 10) {
-    console.log(`   Body:`, req.body);
-  } else {
-    console.log(`   Body: [Large request body - not logged]`);
-  }
-  next();
-});
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
@@ -161,18 +101,16 @@ app.use("/api/email", emailRoutes);
 
 // Add a 404 handler for unmatched routes
 app.use((req, res) => {
-  console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({
     status: false,
-    message: `Route not found: ${req.method} ${req.originalUrl}`,
-    timestamp: new Date().toISOString()
+    message: `Route not found: ${req.method} ${req.originalUrl}`
   });
 });
 
 const start = async () => {
   try {
     await sequelize.authenticate();
-    console.log("✅ MySQL Connected!");
+    console.log("✅ Database connection has been established successfully.");
     
     // Fix database schema first
     await fixDatabaseSchema();

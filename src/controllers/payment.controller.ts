@@ -928,7 +928,7 @@ export const handlePayPalResponse = async (req: Request, res: Response) => {
             is_payment_received: 2,
             trade_amount_pay_id: responseData.id,
             trade_amount_payer_id: responseData.payer.payer_info.payer_id,
-            trade_amount_amount: responseData.transactions[0].amount.total,
+            trade_amount_amount: responseData.transactions?.[0]?.amount?.total || '0',
             trade_amount_pay_status: responseData.state,
             trade_amount_paid_on: new Date()
           });

@@ -5515,7 +5515,9 @@ export class UserService {
         notification_sent_by: userId,
         notification_sent_to: userId === tradeData.trade_sent_by ? tradeData.trade_sent_to : tradeData.trade_sent_by,
         message: notificationMessage,
-        trade_proposal_id: tradeProposalId
+        trade_proposal_id: tradeProposalId,
+        created_at: new Date(),
+        updated_at: new Date()
       } as any);
 
       return {

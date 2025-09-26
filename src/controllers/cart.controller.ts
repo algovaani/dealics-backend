@@ -5190,14 +5190,28 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
             {
               model: TradingCard,
               as: 'product',
-              attributes: ['id', 'search_param', 'trading_card_img', 'category_id']
+              attributes: ['id', 'search_param', 'trading_card_img', 'category_id'],
+              include: [
+                {
+                  model: Category,
+                  as: 'parentCategory',
+                  attributes: ['id', 'sport_name']
+                }
+              ]
             }
           ]
         },
         {
           model: TradingCard,
           as: 'tradingCard',
-          attributes: ['id', 'search_param', 'trading_card_img', 'category_id']
+          attributes: ['id', 'search_param', 'trading_card_img', 'category_id'],
+          include: [
+            {
+              model: Category,
+              as: 'parentCategory',
+              attributes: ['id', 'sport_name']
+            }
+          ]
         }
       ]
     });
@@ -5267,7 +5281,7 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
       }
     }
 
-    // Prepare response data
+    // Prepare response data according to Blade file structure
     const buySellCardData = buySellCard as any;
     const responseData = {
       addresses: addresses.map((address: any) => ({
@@ -5295,25 +5309,34 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
         } : null
       })),
       buy_id: Number(id),
-      buySellCard: {
+      // Main object structure as expected by Blade file
+      buySellCards: {
         id: buySellCardData.id,
         buyer: buySellCardData.buyer,
         seller: buySellCardData.seller,
         buying_status: buySellCardData.buying_status,
-        buyOfferProducts: buySellCardData.buyOfferProducts ? buySellCardData.buyOfferProducts.map((product: any) => ({
+        // buy_offer_product structure as expected by Blade
+        buy_offer_product: buySellCardData.buyOfferProducts ? buySellCardData.buyOfferProducts.map((product: any) => ({
           id: product.id,
           product: product.product ? {
             id: product.product.id,
             search_param: product.product.search_param,
             trading_card_img: product.product.trading_card_img,
-            category_id: product.product.category_id
+            categoryname: product.product.parentCategory ? {
+              id: product.product.parentCategory.id,
+              sport_name: product.product.parentCategory.sport_name
+            } : null
           } : null
         })) : [],
-        tradingCard: buySellCardData.tradingCard ? {
+        // tradingcard structure as expected by Blade
+        tradingcard: buySellCardData.tradingCard ? {
           id: buySellCardData.tradingCard.id,
           search_param: buySellCardData.tradingCard.search_param,
           trading_card_img: buySellCardData.tradingCard.trading_card_img,
-          category_id: buySellCardData.tradingCard.category_id
+          categoryname: buySellCardData.tradingCard.parentCategory ? {
+            id: buySellCardData.tradingCard.parentCategory.id,
+            sport_name: buySellCardData.tradingCard.parentCategory.sport_name
+          } : null
         } : null
       },
       existingShipment: existingShipment ? {
@@ -5471,19 +5494,17 @@ export const getShippingParcelBuysell = async (req: Request, res: Response) => {
 
     const mainCardIds = similarBuySellCards.map((card: any) => card.main_card).filter((id: any) => id);
 
-    // Get send trade cards
+    // Get send trade cards - only the main card from this specific buy/sell transaction
     const sendTradeCards = await TradingCard.findAll({
       where: {
-        id: { [Op.in]: mainCardIds }
+        id: buySellCard.main_card
       },
       attributes: ['id', 'category_id', 'search_param', 'trading_card_img']
     });
 
-    // Get trading cards for the user
+    // Get trading cards that are being shipped (only cards from this specific buy/sell transaction)
     const tradingcards = await TradingCard.findAll({
       where: {
-        trader_id: trade_id,
-        trading_card_status: 1,
         id: { [Op.in]: mainCardIds }
       },
       attributes: ['id', 'category_id', 'search_param', 'trading_card_img'],
@@ -5753,6 +5774,15 @@ export const saveParcelBuysell = async (req: Request, res: Response) => {
 // Get shipment carrier buysell API based on Laravel shipping_carrier_buySell function
 export const getShipmentCarrierBuysell = async (req: Request, res: Response) => {
   try {
+    // Set cache headers to prevent caching
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'ETag': `"shipment-carrier-${Date.now()}"`,
+      'Last-Modified': new Date().toUTCString()
+    });
+
     const userId = (req as any).user?.id;
     const { buy_id } = req.query;
 
@@ -5777,13 +5807,37 @@ export const getShipmentCarrierBuysell = async (req: Request, res: Response) => 
       return sendApiResponse(res, 400, false, "Enter the parcel information", []);
     }
 
-    // Parse shipment response
+    // Parse shipment response - handle both object and string formats
     let shipmentResponse;
     try {
-      shipmentResponse = typeof shipment.shipment_response === 'string' 
-        ? JSON.parse(shipment.shipment_response) 
-        : shipment.shipment_response;
+      if (typeof shipment.shipment_response === 'string') {
+        // Handle string format (from saveParcelBuysell)
+        try {
+          const firstParse = JSON.parse(shipment.shipment_response);
+          shipmentResponse = typeof firstParse === 'string' 
+            ? JSON.parse(firstParse) 
+            : firstParse;
+        } catch {
+          // If parsing fails, try direct parse
+          shipmentResponse = JSON.parse(shipment.shipment_response);
+        }
+      } else if (typeof shipment.shipment_response === 'object' && shipment.shipment_response !== null) {
+        // Handle object format (from saveParcel)
+        shipmentResponse = shipment.shipment_response;
+      } else {
+        throw new Error('Invalid shipment response format');
+      }
+      
+      console.log('=== SHIPMENT RESPONSE DEBUG ===');
+      console.log('Shipment ID:', shipment.id);
+      console.log('Buy ID:', buy_id);
+      console.log('Original Type:', typeof shipment.shipment_response);
+      console.log('Parsed Type:', typeof shipmentResponse);
+      console.log('Rates:', shipmentResponse.rates);
+      console.log('Rates Length:', shipmentResponse.rates?.length);
+      console.log('=== END SHIPMENT RESPONSE DEBUG ===');
     } catch (parseError) {
+      console.error('Shipment response parse error:', parseError);
       return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
     }
 
@@ -5834,11 +5888,11 @@ export const getShipmentCarrierBuysell = async (req: Request, res: Response) => 
       .map((card: any) => card.main_card)
       .filter((id: any) => id && id > 0);
 
-    // Get sendTradeCards
+    // Get sendTradeCards - only the main card from this specific buy/sell transaction
     let sendTradeCards: any[] = [];
-    if (mainCardIds.length > 0) {
+    if (buySellCard.main_card) {
       const tradingCards = await TradingCard.findAll({
-        where: { id: { [Op.in]: mainCardIds } },
+        where: { id: buySellCard.main_card },
         attributes: ['id', 'category_id', 'search_param', 'trading_card_img']
       });
 
@@ -5871,6 +5925,11 @@ export const getShipmentCarrierBuysell = async (req: Request, res: Response) => 
     const rates = shipmentResponse.rates || [];
     let defaultSelectedRate = '0.00';
     let defaultSelectedRateId = '';
+
+    console.log('=== RATES DEBUG ===');
+    console.log('Rates array:', rates);
+    console.log('Rates length:', rates.length);
+    console.log('=== END RATES DEBUG ===');
 
     if (rates.length > 0) {
       // Find default rate (lowest cost)
@@ -5959,13 +6018,28 @@ export const shippingCheckoutBuysell = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "Either shipment completed or shipment details not available. please try again to ship your product", []);
     }
 
-    // Parse shipment response
+    // Parse shipment response - handle both object and string formats
     let shipmentResponse;
     try {
-      shipmentResponse = typeof shipment.shipment_response === 'string' 
-        ? JSON.parse(shipment.shipment_response) 
-        : shipment.shipment_response;
+      if (typeof shipment.shipment_response === 'string') {
+        // Handle string format (from saveParcelBuysell)
+        try {
+          const firstParse = JSON.parse(shipment.shipment_response);
+          shipmentResponse = typeof firstParse === 'string' 
+            ? JSON.parse(firstParse) 
+            : firstParse;
+        } catch {
+          // If parsing fails, try direct parse
+          shipmentResponse = JSON.parse(shipment.shipment_response);
+        }
+      } else if (typeof shipment.shipment_response === 'object' && shipment.shipment_response !== null) {
+        // Handle object format (from saveParcel)
+        shipmentResponse = shipment.shipment_response;
+      } else {
+        throw new Error('Invalid shipment response format');
+      }
     } catch (parseError) {
+      console.error('Shipment response parse error:', parseError);
       return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
     }
 
@@ -6069,6 +6143,15 @@ export const shippingCheckoutBuysell = async (req: Request, res: Response) => {
 // GET Shipping checkout buysell API for display
 export const getShippingCheckoutBuysell = async (req: Request, res: Response) => {
   try {
+    // Set cache headers to prevent caching
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'ETag': `"shipping-checkout-buysell-${Date.now()}"`,
+      'Last-Modified': new Date().toUTCString()
+    });
+
     const userId = (req as any).user?.id;
     const { buy_id } = req.query;
 
@@ -6089,13 +6172,28 @@ export const getShippingCheckoutBuysell = async (req: Request, res: Response) =>
       return sendApiResponse(res, 404, false, "Either shipment completed or shipment details not available. please try again to ship your product", []);
     }
 
-    // Parse shipment response
+    // Parse shipment response - handle both object and string formats
     let shipmentResponse;
     try {
-      shipmentResponse = typeof shipment.shipment_response === 'string' 
-        ? JSON.parse(shipment.shipment_response) 
-        : shipment.shipment_response;
+      if (typeof shipment.shipment_response === 'string') {
+        // Handle string format (from saveParcelBuysell)
+        try {
+          const firstParse = JSON.parse(shipment.shipment_response);
+          shipmentResponse = typeof firstParse === 'string' 
+            ? JSON.parse(firstParse) 
+            : firstParse;
+        } catch {
+          // If parsing fails, try direct parse
+          shipmentResponse = JSON.parse(shipment.shipment_response);
+        }
+      } else if (typeof shipment.shipment_response === 'object' && shipment.shipment_response !== null) {
+        // Handle object format (from saveParcel)
+        shipmentResponse = shipment.shipment_response;
+      } else {
+        throw new Error('Invalid shipment response format');
+      }
     } catch (parseError) {
+      console.error('Shipment response parse error:', parseError);
       return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
     }
 
@@ -6142,48 +6240,113 @@ export const getShippingCheckoutBuysell = async (req: Request, res: Response) =>
     const totalAmount = parseFloat(insuranceAmount) + parseFloat(rateData.rate);
     const formattedTotalAmount = totalAmount.toFixed(2);
 
-    // Get BuySellCard
-    const buySellCard = await BuySellCard.findByPk(Number(buy_id));
+    // Get BuySellCard with trading card details
+    const buySellCard = await BuySellCard.findByPk(Number(buy_id), {
+      include: [
+        {
+          model: TradingCard,
+          as: 'tradingCard',
+          attributes: ['id', 'search_param']
+        },
+        {
+          model: BuyOfferProduct,
+          as: 'buyOfferProducts',
+          include: [
+            {
+              model: TradingCard,
+              as: 'product',
+              attributes: ['id', 'search_param']
+            }
+          ]
+        }
+      ]
+    });
 
-    // Prepare response data according to Blade file structure
+    // Prepare response data matching getShippingCheckout format
     const responseData = {
-      buy_id: Number(buy_id),
-      shipment_id: shipment.id,
-      selected_rate_id: shipment.selected_rate || rateData.id,
-      selected_rate: rateData.rate,
-      shipment_response: shipmentResponse,
-      postage_label: postageLabel,
+      sender_address: {
+        name: shipmentResponse.from_address?.name || '',
+        street1: shipmentResponse.from_address?.street1 || '',
+        street2: shipmentResponse.from_address?.street2 || '',
+        city: shipmentResponse.from_address?.city || '',
+        state: shipmentResponse.from_address?.state || '',
+        zip: shipmentResponse.from_address?.zip || '',
+        phone: shipmentResponse.from_address?.phone || '',
+        email: shipmentResponse.from_address?.email || ''
+      },
+      receiver_address: {
+        name: shipmentResponse.to_address?.name || '',
+        street1: shipmentResponse.to_address?.street1 || '',
+        street2: shipmentResponse.to_address?.street2 || '',
+        city: shipmentResponse.to_address?.city || '',
+        state: shipmentResponse.to_address?.state || '',
+        zip: shipmentResponse.to_address?.zip || '',
+        phone: shipmentResponse.to_address?.phone || '',
+        email: shipmentResponse.to_address?.email || ''
+      },
+      package_dimensions: shipParcelDetails ? (
+        typeof shipParcelDetails === 'string' 
+          ? JSON.parse(shipParcelDetails) 
+          : shipParcelDetails
+      ) : {
+        length: 0,
+        width: 0,
+        height: 0,
+        weight: 0
+      },
+      package_details: (() => {
+        const packageContents = [];
+        
+        // Add main trading card if exists
+        if ((buySellCard as any)?.tradingCard?.search_param) {
+          packageContents.push((buySellCard as any).tradingCard.search_param);
+        }
+        
+        // Add buy offer products if exist
+        if ((buySellCard as any)?.buyOfferProducts && (buySellCard as any).buyOfferProducts.length > 0) {
+          (buySellCard as any).buyOfferProducts.forEach((product: any) => {
+            if (product.product?.search_param) {
+              packageContents.push(product.product.search_param);
+            }
+          });
+        }
+        
+        // If no trading cards found, show default message
+        if (packageContents.length === 0) {
+          packageContents.push("Package contents not specified");
+        }
+        
+        return packageContents;
+      })(),
+      shipment_details: {
+        carrier: rateData.carrier || '',
+        service: rateData.service || '',
+        transit_days: rateData.service === 'Express' ? '1-2' : rateData.delivery_days || 0
+      },
+      shipment_cost: {
+        carrier_cost: rateData.rate || '0.00',
+        insurance_cost: insuranceAmount,
+        insure_shipment: insureShipment,
+        total_cost: formattedTotalAmount
+      },
       rate_data: {
         id: rateData.id,
+        rate: rateData.rate,
         carrier: rateData.carrier,
         service: rateData.service,
-        rate: rateData.rate,
-        delivery_days: rateData.delivery_days,
-        transit_days: rateData.service === 'Express' ? '1-2' : (rateData.delivery_days || 'Unknown')
+        delivery_days: rateData.delivery_days
       },
-      insurance_amount: insuranceAmount,
-      total_amount: formattedTotalAmount,
-      insure_shipment: insureShipment,
-      ship_parcel_details: shipParcelDetails,
-      ship_details: {
-        id: shipment.id,
-        user_id: shipment.user_id,
-        buy_sell_id: shipment.buy_sell_id,
-        to_address: shipment.to_address,
-        from_address: shipment.from_address,
-        tracking_id: shipment.tracking_id,
-        shipment_status: shipment.shipment_status,
-        selected_rate: shipment.selected_rate,
-        cart_amount_for_insurance: shipment.cart_amount_for_insurance,
-        created_at: shipment.created_at,
-        updated_at: shipment.updated_at
-      },
-      buy_sell_card: buySellCard ? {
-        id: buySellCard.id,
-        buyer: buySellCard.buyer,
-        seller: buySellCard.seller,
-        offer_amt_buyer: buySellCard.offer_amt_buyer
-      } : null
+      buy_sell_details: {
+        buy_id: Number(buy_id),
+        shipment_id: shipment.id,
+        selected_rate_id: shipment.selected_rate || rateData.id,
+        buy_sell_card: buySellCard ? {
+          id: buySellCard.id,
+          buyer: buySellCard.buyer,
+          seller: buySellCard.seller,
+          offer_amt_buyer: buySellCard.offer_amt_buyer
+        } : null
+      }
     };
 
     return sendApiResponse(res, 200, true, "Shipping checkout data retrieved successfully", [responseData]);
@@ -6198,33 +6361,16 @@ export const getShippingCheckoutBuysell = async (req: Request, res: Response) =>
 export const makeCheckoutBuysell = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
-    const { 
-      selected_rate_id, 
-      amount,
-      buy_id 
-    } = req.body;
+    const { selected_rate_id, amount, buy_id } = req.body;
 
-    // Validate buy_id
-    if (!buy_id) {
-      return sendApiResponse(res, 400, false, "buy_id is required", []);
-    }
-
-    // Validate selected_rate_id
-    if (!selected_rate_id || selected_rate_id === '') {
-      return sendApiResponse(res, 400, false, "Select carrier service", []);
-    }
-
-    // Validate amount
-    if (!amount) {
-      return sendApiResponse(res, 400, false, "amount is required", []);
+    // Validate required fields
+    if (!buy_id || !selected_rate_id || !amount) {
+      return sendApiResponse(res, 400, false, "Missing required fields: buy_id, selected_rate_id, amount", []);
     }
 
     // Get shipment data
     const shipment = await Shipment.findOne({
-      where: {
-        buy_sell_id: Number(buy_id),
-        user_id: userId
-      }
+      where: { buy_sell_id: Number(buy_id), user_id: userId }
     });
 
     if (!shipment) {
@@ -6232,74 +6378,283 @@ export const makeCheckoutBuysell = async (req: Request, res: Response) => {
     }
 
     // Check if shipment already completed
-    if (shipment.tracking_id && shipment.tracking_id !== '') {
+    if (shipment.tracking_id) {
       return sendApiResponse(res, 400, false, "This shipment has already been completed", []);
     }
 
-    // Get BuySellCard
+    // Get BuySellCard and validate seller
     const offerDetail = await BuySellCard.findByPk(Number(buy_id));
-
-    if (!offerDetail) {
-      return sendApiResponse(res, 404, false, "Offer not available, please try again", []);
-    }
-
-    // Check if user is the seller
-    if (offerDetail.seller !== userId) {
+    if (!offerDetail || offerDetail.seller !== userId) {
       return sendApiResponse(res, 403, false, "Invalid access", []);
     }
 
     // Update shipment with selected rate
-    await shipment.update({
-      selected_rate: selected_rate_id
-    });
+    await shipment.update({ selected_rate: selected_rate_id });
 
-    // Get PayPal account details (user_id = 0 for system account)
-    // Note: PaypalAccount model needs to be created or use existing PayPal configuration
+    // PayPal configuration
     const paypalConfig = {
-      client_id: process.env.PAYPAL_CLIENT_ID || 'your_paypal_client_id',
-      client_secret: process.env.PAYPAL_CLIENT_SECRET || 'your_paypal_client_secret',
-      test_mode: process.env.PAYPAL_TEST_MODE === 'true' || true
+      client_id: process.env.PAYPAL_CLIENT_ID,
+      client_secret: process.env.PAYPAL_CLIENT_SECRET,
+      test_mode: process.env.PAYPAL_TEST_MODE === 'true'
     };
 
     if (!paypalConfig.client_id || !paypalConfig.client_secret) {
-      return sendApiResponse(res, 500, false, "PayPal configuration not available", []);
+      return sendApiResponse(res, 500, false, "Account details not available", []);
     }
 
-    // Prepare PayPal payment data
-    const paymentData = {
-      amount: parseFloat(amount),
-      currency: process.env.PAYPAL_CURRENCY || 'USD',
-      returnUrl: `${process.env.BASE_URL || 'http://localhost:5000'}/api/users/shipment-cost-payment-success-buysell/${shipment.buy_sell_id}`,
-      cancelUrl: `${process.env.BASE_URL || 'http://localhost:5000'}/api/users/shipment-cost-payment-cancel-buysell/${shipment.buy_sell_id}`,
-      clientId: paypalConfig.client_id,
-      clientSecret: paypalConfig.client_secret,
-      testMode: paypalConfig.test_mode
+    // Prepare PayPal payment URLs
+    const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+    const paymentUrls = {
+      return_url: `${baseUrl}/api/users/shipment-cost-payment-success-buysell/${shipment.buy_sell_id}`,
+      cancel_url: `${baseUrl}/api/users/shipment-cost-payment-cancel-buysell/${shipment.buy_sell_id}`
     };
 
-    // Prepare response data
+    // Response data
     const responseData = {
       buy_id: Number(buy_id),
       shipment_id: shipment.id,
-      selected_rate_id: selected_rate_id,
-      amount: paymentData.amount,
-      currency: paymentData.currency,
+      selected_rate_id,
+      amount: parseFloat(amount),
+      currency: process.env.PAYPAL_CURRENCY || 'USD',
       paypal_config: {
-        client_id: paymentData.clientId,
-        test_mode: paymentData.testMode,
-        return_url: paymentData.returnUrl,
-        cancel_url: paymentData.cancelUrl
+        client_id: paypalConfig.client_id,
+        test_mode: paypalConfig.test_mode
       },
-      payment_urls: {
-        success_url: paymentData.returnUrl,
-        cancel_url: paymentData.cancelUrl
-      },
-      message: "Payment checkout initiated successfully"
+      payment_urls: paymentUrls
     };
 
     return sendApiResponse(res, 200, true, "Payment checkout initiated successfully", [responseData]);
 
   } catch (error: any) {
     console.error('Make checkout buysell error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Shipment cost payment success for buy sell API based on Laravel shipmentCostPaymentSuccessForBuySell function
+export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { buy_sell_id } = req.params;
+    const { paymentId, token, PayerID } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!buy_sell_id) {
+      return sendApiResponse(res, 400, false, "Buy sell ID is required", []);
+    }
+
+    if (!paymentId || !token || !PayerID) {
+      return sendApiResponse(res, 400, false, "Payment parameters (paymentId, token, PayerID) are required", []);
+    }
+
+    // Get shipment data
+    console.log('=== SHIPMENT SEARCH DEBUG ===');
+    console.log('buy_sell_id:', buy_sell_id);
+    console.log('userId:', userId);
+    console.log('Number(buy_sell_id):', Number(buy_sell_id));
+    console.log('=== END SHIPMENT SEARCH DEBUG ===');
+
+    const shipment = await Shipment.findOne({
+      where: {
+        buy_sell_id: Number(buy_sell_id),
+        user_id: userId
+      }
+    });
+
+    console.log('=== SHIPMENT RESULT DEBUG ===');
+    console.log('Shipment found:', !!shipment);
+    console.log('Shipment ID:', shipment?.id);
+    console.log('=== END SHIPMENT RESULT DEBUG ===');
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Shipment not found", []);
+    }
+
+    // Update shipment with payment details
+    console.log('=== PAYMENT UPDATE DEBUG ===');
+    console.log('Updating shipment with payment details...');
+    await shipment.update({
+      paymentId: paymentId as string,
+      token: token as string,
+      PayerID: PayerID as string,
+      shipment_payment_status: 1
+    });
+    console.log('Payment details updated successfully');
+    console.log('=== END PAYMENT UPDATE DEBUG ===');
+
+    // Create custom info (simplified version)
+    const custom_info = {
+      status: true,
+      data: {
+        contents_type: 'merchandise',
+        contents_explanation: 'Trading cards',
+        customs_certify: true,
+        customs_signer: 'John Doe',
+        eel_pfc: 'NOEEI 30.37(a)'
+      }
+    };
+
+    if (custom_info.status) {
+      // Parse shipment response
+      let shipmentResponse;
+      try {
+        shipmentResponse = typeof shipment.shipment_response === 'string' 
+          ? JSON.parse(shipment.shipment_response) 
+          : shipment.shipment_response;
+      } catch (parseError) {
+        return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
+      }
+
+      // Prepare shipment data for EasyPost API
+      const shipmentData = {
+        from_address: shipment.from_address,
+        to_address: shipment.to_address,
+        parcel: shipment.parcel,
+        customs_info: custom_info.data
+      };
+
+      const rateData = { id: shipment.selected_rate };
+
+      // Call EasyPost API to buy shipment
+      try {
+        console.log('=== EASYPOST API DEBUG ===');
+        console.log('Calling EasyPost API to buy shipment...');
+        const apiKey = process.env.EASYPOST_API_KEY;
+        if (!apiKey) {
+          console.log('EasyPost API key not configured');
+          return sendApiResponse(res, 500, false, "EasyPost API key not configured", []);
+        }
+        console.log('EasyPost API key found');
+        console.log('=== END EASYPOST API DEBUG ===');
+
+        const response = await fetch(`https://api.easypost.com/v2/shipments/${shipmentResponse.id}/buy`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            shipment: shipmentData,
+            rate: rateData
+          })
+        });
+
+        console.log('=== EASYPOST RESPONSE DEBUG ===');
+        console.log('EasyPost response status:', response.status);
+        console.log('EasyPost response ok:', response.ok);
+        console.log('=== END EASYPOST RESPONSE DEBUG ===');
+
+        if (response.status === 200 || response.status === 201) {
+          const data = await response.json();
+          console.log('=== EASYPOST DATA DEBUG ===');
+          console.log('EasyPost response data:', JSON.stringify(data, null, 2));
+          console.log('=== END EASYPOST DATA DEBUG ===');
+
+          // Update shipment with tracking info
+          await shipment.update({
+            tracking_id: data.tracking_code,
+            shipment_status: 'Pre-Transit'
+          });
+
+          // Update BuySellCard
+          const buySellCard = await BuySellCard.findByPk(Number(buy_sell_id));
+          if (buySellCard) {
+            await buySellCard.update({
+              track_id: data.tracking_code,
+              shipped_on: new Date(),
+              buying_status: 'dispatched'
+            });
+
+            // Set trade status
+            await setTradeProposalStatus(Number(buy_sell_id), 'shipment-completed');
+
+            // Get other user for notifications
+            const otherUserId = buySellCard.buyer === userId ? buySellCard.seller : buySellCard.buyer;
+            const otherUser = await User.findByPk(otherUserId);
+
+            // Prepare card names for email
+            let cardNames = '';
+            if (buySellCard.main_card && buySellCard.main_card > 0) {
+              const card = await TradingCard.findByPk(buySellCard.main_card);
+              if (card && card.search_param) {
+                cardNames = `1. ${card.search_param}`;
+              }
+            } else {
+              const buyOfferProducts = await BuyOfferProduct.findAll({
+                where: { buy_sell_id: buySellCard.id },
+                include: [
+                  {
+                    model: TradingCard,
+                    as: 'product',
+                    attributes: ['search_param']
+                  }
+                ]
+              });
+
+              if (buyOfferProducts.length > 0) {
+                const cardNamesArray = buyOfferProducts.map((item: any, index: number) => {
+                  return item.product && item.product.search_param 
+                    ? `${index + 1}. ${item.product.search_param}` 
+                    : null;
+                }).filter(Boolean);
+                cardNames = cardNamesArray.join('<br/>');
+              }
+            }
+
+            // Send notifications
+            if (otherUser && buySellCard.seller && buySellCard.buyer) {
+              await setTradersNotificationOnVariousActionBasis(
+                'shipped-proposal',
+                buySellCard.seller,
+                buySellCard.buyer,
+                buySellCard.id,
+                'Offer'
+              );
+            }
+
+            // Prepare response data
+            const responseData = {
+              buy_sell_id: Number(buy_sell_id),
+              tracking_id: data.tracking_code,
+              shipment_status: 'Pre-Transit',
+              buying_status: 'dispatched',
+              shipped_on: new Date(),
+              card_names: cardNames,
+              message: "Shipment successfully completed"
+            };
+
+            console.log('=== SUCCESS RESPONSE DEBUG ===');
+            console.log('Returning success response with data:', responseData);
+            console.log('=== END SUCCESS RESPONSE DEBUG ===');
+            return sendApiResponse(res, 200, true, "Shipment successfully completed", [responseData]);
+          } else {
+            console.log('=== BUYSELL CARD NOT FOUND DEBUG ===');
+            console.log('BuySellCard not found for buy_sell_id:', buy_sell_id);
+            console.log('=== END BUYSELL CARD NOT FOUND DEBUG ===');
+            const errorData = await response.json();
+            return sendApiResponse(res, 400, false, errorData.error?.message || "Failed to process shipment", []);
+          }
+        } else {
+          console.log('=== EASYPOST ERROR DEBUG ===');
+          console.log('EasyPost API returned error status:', response.status);
+          const errorData = await response.json();
+          console.log('EasyPost error data:', errorData);
+          console.log('=== END EASYPOST ERROR DEBUG ===');
+          return sendApiResponse(res, 400, false, errorData.error?.message || "Failed to process shipment", []);
+        }
+      } catch (apiError: any) {
+        console.error('EasyPost API error:', apiError);
+        return sendApiResponse(res, 500, false, "Failed to process shipment with carrier", []);
+      }
+    } else {
+      return sendApiResponse(res, 400, false, "Custom info validation failed", []);
+    }
+
+  } catch (error: any) {
+    console.error('Shipment cost payment success error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };

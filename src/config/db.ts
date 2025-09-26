@@ -1,15 +1,11 @@
 import { Sequelize } from "sequelize-typescript";
-import mysql from "mysql2";   // ✅ add this
 
 export const sequelize = new Sequelize({
-  database: "stagingtradeblock",
-  username: "root",
-  password: "RockyLinux@DB1",
-  host: "localhost",
-  port: 3306,
+  database: process.env.DB_NAME || "stagingtradeblock",
+  username: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "",
+  host: process.env.DB_HOST || "localhost",
+  port: parseInt(process.env.DB_PORT || "3306") as number,
   dialect: "mysql",
-  dialectModule: mysql,   // ✅ use imported mysql
-  logging: false,
+  logging: process.env.NODE_ENV === "development" ? console.log : false,
 });
-
-// We'll add models after they're imported in the main server file

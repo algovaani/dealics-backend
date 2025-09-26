@@ -701,7 +701,7 @@ const setTradeAndOfferStatus = async (alias: string, setFor: string, triggerId: 
 };
 
 // Helper function to create notifications (Enhanced based on Laravel __setTradersNotificationOnVariousActionBasis)
-const setTradersNotificationOnVariousActionBasis = async (act: string, sentBy: number, sentTo: number, dataSetId: number, setFor: string) => {
+export const setTradersNotificationOnVariousActionBasis = async (act: string, sentBy: number, sentTo: number, dataSetId: number, setFor: string) => {
   try {
     console.log(`🔔 Creating notification - Action: ${act}, SentBy: ${sentBy}, SentTo: ${sentTo}, DataSetId: ${dataSetId}, SetFor: ${setFor}`);
 

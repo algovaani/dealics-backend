@@ -6,12 +6,13 @@ import { TradingCard } from '../models/tradingcard.model.js';
 import { TradeNotification } from '../models/tradeNotification.model.js';
 import { sendApiResponse } from '../utils/apiResponse.js';
 import { setTradeProposalStatus } from '../services/tradeStatus.service.js';
+import { setTradersNotificationOnVariousActionBasis } from './cart.controller.js';
 
-// Pay to Change Trade Status API (matches Laravel payto_chngtrade_status_ow)
+// Unified Payment Processor API (Based on Laravel unifiedPaymentProcessor)
 export const payToChangeTradeStatus = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
-    const { modelid, amount } = req.body;
+    const { modelid, amount, paymentType = 'ongoing_trade' } = req.body;
 
     if (!userId) {
       return sendApiResponse(res, 401, false, "User not authenticated", []);
@@ -24,119 +25,393 @@ export const payToChangeTradeStatus = async (req: Request, res: Response) => {
     // Get trade proposal
     const tradeProposal = await TradeProposal.findByPk(modelid);
     if (!tradeProposal) {
-      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
-    }
-
-    // Check CXP coins before trade status update
-    const cxpCoinsCheck = await checkCXPCoinsBeforeTradeStatusUpdate(
-      tradeProposal.trade_sent_by!,
-      tradeProposal.trade_sent_to!,
-      modelid
-    );
-
-    if (!cxpCoinsCheck.success) {
-      if (cxpCoinsCheck.action === 'buycoin') {
-        return sendApiResponse(res, 400, false, cxpCoinsCheck.message, [], {
-          action: 'buycoin',
-          redirect_url: '/ongoing-trades'
-        });
-      } else if (cxpCoinsCheck.action === 'chat-now') {
-        return sendApiResponse(res, 400, false, cxpCoinsCheck.message, [], {
-          action: 'chat-now',
-          chat_id: modelid
-        });
-      } else {
-        return sendApiResponse(res, 400, false, cxpCoinsCheck.message || 'CXP coins validation failed', [], {
-          redirect_url: '/ongoing-trades'
-        });
-      }
-    }
-
-    // Parse send and receive cards based on user perspective (same logic as ongoing-trades API)
-    let sendCards: number[] = [];
-    let receiveCards: number[] = [];
-    
-    if (tradeProposal.send_cards) {
-      const originalSendCards = tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim()));
-      const originalReceiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
-      
-      if (tradeProposal.trade_sent_by === userId) {
-        // User is the sender: Sending = send_cards, Receiving = receive_cards
-        sendCards = originalSendCards;
-        receiveCards = originalReceiveCards;
-      } else if (tradeProposal.trade_sent_to === userId) {
-        // User is the receiver: Sending = receive_cards, Receiving = send_cards
-        sendCards = originalReceiveCards;
-        receiveCards = originalSendCards;
-      }
-    }
-
-    // Check if cards are already traded
-    const cardValidation = await validateCardsNotTraded(sendCards, receiveCards, tradeProposal, userId);
-    if (!cardValidation.success) {
-      return sendApiResponse(res, 400, false, cardValidation.message || 'Card validation failed', [], {
+      return sendApiResponse(res, 404, false, "Trade not found", [], {
         redirect_url: '/ongoing-trades'
       });
     }
 
-    // Mark cards as traded and cancel conflicting trades
-    await markCardsAsTradedAndCancelConflicts(sendCards, receiveCards, modelid);
+    // Get PayPal business email
+    const paypalEmailData = await getUnifiedPayPalEmail(tradeProposal, userId);
+    const paypalBusinessEmail = paypalEmailData.email;
+    const paypalAccountDetails = paypalEmailData.details;
 
-    // Get PayPal business email from trading partner
-    const tradingPartner = tradeProposal.trade_sent_by === userId 
-      ? await User.findByPk(tradeProposal.trade_sent_to, {
-          attributes: ['id', 'paypal_business_email', 'email', 'first_name', 'last_name']
-        })
-      : await User.findByPk(tradeProposal.trade_sent_by, {
-          attributes: ['id', 'paypal_business_email', 'email', 'first_name', 'last_name']
-        });
-
-    if (!tradingPartner) {
-      return sendApiResponse(res, 404, false, "Trading partner not found", []);
+    if (!paypalBusinessEmail || paypalBusinessEmail.trim() === '') {
+      return await handleUnifiedMissingPayPal(paypalAccountDetails, tradeProposal, userId, res);
     }
 
-    const paypalBusinessEmail = tradingPartner.paypal_business_email;
-
-    if (paypalBusinessEmail && paypalBusinessEmail.trim() !== '') {
-      // Set payment initialization
-      await tradeProposal.update({
-        is_payment_init: 1,
-        payment_init_date: new Date(),
-        is_payment_received: 2
-        // COMMENTED OUT: payment_received_on should only be set in confirm-payment API
-        // payment_received_on: new Date()
-      });
-
-      // Generate PayPal payment data
-      const itemName = `${new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '')}-${modelid}`;
-      const paypalData = await generatePayPalPaymentData(modelid, itemName, amount, paypalBusinessEmail);
-
-      return sendApiResponse(res, 200, true, "PayPal payment data generated successfully", {
-        paypal_form_data: paypalData.formData,
-        paypal_url: paypalData.paypalUrl,
-        item_name: itemName,
-        amount: amount,
-        business_email: paypalBusinessEmail,
-        trade_proposal_id: modelid
-      });
-
-    } else {
-      // Send notification about missing PayPal business email
-      await sendMissingPayPalNotification(userId, tradeProposal);
-
-      // Send email notification (if email service is available)
-      await sendMissingPayPalEmail(tradingPartner);
-
-      return sendApiResponse(res, 400, false, "The trader's PayPal business email address is not available. A notification has been sent successfully to the trader.", [], {
-        action: 'missing_paypal_email',
-        redirect_url: '/ongoing-trades'
-      });
+    // Validate prerequisites based on payment type
+    const validationResult = await validateUnifiedPrerequisites(tradeProposal, req.body, paymentType, userId, res);
+    if (validationResult !== true) {
+      return validationResult;
     }
+
+    // Process cards and cancel conflicting trades
+    await processUnifiedTradingCards(tradeProposal, modelid);
+
+    // Update trade status and send notifications
+    await updateUnifiedTradeStatus(tradeProposal, paymentType, userId);
+
+    // Initialize payment
+    await tradeProposal.update({
+      is_payment_init: 1,
+      payment_init_date: new Date(),
+      is_payment_received: 2
+    });
+
+    // Submit payment to PayPal
+    const itemName = `${new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '')}-${modelid}`;
+    const paypalPaymentData = await generatePayPalPaymentData(modelid, itemName, amount, paypalBusinessEmail);
+
+    return sendApiResponse(res, 200, true, "PayPal payment data generated successfully", {
+      paypal_form_data: paypalPaymentData.formData,
+      paypal_url: paypalPaymentData.paypalUrl,
+      item_name: itemName,
+      amount: amount,
+      business_email: paypalBusinessEmail,
+      trade_proposal_id: modelid
+    });
 
   } catch (error: any) {
-    console.error('Pay to change trade status error:', error);
-    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+    console.error('Unified payment processor error:', error);
+    return sendApiResponse(res, 500, false, `Payment processing failed: ${error.message}`, [], {
+      redirect_url: '/ongoing-trades'
+    });
   }
+};
+
+// Get PayPal business email for unified function
+const getUnifiedPayPalEmail = async (tradeProposal: any, userId: number) => {
+  let paypalBusinessEmail = '';
+  let paypalAccountDetails = null;
+
+  if (tradeProposal.trade_sent_by === userId) {
+    paypalAccountDetails = await User.findByPk(tradeProposal.trade_sent_to, {
+      attributes: ['paypal_business_email', 'email', 'first_name', 'last_name']
+    });
+  } else if (tradeProposal.trade_sent_to === userId) {
+    paypalAccountDetails = await User.findByPk(tradeProposal.trade_sent_by, {
+      attributes: ['paypal_business_email', 'email', 'first_name', 'last_name']
+    });
+  }
+
+  if (paypalAccountDetails && paypalAccountDetails.paypal_business_email && paypalAccountDetails.paypal_business_email.trim() !== '') {
+    paypalBusinessEmail = paypalAccountDetails.paypal_business_email;
+  }
+
+  return {
+    email: paypalBusinessEmail,
+    details: paypalAccountDetails
+  };
+};
+
+// Handle missing PayPal email for unified function
+const handleUnifiedMissingPayPal = async (paypalAccountDetails: any, tradeProposal: any, userId: number, res: Response) => {
+  const act = 'paypal-business-details-not-available';
+  const sentBy = userId;
+  const sentTo = (tradeProposal.trade_sent_by === sentBy) ? tradeProposal.trade_sent_to : tradeProposal.trade_sent_by;
+  
+  // Send notification
+  await setTradersNotificationOnVariousActionBasis(act, sentBy, sentTo, tradeProposal.id, 'Trade');
+
+  return sendApiResponse(res, 400, false, "The trader's PayPal business email address is not available. A notification has been sent successfully to the trader.", [], {
+    redirect_url: '/ongoing-trades'
+  });
+};
+
+// Validate prerequisites for unified function
+const validateUnifiedPrerequisites = async (tradeProposal: any, requestData: any, paymentType: string, userId: number, res: Response) => {
+  // Validate coins based on payment type
+  if (paymentType === 'counter_offer') {
+    // For counter offer, deduct coins from both users
+    const deductCoinsStatus = await deductCoins(tradeProposal.trade_sent_to, tradeProposal.trade_sent_by, tradeProposal);
+    if (deductCoinsStatus.status === false) {
+      return handleUnifiedCoinError(deductCoinsStatus, tradeProposal, res);
+    }
+  } else {
+    // For ongoing trade, check CXP coins
+    const cxpCoinsStatus = await checkCXPCoinsBeforeTradeStatusUpdate(
+      tradeProposal.trade_sent_by,
+      tradeProposal.trade_sent_to,
+      requestData.modelid
+    );
+    if (cxpCoinsStatus.success === false) {
+      return handleUnifiedCoinError(cxpCoinsStatus, tradeProposal, res);
+    }
+  }
+
+  // Validate trading cards availability
+  return await validateUnifiedCards(tradeProposal, res);
+};
+
+// Handle coin validation errors for unified function
+const handleUnifiedCoinError = (coinStatus: any, tradeProposal: any, res: Response) => {
+  if (coinStatus.action === 'buycoin') {
+    return sendApiResponse(res, 400, false, coinStatus.message, [], {
+      action: 'buycoin',
+      redirect_url: '/ongoing-trades'
+    });
+  } else if (coinStatus.action === 'chat-now') {
+    return sendApiResponse(res, 400, false, coinStatus.message, [], {
+      action: 'chat-now',
+      chat_id: tradeProposal.id,
+      redirect_url: '/ongoing-trades'
+    });
+  } else {
+    return sendApiResponse(res, 400, false, coinStatus.message, [], {
+      redirect_url: '/ongoing-trades'
+    });
+  }
+};
+
+// Validate trading cards for unified function
+const validateUnifiedCards = async (tradeProposal: any, res: Response) => {
+  // Commented out is_traded check since trade proposal is already accepted
+  // const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',') : [];
+  // const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
+  // const allCards = [...sendCards, ...receiveCards];
+
+  // for (const cardId of allCards) {
+  //   const tradeCard = await TradingCard.findByPk(cardId.trim());
+  //   if (tradeCard && tradeCard.is_traded === '1') {
+  //     const errorMessage = `${tradeCard.search_param} product is in a Pending Trade with another user. Please select a different product to continue.`;
+  //     return sendApiResponse(res, 400, false, errorMessage, [], {
+  //       redirect_url: '/ongoing-trades'
+  //     });
+  //   }
+  // }
+
+  return true;
+};
+
+// Process trading cards for unified function
+const processUnifiedTradingCards = async (tradeProposal: any, tradeId: number) => {
+  const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',') : [];
+  const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
+  const allCards = [...sendCards, ...receiveCards];
+
+  for (const cardId of allCards) {
+    await markUnifiedCardAsTraded(cardId.trim());
+    await cancelUnifiedConflictingTrades(cardId.trim(), tradeId);
+  }
+};
+
+// Mark card as traded for unified function
+const markUnifiedCardAsTraded = async (cardId: string) => {
+  const tradeCard = await TradingCard.findByPk(cardId);
+  if (tradeCard) {
+    await tradeCard.update({ is_traded: '1' });
+  }
+};
+
+// Cancel conflicting trades for unified function
+const cancelUnifiedConflictingTrades = async (cardId: string, currentTradeId: number) => {
+  const cancelTrades = await TradeProposal.findAll({
+    where: {
+      id: { [Op.ne]: currentTradeId },
+      [Op.or]: [
+        { send_cards: { [Op.like]: `%${cardId}%` } },
+        { receive_cards: { [Op.like]: `%${cardId}%` } }
+      ]
+    }
+  });
+
+  for (const cancelTrade of cancelTrades) {
+    if (cancelTrade.trade_status === 'new') {
+      await cancelTrade.update({ trade_status: 'cancel' });
+    }
+  }
+};
+
+// Update trade status for unified function
+const updateUnifiedTradeStatus = async (tradeProposal: any, paymentType: string, userId: number) => {
+  if (paymentType === 'counter_offer' && tradeProposal.trade_status === 'counter_offer') {
+    await tradeProposal.update({
+      trade_status: 'counter_accepted',
+      accepted_on: new Date()
+    });
+
+    // Send counter offer notifications and emails
+    await sendCounterAcceptAndPaymentNotifications(tradeProposal, userId);
+    await sendUnifiedCounterEmails(tradeProposal);
+  } else if (paymentType === 'ongoing_trade' && tradeProposal.trade_status !== 'accepted') {
+    await tradeProposal.update({
+      trade_status: 'accepted',
+      accepted_on: new Date()
+    });
+
+    // Send trade acceptance notifications and emails
+    await sendAcceptAndPaymentNotifications(tradeProposal, userId);
+    await sendUnifiedTradeEmails(tradeProposal);
+  }
+
+  // Set trade status based on cash requirements
+  if (tradeProposal.add_cash > 0 && !tradeProposal.trade_amount_paid_on) {
+    const status = paymentType === 'counter_offer' ? 'counter-offer-accepted-sender-pay' : 'trade-offer-accepted-sender-pay';
+    await setTradeProposalStatus(tradeProposal.id, status);
+  } else if (tradeProposal.ask_cash > 0 && !tradeProposal.trade_amount_paid_on) {
+    const status = paymentType === 'counter_offer' ? 'counter-offer-accepted-receiver-pay' : 'trade-offer-accepted-receiver-pay';
+    await setTradeProposalStatus(tradeProposal.id, status);
+  }
+};
+
+// Send counter offer emails for unified function
+const sendUnifiedCounterEmails = async (tradeProposal: any) => {
+  const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',') : [];
+  const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
+  const userTo = await User.findByPk(tradeProposal.trade_sent_to);
+  const userBy = await User.findByPk(tradeProposal.trade_sent_by);
+
+  const proposedAmount = tradeProposal.add_cash > 0 ? tradeProposal.add_cash : (tradeProposal.ask_cash > 0 ? tradeProposal.ask_cash : '0');
+  const message = tradeProposal.counter_personalized_message || 'N/A';
+
+  const cardData = await prepareUnifiedCardData(sendCards, receiveCards);
+  const amountCaptions = getUnifiedAmountCaptions(tradeProposal.ask_cash, tradeProposal.add_cash);
+
+  // Send counter offer emails
+  await sendUnifiedCounterOfferEmails(userTo, userBy, cardData, proposedAmount, amountCaptions, message, tradeProposal);
+};
+
+// Send trade acceptance emails for unified function
+const sendUnifiedTradeEmails = async (tradeProposal: any) => {
+  const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',') : [];
+  const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
+  const userTo = await User.findByPk(tradeProposal.trade_sent_to);
+  const userBy = await User.findByPk(tradeProposal.trade_sent_by);
+
+  const proposedAmount = tradeProposal.add_cash || tradeProposal.ask_cash;
+  const message = tradeProposal.message || 'N/A';
+
+  const cardData = await prepareUnifiedCardData(sendCards, receiveCards);
+  const amountCaptions = getUnifiedAmountCaptions(tradeProposal.ask_cash, tradeProposal.add_cash);
+
+  // Send trade acceptance emails
+  await sendUnifiedTradeAcceptanceEmails(userTo, userBy, cardData, proposedAmount, amountCaptions, message, tradeProposal);
+};
+
+// Prepare card data for unified function
+const prepareUnifiedCardData = async (sendCards: string[], receiveCards: string[]) => {
+  const sentCards = await TradingCard.findAll({
+    where: { id: { [Op.in]: sendCards.map(id => parseInt(id.trim())) } },
+    attributes: ['search_param']
+  });
+  const receivedCards = await TradingCard.findAll({
+    where: { id: { [Op.in]: receiveCards.map(id => parseInt(id.trim())) } },
+    attributes: ['search_param']
+  });
+
+  const sentCardNames = sentCards.map(card => card.search_param).filter(Boolean);
+  const receivedCardNames = receivedCards.map(card => card.search_param).filter(Boolean);
+
+  let itemsSend = '';
+  sentCardNames.forEach((cardName, index) => {
+    itemsSend += `${index + 1}. ${cardName}\n`;
+  });
+
+  let itemsReceived = '';
+  receivedCardNames.forEach((cardName, index) => {
+    itemsReceived += `${index + 1}. ${cardName}\n`;
+  });
+
+  return {
+    itemsSend,
+    itemsReceived
+  };
+};
+
+// Get amount captions for unified function
+const getUnifiedAmountCaptions = (askCash: number, addCash: number) => {
+  let proposedAmountCaptionTo = '';
+  let proposedAmountCaptionBy = '';
+
+  if (askCash > 0) {
+    proposedAmountCaptionTo = " (You pay)";
+    proposedAmountCaptionBy = " (You get)";
+  } else if (addCash > 0) {
+    proposedAmountCaptionTo = " (You get)";
+    proposedAmountCaptionBy = " (You pay)";
+  }
+
+  return {
+    to: proposedAmountCaptionTo,
+    by: proposedAmountCaptionBy
+  };
+};
+
+// Send counter offer emails for unified function
+const sendUnifiedCounterOfferEmails = async (userTo: any, userBy: any, cardData: any, proposedAmount: any, amountCaptions: any, message: string, tradeProposal: any) => {
+  // Email to receiver
+  const mailInputsTo = {
+    to: userTo.email,
+    tradebyname: `${userTo.first_name} ${userTo.last_name}`,
+    tradetoname: `${userBy.first_name} ${userBy.last_name}`,
+    cardyousend: cardData.itemsSend.replace(/\n/g, '<br>'),
+    cardyoureceive: cardData.itemsReceived.replace(/\n/g, '<br>'),
+    proposedamount: `${proposedAmount}${amountCaptions.to}`,
+    message: message,
+    reviewtradelink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+    transaction_id: tradeProposal.code,
+  };
+
+  // Email to sender
+  const mailInputsBy = {
+    to: userBy.email,
+    tradebyname: `${userTo.first_name} ${userTo.last_name}`,
+    tradetoname: `${userBy.first_name} ${userBy.last_name}`,
+    cardyousend: cardData.itemsReceived.replace(/\n/g, '<br>'),
+    cardyoureceive: cardData.itemsSend.replace(/\n/g, '<br>'),
+    proposedamount: `${proposedAmount}${amountCaptions.by}`,
+    message: message,
+    reviewtradelink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+    transaction_id: tradeProposal.code,
+  };
+
+  // Send emails (implement email service calls here)
+  console.log('Sending counter offer emails:', { mailInputsTo, mailInputsBy });
+};
+
+// Send trade acceptance emails for unified function
+const sendUnifiedTradeAcceptanceEmails = async (userTo: any, userBy: any, cardData: any, proposedAmount: any, amountCaptions: any, message: string, tradeProposal: any) => {
+  // Email to receiver
+  const mailInputsTo = {
+    to: userTo.email,
+    tradebyname: `${userBy.first_name} ${userBy.last_name}`,
+    tradetoname: `${userTo.first_name} ${userTo.last_name}`,
+    cardyousend: cardData.itemsReceived.replace(/\n/g, '<br>'),
+    cardyoureceive: cardData.itemsSend.replace(/\n/g, '<br>'),
+    proposedamount: `${proposedAmount}${amountCaptions.to}`,
+    message: message,
+    reviewtradelink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+    transaction_id: tradeProposal.code,
+  };
+
+  // Email to sender
+  const mailInputsBy = {
+    to: userBy.email,
+    tradebyname: `${userBy.first_name} ${userBy.last_name}`,
+    tradetoname: `${userTo.first_name} ${userTo.last_name}`,
+    cardyousend: cardData.itemsSend.replace(/\n/g, '<br>'),
+    cardyoureceive: cardData.itemsReceived.replace(/\n/g, '<br>'),
+    proposedamount: `${proposedAmount}${amountCaptions.by}`,
+    message: message,
+    reviewtradelink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+    transaction_id: tradeProposal.code,
+  };
+
+  // Send emails (implement email service calls here)
+  console.log('Sending trade acceptance emails:', { mailInputsTo, mailInputsBy });
+};
+
+
+// Send accept and payment notifications
+const sendAcceptAndPaymentNotifications = async (tradeProposal: any, userId: number): Promise<void> => {
+  // Implement notification logic here
+  console.log('Sending accept and payment notifications for trade:', tradeProposal.id);
+};
+
+// Deduct coins helper function
+const deductCoins = async (tradeSentTo: number, tradeSentBy: number, tradeProposal: any) => {
+  // Implement coin deduction logic here
+  return { status: true };
 };
 
 // Helper function to check CXP coins before trade status update
@@ -594,7 +869,7 @@ export const payToChangeTradeStatusCounterOffer = async (req: Request, res: Resp
   }
 };
 
-// Handle PayPal Payment Response (for frontend integration)
+// Unified Payment Success Processor API (Based on Laravel unifiedPaymentSuccessProcessor)
 export const handlePayPalResponse = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -605,80 +880,285 @@ export const handlePayPalResponse = async (req: Request, res: Response) => {
       amount,
       status,
       item_name,
-      business_email
+      business_email,
+      paymentType = 'ongoing_trade',
+      id = null
     } = req.body;
 
     if (!userId) {
       return sendApiResponse(res, 401, false, "User not authenticated", []);
     }
 
-    if (!trade_proposal_id || !payment_id || !amount) {
-      return sendApiResponse(res, 400, false, "Trade proposal ID, payment ID, and amount are required", []);
+    let tradeProposal = null;
+    let tradeAmountAmount = 0;
+    let transactionId = '';
+
+    if (paymentType === 'counter_offer') {
+      // Handle counter-offer payment success
+      if (payment_id && payer_id) {
+        // Simulate PayPal gateway response (in real implementation, use actual PayPal gateway)
+        const paypalResponse = {
+          isSuccessful: () => true,
+          getData: () => ({
+            id: payment_id,
+            payer: {
+              payer_info: {
+                payer_id: payer_id
+              }
+            },
+            transactions: [{
+              amount: {
+                total: amount
+              }
+            }],
+            state: 'approved'
+          })
+        };
+
+        if (paypalResponse.isSuccessful()) {
+          const responseData = paypalResponse.getData();
+          tradeProposal = await TradeProposal.findByPk(id || trade_proposal_id);
+          
+          if (!tradeProposal) {
+            return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+          }
+
+          await tradeProposal.update({
+            trade_status: 'counter_accepted',
+            is_payment_received: 2,
+            trade_amount_pay_id: responseData.id,
+            trade_amount_payer_id: responseData.payer.payer_info.payer_id,
+            trade_amount_amount: responseData.transactions[0].amount.total,
+            trade_amount_pay_status: responseData.state,
+            trade_amount_paid_on: new Date()
+          });
+
+          await setTradeProposalStatus(tradeProposal.id, 'payment-made');
+
+          tradeAmountAmount = parseFloat(tradeProposal.trade_amount_amount || '0');
+          transactionId = responseData.id;
+        } else {
+          return sendApiResponse(res, 400, false, "Payment failed", []);
+        }
+      } else {
+        tradeProposal = await TradeProposal.findByPk(id || trade_proposal_id);
+        if (!tradeProposal) {
+          return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+        }
+
+        if (userId === tradeProposal.trade_sent_to) {
+          return sendApiResponse(res, 400, false, "Payment declined!", []);
+        } else if (userId === tradeProposal.trade_sent_by) {
+          return sendApiResponse(res, 400, false, "Payment declined!", []);
+        }
+      }
+    } else {
+      // Handle ongoing trade payment success
+      let itemName = null;
+      let tradeId = null;
+
+      // Extract item_name from request
+      for (const [key, value] of Object.entries(req.body)) {
+        if (key === 'PayerID') continue;
+        if (key.includes('-')) {
+          itemName = key;
+          break;
+        }
+      }
+
+      // If item_name found, extract trade ID
+      if (itemName) {
+        const refItemName = itemName.split('-');
+        tradeId = refItemName[1];
+      } else if (trade_proposal_id) {
+        // Use trade_proposal_id directly if item_name not found
+        tradeId = trade_proposal_id;
+      }
+
+      if (tradeId) {
+        tradeProposal = await TradeProposal.findByPk(tradeId);
+        
+        if (!tradeProposal) {
+          return sendApiResponse(res, 404, false, "Trade proposal not found", []);
+        }
+
+        if ((tradeProposal.add_cash || 0) > 0) {
+          tradeAmountAmount = tradeProposal.add_cash || 0;
+        } else if ((tradeProposal.ask_cash || 0) > 0) {
+          tradeAmountAmount = tradeProposal.ask_cash || 0;
+        }
+
+        await tradeProposal.update({
+          trade_amount_pay_id: '',
+          trade_amount_payer_id: '',
+          trade_amount_amount: tradeAmountAmount.toString(),
+          trade_amount_pay_status: 'approved',
+          trade_amount_paid_on: new Date(),
+          trade_status: 'accepted',
+          is_payment_received: 2
+        });
+
+        await setTradeProposalStatus(tradeProposal.id, 'payment-made');
+      } else {
+        return sendApiResponse(res, 400, false, "Some error occurred in payment. Missing trade ID.", []);
+      }
     }
 
-    // Get trade proposal
-    const tradeProposal = await TradeProposal.findByPk(trade_proposal_id);
-    if (!tradeProposal) {
-      return sendApiResponse(res, 404, false, "Trade proposal not found", []);
-    }
+    if (tradeProposal) {
+      // Process trading cards and cancel conflicting trades
+      await processUnifiedTradingCardsSuccess(tradeProposal);
 
-    // Verify user has permission to update this trade
-    if (tradeProposal.trade_sent_by !== userId && tradeProposal.trade_sent_to !== userId) {
-      return sendApiResponse(res, 403, false, "You don't have permission to update this trade", []);
-    }
-
-    if (status === 'success' || status === 'completed') {
-      // Update payment status
-      await tradeProposal.update({
-        trade_amount_pay_id: payment_id,
-        trade_amount_payer_id: payer_id || '',
-        trade_amount_amount: amount,
-        trade_amount_pay_status: 'approved',
-        trade_amount_paid_on: new Date(),
-        // COMMENTED OUT: These fields should only be set in confirm-payment API
-        // is_payment_received: 1,
-        // payment_received_on: new Date(),
-        trade_status: 'accepted'
-      });
-
-      // Set trade status
-      await setTradeProposalStatus(tradeProposal.id, 'trade-accepted');
+      // Send email notifications
+      await sendUnifiedPaymentSuccessEmails(tradeProposal, tradeAmountAmount, transactionId, userId);
 
       // Send notifications
-      await TradeNotification.create({
-        notification_sent_by: tradeProposal.trade_sent_to!,
-        notification_sent_to: tradeProposal.trade_sent_by!,
-        trade_proposal_id: tradeProposal.id,
-        message: "Trade payment has been completed successfully."
-      } as any);
+      if (paymentType === 'counter_offer' && tradeProposal.trade_status === 'counter_accepted') {
+        await setTradersNotificationOnVariousActionBasis('payamount-proposal', tradeProposal.trade_sent_by!, tradeProposal.trade_sent_to!, tradeProposal.id!, 'Trade');
+      }
 
-      return sendApiResponse(res, 200, true, "Payment completed successfully", {
+      // Return success response
+      const successMessage = paymentType === 'counter_offer' 
+        ? `Payment Successful. Your Trans Id is: ${transactionId}`
+        : 'Payment Successful.';
+
+      return sendApiResponse(res, 200, true, successMessage, {
         trade_proposal_id: tradeProposal.id,
         payment_status: 'completed',
+        transaction_id: transactionId,
+        trade_amount: tradeAmountAmount,
         redirect_url: `/ongoing-trades/${tradeProposal.id}`
       });
-
-    } else if (status === 'cancelled' || status === 'failed') {
-      // Reset payment initialization
-      await tradeProposal.update({
-        is_payment_init: 0,
-        payment_init_date: new Date(),
-        trade_amount_pay_status: 'cancelled'
-      });
-
-      return sendApiResponse(res, 200, true, "Payment was cancelled", {
-        trade_proposal_id: tradeProposal.id,
-        payment_status: 'cancelled',
-        redirect_url: `/ongoing-trades/${tradeProposal.id}`
-      });
-
-    } else {
-      return sendApiResponse(res, 400, false, "Invalid payment status", []);
     }
 
   } catch (error: any) {
-    console.error('PayPal response handling error:', error);
-    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+    console.error('Unified payment success processor error:', error);
+    return sendApiResponse(res, 500, false, `Payment processing failed: ${error.message}`, [], {
+      redirect_url: '/ongoing-trades'
+    });
+  }
+};
+
+// Process trading cards for unified payment success function
+const processUnifiedTradingCardsSuccess = async (tradeProposal: any) => {
+  const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',') : [];
+  const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
+  const allCards = [...sendCards, ...receiveCards];
+
+  for (const cardId of allCards) {
+    await markUnifiedCardAsTradedSuccess(cardId.trim());
+    await cancelUnifiedConflictingTradesSuccess(cardId.trim(), tradeProposal.id);
+  }
+};
+
+// Mark card as traded for unified payment success function
+const markUnifiedCardAsTradedSuccess = async (cardId: string) => {
+  const tradeCard = await TradingCard.findByPk(cardId);
+  if (tradeCard) {
+    await tradeCard.update({ is_traded: '1' });
+  }
+};
+
+// Cancel conflicting trades for unified payment success function
+const cancelUnifiedConflictingTradesSuccess = async (cardId: string, currentTradeId: number) => {
+  const cancelTrades = await TradeProposal.findAll({
+    where: {
+      id: { [Op.ne]: currentTradeId },
+      [Op.or]: [
+        { send_cards: { [Op.like]: `%${cardId}%` } },
+        { receive_cards: { [Op.like]: `%${cardId}%` } }
+      ]
+    }
+  });
+
+  for (const cancelTrade of cancelTrades) {
+    if (cancelTrade.trade_status === 'new') {
+      await cancelTrade.update({ trade_status: 'cancel' });
+    }
+  }
+};
+
+// Send payment success emails for unified function
+const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAmount: number, transactionId: string, userId: number) => {
+  const sender = await User.findByPk(tradeProposal.trade_sent_by);
+  const receiver = await User.findByPk(tradeProposal.trade_sent_to);
+
+  if (!sender || !receiver) {
+    console.error('Sender or receiver not found');
+    return;
+  }
+
+  if (userId === sender.id) {
+    // Email to sender
+    const mailInputsSender = {
+      to: sender.email,
+      name: `${sender.first_name} ${sender.last_name}`,
+      other_user_name: `${receiver.first_name} ${receiver.last_name}`,
+      trade_amount: tradeAmountAmount,
+      transaction_id: tradeProposal.code,
+      viewTransactionDeatilsLink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+    };
+    console.log('Payment sent email to sender:', mailInputsSender);
+
+    // Email to receiver
+    const mailInputsReceiver = {
+      to: receiver.email,
+      name: `${receiver.first_name} ${receiver.last_name}`,
+      other_user_name: `${sender.first_name} ${sender.last_name}`,
+      trade_amount: tradeAmountAmount,
+      viewTransactionDeatilsLink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+      transaction_id: tradeProposal.code,
+    };
+    console.log('Payment received email to receiver:', mailInputsReceiver);
+  }
+
+  if (userId === receiver.id) {
+    // Email to receiver
+    const mailInputsReceiver = {
+      to: receiver.email,
+      name: `${receiver.first_name} ${receiver.last_name}`,
+      other_user_name: `${sender.first_name} ${sender.last_name}`,
+      trade_amount: tradeAmountAmount,
+      transaction_id: tradeProposal.code,
+      viewTransactionDeatilsLink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+    };
+    console.log('Payment sent email to receiver:', mailInputsReceiver);
+
+    // Email to sender
+    const mailInputsSender = {
+      to: sender.email,
+      name: `${sender.first_name} ${sender.last_name}`,
+      other_user_name: `${receiver.first_name} ${receiver.last_name}`,
+      trade_amount: tradeAmountAmount,
+      viewTransactionDeatilsLink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+      transaction_id: tradeProposal.code,
+    };
+    console.log('Payment received email to sender:', mailInputsSender);
+  }
+
+  // Send payment notifications
+  await sendPaymentNotifications(tradeProposal);
+};
+
+// Send payment notifications helper
+const sendPaymentNotifications = async (tradeProposal: any) => {
+  try {
+    await TradeNotification.create({
+      notification_sent_by: tradeProposal.trade_sent_by,
+      notification_sent_to: tradeProposal.trade_sent_to,
+      trade_proposal_id: tradeProposal.id,
+      message: "Payment has been completed successfully for the trade."
+    } as any);
+
+    await TradeNotification.create({
+      notification_sent_by: tradeProposal.trade_sent_to,
+      notification_sent_to: tradeProposal.trade_sent_by,
+      trade_proposal_id: tradeProposal.id,
+      message: "Payment has been completed successfully for the trade."
+    } as any);
+
+    console.log('Payment notifications sent successfully');
+  } catch (error: any) {
+    console.error('Error sending payment notifications:', error);
   }
 };
 

@@ -31,6 +31,9 @@ import userTradingcardFieldsRoutes from "./routes/user/tradingcardfields.routes.
 import sliderRoutes from "./routes/slider.routes.js";
 import emailRoutes from "./routes/email.routes.js";
 
+// Import middleware
+import { noCache } from "./middlewares/noCache.middleware.js";
+
 
 const app = express();
 
@@ -71,6 +74,9 @@ app.use(express.urlencoded({
 
 // Serve static files from public folder
 app.use('/user', express.static('public/user'));
+
+// Apply no-cache middleware to all API routes
+app.use('/api', noCache);
 
 const PORT = process.env.PORT || 5000;
 

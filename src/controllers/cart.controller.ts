@@ -6284,16 +6284,44 @@ export const getShippingCheckoutBuysell = async (req: Request, res: Response) =>
         phone: shipmentResponse.to_address?.phone || '',
         email: shipmentResponse.to_address?.email || ''
       },
-      package_dimensions: shipParcelDetails ? (
-        typeof shipParcelDetails === 'string' 
+      package_dimensions: (() => {
+        if (!shipParcelDetails) {
+          return {
+            length: 0,
+            width: 0,
+            height: 0,
+            weight: 0
+          };
+        }
+
+        const parcelData = typeof shipParcelDetails === 'string' 
           ? JSON.parse(shipParcelDetails) 
-          : shipParcelDetails
-      ) : {
-        length: 0,
-        width: 0,
-        height: 0,
-        weight: 0
-      },
+          : shipParcelDetails;
+
+        // Format weight display like Laravel frontend
+        const weightDisplay = [];
+        if (parcelData.weight_lbs && parcelData.weight_lbs > 0) {
+          weightDisplay.push(`${parcelData.weight_lbs} lbs`);
+        }
+        if (parcelData.weight_oz && parcelData.weight_oz > 0) {
+          weightDisplay.push(`${parcelData.weight_oz} oz`);
+        }
+
+        let formattedWeight;
+        if (weightDisplay.length > 0) {
+          formattedWeight = weightDisplay.join(' ');
+        } else {
+          // Fallback to total weight with unit
+          formattedWeight = parcelData.weight ? `${parcelData.weight} ${parcelData.parcel_weight_unit || 'oz'}` : '0 oz';
+        }
+
+        return {
+          length: parcelData.length || 0,
+          width: parcelData.width || 0,
+          height: parcelData.height || 0,
+          weight: formattedWeight
+        };
+      })(),
       package_details: (() => {
         const packageContents = [];
         
@@ -6455,6 +6483,8 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
     console.log('buy_sell_id:', buy_sell_id);
     console.log('userId:', userId);
     console.log('Number(buy_sell_id):', Number(buy_sell_id));
+    console.log('Request params:', req.params);
+    console.log('Request body:', req.body);
     console.log('=== END SHIPMENT SEARCH DEBUG ===');
 
     const shipment = await Shipment.findOne({
@@ -6467,6 +6497,8 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
     console.log('=== SHIPMENT RESULT DEBUG ===');
     console.log('Shipment found:', !!shipment);
     console.log('Shipment ID:', shipment?.id);
+    console.log('Shipment buy_sell_id:', shipment?.buy_sell_id);
+    console.log('Shipment user_id:', shipment?.user_id);
     console.log('=== END SHIPMENT RESULT DEBUG ===');
 
     if (!shipment) {
@@ -6501,10 +6533,32 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
       // Parse shipment response
       let shipmentResponse;
       try {
-        shipmentResponse = typeof shipment.shipment_response === 'string' 
-          ? JSON.parse(shipment.shipment_response) 
-          : shipment.shipment_response;
+        console.log('=== SHIPMENT RESPONSE PARSING DEBUG ===');
+        console.log('Raw shipment_response type:', typeof shipment.shipment_response);
+        console.log('Raw shipment_response:', shipment.shipment_response);
+        
+        if (typeof shipment.shipment_response === 'string') {
+          const firstParse = JSON.parse(shipment.shipment_response);
+          console.log('First parse result:', firstParse);
+          console.log('First parse type:', typeof firstParse);
+          
+          if (typeof firstParse === 'string') {
+            shipmentResponse = JSON.parse(firstParse);
+            console.log('Second parse result:', shipmentResponse);
+          } else {
+            shipmentResponse = firstParse;
+          }
+        } else {
+          shipmentResponse = shipment.shipment_response;
+        }
+        
+        console.log('Final shipmentResponse:', shipmentResponse);
+        console.log('EasyPost shipment ID:', shipmentResponse?.id);
+        console.log('=== END SHIPMENT RESPONSE PARSING DEBUG ===');
       } catch (parseError) {
+        console.log('=== PARSE ERROR DEBUG ===');
+        console.log('Parse error:', parseError);
+        console.log('=== END PARSE ERROR DEBUG ===');
         return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
       }
 
@@ -6570,6 +6624,9 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
 
             // Set trade status
             await setTradeProposalStatus(Number(buy_sell_id), 'shipment-completed');
+
+            // Set buy offer status (equivalent to HelperTradeAndOfferStatus::___setStatus('shipment-completed', 'offer', $buy_sell_id))
+            await setTradeAndOfferStatus('shipment-completed', 'offer', Number(buy_sell_id));
 
             // Get other user for notifications
             const otherUserId = buySellCard.buyer === userId ? buySellCard.seller : buySellCard.buyer;
@@ -6655,6 +6712,421 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
 
   } catch (error: any) {
     console.error('Shipment cost payment success error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Receive shipment API based on Laravel isReceiveShipment function
+export const receiveShipment = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { id } = req.params;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!id || isNaN(Number(id))) {
+      return sendApiResponse(res, 400, false, "Valid buy sell ID is required", []);
+    }
+
+    const buySellId = Number(id);
+
+    // Get buy sell card
+    const buySellCard = await BuySellCard.findByPk(buySellId);
+    if (!buySellCard) {
+      return sendApiResponse(res, 404, false, "Buy sell record not found", []);
+    }
+
+    // Verify user is the buyer
+    if (buySellCard.buyer !== userId) {
+      return sendApiResponse(res, 403, false, "Unauthorized access", []);
+    }
+
+    // Update buy sell card
+    await buySellCard.update({
+      is_received: 1,
+      buying_status: 'delivered',
+      received_on: new Date()
+    });
+
+    // Update trading card(s) based on main_card or buy_offer_products
+    if (buySellCard.main_card && buySellCard.main_card > 0) {
+      // Single card case
+      const tradingCard = await TradingCard.findByPk(buySellCard.main_card);
+      if (tradingCard) {
+        await tradingCard.update({
+          is_traded: '0',
+          trading_card_status: '0',
+          previous_owner_id: buySellCard.seller,
+          trader_id: buySellCard.buyer,
+          seller_notes: '',
+          shipping_details: ''
+        });
+      }
+    } else {
+      // Multiple cards case
+      const buyOfferProducts = await BuyOfferProduct.findAll({
+        where: { buy_sell_id: buySellId },
+        attributes: ['main_card']
+      });
+
+      if (buyOfferProducts.length > 0) {
+        const cardIds = buyOfferProducts.map(product => product.main_card).filter((id): id is number => id !== null && id !== undefined);
+        
+        if (cardIds.length > 0) {
+          await TradingCard.update({
+            is_traded: '0',
+            trading_card_status: '0',
+            previous_owner_id: buySellCard.seller,
+            trader_id: buySellCard.buyer,
+            seller_notes: '',
+            shipping_details: ''
+          }, {
+            where: { id: { [Op.in]: cardIds } }
+          });
+        }
+      }
+    }
+
+    // Update shipment status
+    const shipment = await Shipment.findOne({
+      where: { buy_sell_id: buySellId }
+    });
+
+    if (shipment) {
+      await shipment.update({
+        shipment_status: 'Delivered'
+      });
+    }
+
+    // Set trade status
+    await setTradeProposalStatus(buySellId, 'product-received');
+
+    // Set buy offer status (equivalent to HelperTradeAndOfferStatus::___setStatus('product-received', 'offer', $request->buy_sell_id))
+    await setTradeAndOfferStatus('product-received', 'offer', buySellId);
+
+    // Send notifications
+    if (buySellCard.seller && buySellCard.buyer) {
+      // Card shipped confirmed notification
+      await setTradersNotificationOnVariousActionBasis(
+        'card-shipped-confirmed',
+        buySellCard.buyer,
+        buySellCard.seller,
+        buySellCard.id,
+        'Offer'
+      );
+
+      // Give review to seller notification
+      await setTradersNotificationOnVariousActionBasis(
+        'give-review-to-seller',
+        buySellCard.seller,
+        buySellCard.buyer,
+        buySellCard.id,
+        'Offer'
+      );
+    }
+
+    // Send confirmation emails
+    await sendShipmentConfirmationEmailsForBuySell(buySellId);
+
+    const responseData = {
+      buy_sell_id: buySellId,
+      is_received: 1,
+      buying_status: 'delivered',
+      received_on: new Date(),
+      shipment_status: 'Delivered',
+      message: "Shipment Successfully Received"
+    };
+
+    return sendApiResponse(res, 200, true, "Shipment Successfully Received", [responseData]);
+
+  } catch (error: any) {
+    console.error('Receive shipment error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Helper function to send shipment confirmation emails
+const sendShipmentConfirmationEmailsForBuySell = async (buySellId: number) => {
+  try {
+    const buySellCard = await BuySellCard.findByPk(buySellId);
+    if (!buySellCard) return;
+
+    const buyer = await User.findByPk(buySellCard.buyer);
+    const seller = await User.findByPk(buySellCard.seller);
+    
+    if (!buyer || !seller) return;
+
+    // Get card names
+    let cardName = '';
+    if (buySellCard.main_card && buySellCard.main_card > 0) {
+      const tradingCard = await TradingCard.findByPk(buySellCard.main_card);
+      if (tradingCard?.search_param) {
+        cardName = `1. ${tradingCard.search_param}`;
+      }
+    } else {
+      const buyOfferProducts = await BuyOfferProduct.findAll({
+        where: { buy_sell_id: buySellId },
+        include: [{
+          model: TradingCard,
+          as: 'product',
+          attributes: ['search_param']
+        }]
+      });
+
+      if (buyOfferProducts.length > 0) {
+        const cardNamesArray = buyOfferProducts.map((item: any, index: number) => {
+          return item.product?.search_param ? `${index + 1}. ${item.product.search_param}` : null;
+        }).filter(Boolean);
+        cardName = cardNamesArray.join('<br/>');
+      }
+    }
+
+    const transactionListUrl = `${process.env.FRONTEND_URL}/bought-and-sold-products?id=${buySellId}`;
+
+    // Email to seller
+    const sellerMailInputs = {
+      to: seller.email,
+      tradebyname: `${buyer.first_name} ${buyer.last_name}`.trim(),
+      tradetoname: `${seller.first_name} ${seller.last_name}`.trim(),
+      cardyousend: cardName,
+      proposedamount: buySellCard.total_amount,
+      transaction_id: buySellCard.code,
+      view_sale_details_link: transactionListUrl
+    };
+
+    // Email to buyer
+    const buyerMailInputs = {
+      to: buyer.email,
+      name: `${buyer.first_name} ${buyer.last_name}`.trim(),
+      other_user_name: `${seller.first_name} ${seller.last_name}`.trim(),
+      transaction_id: buySellCard.code,
+      leavefeedbacklink: transactionListUrl
+    };
+
+    // Note: Email sending would be implemented based on your email service
+    console.log('Shipment confirmation emails prepared:', {
+      seller: sellerMailInputs,
+      buyer: buyerMailInputs
+    });
+
+  } catch (error: any) {
+    console.error('Error sending shipment confirmation emails:', error);
+  }
+};
+
+// Shipment insure API based on Laravel insureYourShipment function
+export const insureShipment = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { shipment_id } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!shipment_id || isNaN(Number(shipment_id))) {
+      return sendApiResponse(res, 400, false, "Valid shipment ID is required", []);
+    }
+
+    // Get shipment
+    const shipment = await Shipment.findOne({
+      where: { 
+        id: Number(shipment_id),
+        user_id: userId 
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Shipping details not available", []);
+    }
+
+    // Parse shipment response
+    let shipmentResponse;
+    try {
+      if (typeof shipment.shipment_response === 'string') {
+        shipmentResponse = JSON.parse(shipment.shipment_response);
+      } else {
+        shipmentResponse = shipment.shipment_response;
+      }
+    } catch (parseError) {
+      return sendApiResponse(res, 400, false, "Shipping details not available", []);
+    }
+
+    if (!shipmentResponse?.id) {
+      return sendApiResponse(res, 400, false, "Shipping details not available", []);
+    }
+
+    const shipId = shipmentResponse.id;
+    const rateIds = shipmentResponse.rates?.map((rate: any) => rate.id) || [];
+    const rateIndex = rateIds.indexOf(shipment.selected_rate);
+    
+    if (rateIndex === -1) {
+      return sendApiResponse(res, 400, false, "Selected rate not found", []);
+    }
+
+    const rateData = shipmentResponse.rates[rateIndex];
+
+    // Retrieve shipment from EasyPost to get fees
+    let insuranceFee = null;
+    let isInsured = false;
+
+    try {
+      const apiKey = process.env.EASYPOST_API_KEY;
+      if (!apiKey) {
+        return sendApiResponse(res, 500, false, "EasyPost API key not configured", []);
+      }
+
+      const response = await fetch(`https://api.easypost.com/v2/shipments/${shipId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const retrieveData = await response.json();
+        
+        // Check for insurance fee in fees array
+        if (retrieveData.fees && retrieveData.fees.length > 0) {
+          const insuranceFeeData = retrieveData.fees.find((fee: any) => fee.type === 'InsuranceFee');
+          if (insuranceFeeData) {
+            insuranceFee = parseFloat(insuranceFeeData.amount);
+            isInsured = true;
+            
+            // Update shipment as insured
+            await shipment.update({ is_insured: 1 });
+          }
+        }
+      }
+    } catch (apiError) {
+      console.error('EasyPost API error:', apiError);
+    }
+
+    // If no insurance fee from EasyPost, calculate manually
+    if (!insuranceFee && shipment.insurance) {
+      const insuranceAmount = parseFloat(shipment.insurance.toString());
+      if (insuranceAmount > 0) {
+        insuranceFee = insuranceAmount * 0.01; // 1% of insured amount
+        isInsured = false;
+      }
+    }
+
+    if (!insuranceFee) {
+      return sendApiResponse(res, 400, false, "Insured amount not available", []);
+    }
+
+    const insuranceAmount = shipment.insurance ? parseFloat(shipment.insurance.toString()) : 0;
+    const responseData = {
+      insured_amount: `$${insuranceAmount.toFixed(2)}`,
+      insurance_fee: `$${insuranceFee.toFixed(2)}`,
+      is_insured: isInsured
+    };
+
+    return sendApiResponse(res, 200, true, "", [responseData]);
+
+  } catch (error: any) {
+    console.error('Insure shipment error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Get and update shipment status API based on Laravel GetAndUpdateShipmentStatus function
+export const getAndUpdateShipmentStatus = async (req: Request, res: Response) => {
+  try {
+    const { tracking_id } = req.body;
+
+    if (!tracking_id) {
+      return sendApiResponse(res, 400, false, "Tracking ID is required", []);
+    }
+
+    const apiKey = process.env.EASYPOST_API_KEY;
+    if (!apiKey) {
+      return sendApiResponse(res, 500, false, "EasyPost API key not configured", []);
+    }
+
+    // Use test tracking ID if in test mode
+    const apiMode = process.env.EASYPOST_MODE;
+    const finalTrackingId = apiMode === 'test' ? 'EZ2000000002' : tracking_id;
+
+    // Create tracker in EasyPost
+    const response = await fetch('https://api.easypost.com/v2/trackers', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tracker: {
+          tracking_code: finalTrackingId,
+          carrier: 'USPS'
+        }
+      })
+    });
+
+    if (response.status === 200 || response.status === 201) {
+      const data = await response.json();
+
+      // Map EasyPost status to our status
+      let shipmentStatus = '';
+      switch (data.status) {
+        case 'pre_transit':
+          shipmentStatus = 'Pre-Transit';
+          break;
+        case 'in_transit':
+          shipmentStatus = 'In Transit';
+          break;
+        case 'out_of_delivery':
+          shipmentStatus = 'Out for Delivery';
+          break;
+        case 'delivered':
+          shipmentStatus = 'Delivered';
+          break;
+        default:
+          shipmentStatus = data.status || 'Unknown';
+      }
+
+      // Format estimated delivery date
+      let estimatedDeliveryDate = null;
+      if (data.est_delivery_date) {
+        estimatedDeliveryDate = new Date(data.est_delivery_date).toISOString();
+      }
+
+      // Update shipment in database
+      const updateData: any = {
+        shipment_status: shipmentStatus,
+        estimated_delivery_date: estimatedDeliveryDate
+      };
+
+      // Mark as completed if delivered
+      if (data.status === 'delivered') {
+        updateData.is_completed = 1;
+      }
+
+      await Shipment.update(updateData, {
+        where: { tracking_id: tracking_id }
+      });
+
+      const responseData = {
+        tracking_id: tracking_id,
+        shipment_status: shipmentStatus,
+        estimated_delivery_date: estimatedDeliveryDate,
+        is_completed: data.status === 'delivered',
+        easy_post_status: data.status,
+        carrier: data.carrier || 'USPS'
+      };
+
+      return sendApiResponse(res, 200, true, "Shipment status updated successfully", [responseData]);
+
+    } else {
+      const errorData = await response.json();
+      return sendApiResponse(res, 400, false, "Failed to track shipment", [errorData]);
+    }
+
+  } catch (error: any) {
+    console.error('Get and update shipment status error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };

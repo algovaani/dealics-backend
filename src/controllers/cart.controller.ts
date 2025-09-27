@@ -1382,14 +1382,7 @@ export const feedPayPalPaymentReturn = async (req: Request, res: Response) => {
   try {
     const { refId, type } = req.params; // type can be 'thanks' or 'cancel'
 
-    // Set cache headers to prevent caching for payment processing
-    res.set({
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      'ETag': `"${refId}-${type}-${Date.now()}"`,
-      'Last-Modified': new Date().toUTCString()
-    });
+    // Cache headers are now handled globally by noCache middleware
 
     // Check for conditional requests (If-None-Match, If-Modified-Since)
     const ifNoneMatch = req.headers['if-none-match'];
@@ -5774,14 +5767,7 @@ export const saveParcelBuysell = async (req: Request, res: Response) => {
 // Get shipment carrier buysell API based on Laravel shipping_carrier_buySell function
 export const getShipmentCarrierBuysell = async (req: Request, res: Response) => {
   try {
-    // Set cache headers to prevent caching
-    res.set({
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      'ETag': `"shipment-carrier-${Date.now()}"`,
-      'Last-Modified': new Date().toUTCString()
-    });
+    // Cache headers are now handled globally by noCache middleware
 
     const userId = (req as any).user?.id;
     const { buy_id } = req.query;

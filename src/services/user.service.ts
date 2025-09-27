@@ -1818,12 +1818,12 @@ export class UserService {
           {
             model: Address,
             as: 'toAddress',
-            attributes: ['id', 'name', 'phone', 'email', 'street1', 'street2', 'city', 'state', 'country', 'zip']
+            attributes: ['id', 'user_id', 'name', 'phone', 'email', 'street1', 'street2', 'city', 'state', 'country', 'zip']
           },
           {
             model: Address,
             as: 'fromAddress',
-            attributes: ['id', 'name', 'phone', 'email', 'street1', 'street2', 'city', 'state', 'country', 'zip']
+            attributes: ['id', 'user_id', 'name', 'phone', 'email', 'street1', 'street2', 'city', 'state', 'country', 'zip']
           }
         ],
         order: [['updated_at', 'DESC']],
@@ -1956,6 +1956,7 @@ export class UserService {
         }
 
         return {
+          id: shipmentData.id,
           parcel: shipmentData.parcel,
           parcel_weight_unit: shipmentData.parcel_weight_unit,
           postage_label: shipmentData.postage_label,

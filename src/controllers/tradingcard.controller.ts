@@ -173,6 +173,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
         trading_card_slug: card.trading_card_slug,
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
+        trade_value: card.trading_card_estimated_value,
         search_param: card.search_param || null,
         sport_name: card.sport_name,
         sport_icon: card.sport_icon,

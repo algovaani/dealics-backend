@@ -178,6 +178,7 @@ export class TradingCardService {
         tc.trading_card_slug,
         tc.trading_card_recent_trade_value,
         tc.trading_card_asking_price,
+        tc.trading_card_estimated_value,
         tc.search_param,
         c.sport_name,
         c.sport_icon,

@@ -6754,7 +6754,7 @@ export const receiveShipment = async (req: Request, res: Response) => {
     if (buySellCard.main_card && buySellCard.main_card > 0) {
       // Single card case
       const tradingCard = await TradingCard.findByPk(buySellCard.main_card);
-      if (tradingCard) {
+      if (tradingCard && buySellCard.seller && buySellCard.buyer) {
         await tradingCard.update({
           is_traded: '0',
           trading_card_status: '0',
@@ -6771,7 +6771,7 @@ export const receiveShipment = async (req: Request, res: Response) => {
         attributes: ['main_card']
       });
 
-      if (buyOfferProducts.length > 0) {
+      if (buyOfferProducts.length > 0 && buySellCard.seller && buySellCard.buyer) {
         const cardIds = buyOfferProducts.map(product => product.main_card).filter((id): id is number => id !== null && id !== undefined);
         
         if (cardIds.length > 0) {

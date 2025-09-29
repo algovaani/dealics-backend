@@ -126,6 +126,20 @@ export class AuthService {
         payer_country_code: "N/A"
       } as any, { transaction: t });
 
+      // Send welcome email after successful registration
+      try {
+        const { EmailHelperService } = await import("../services/emailHelper.service.js");
+        await EmailHelperService.sendWelcomeOnboarding(
+          user.email || '',
+          user.first_name || '',
+          user.last_name || ''
+        );
+        console.log('✅ Welcome email sent successfully');
+      } catch (emailError) {
+        console.error('❌ Failed to send welcome email:', emailError);
+        // Don't fail registration if email fails
+      }
+
       return user;
     });
   }

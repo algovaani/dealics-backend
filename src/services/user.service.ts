@@ -3672,7 +3672,7 @@ export class UserService {
 
       // Handle filter parameter (partially_completed vs ongoing) - Laravel logic
       if (filters.filter === 'partially_completed') {
-        // Show trades where user has confirmed but other party hasn't
+        // Show trades where exactly one party has confirmed (either receiver OR sender, but not both)
         whereClause[Op.and] = [
           {
             [Op.or]: [
@@ -3683,12 +3683,16 @@ export class UserService {
           {
             [Op.or]: [
               {
-                trade_sent_by: userId,
-                trade_sender_confrimation: 1
+                [Op.and]: [
+                  { receiver_confirmation: 1 },
+                  { trade_sender_confrimation: { [Op.ne]: 1 } }
+                ]
               },
               {
-                trade_sent_to: userId,
-                receiver_confirmation: 1
+                [Op.and]: [
+                  { receiver_confirmation: { [Op.ne]: 1 } },
+                  { trade_sender_confrimation: 1 }
+                ]
               }
             ]
           }
@@ -3696,7 +3700,8 @@ export class UserService {
         delete whereClause[Op.or]; // Remove the base OR condition
         filterData.filter = 'partially_completed';
       } else {
-        // Default: show ongoing trades where user hasn't confirmed
+        // Default: show ongoing trades where neither party has confirmed
+        // Exclude trades where either receiver_confirmation OR trade_sender_confrimation is 1
         whereClause[Op.and] = [
           {
             [Op.or]: [
@@ -3705,15 +3710,9 @@ export class UserService {
             ]
           },
           {
-            [Op.or]: [
-              {
-                trade_sent_by: userId,
-                trade_sender_confrimation: { [Op.ne]: 1 }
-              },
-              {
-                trade_sent_to: userId,
-                receiver_confirmation: { [Op.ne]: 1 }
-              }
+            [Op.and]: [
+              { receiver_confirmation: { [Op.ne]: 1 } },
+              { trade_sender_confrimation: { [Op.ne]: 1 } }
             ]
           }
         ];
@@ -5411,7 +5410,7 @@ export class UserService {
     }
   }
 
-  // Confirm payment for a trade proposal (Laravel reference implementation)
+  // Confirm payment for a trade proposal (Enhanced Laravel reference implementation)
   static async confirmPayment(userId: number, tradeProposalId: number) {
     try {
       // Validate inputs
@@ -5464,7 +5463,7 @@ export class UserService {
         };
       }
 
-      // Update trade proposal with payment confirmation
+      // Update trade proposal with payment confirmation (Laravel: is_payment_received = '1', payment_received_on = now())
       await TradeProposal.update(
         {
           is_payment_received: 1,
@@ -5475,7 +5474,17 @@ export class UserService {
         }
       );
 
-      // Update trade proposal status to 'payment-confirmed'
+      // Set trade status using helper function (Laravel: HelperTradeAndOfferStatus::___setStatus('payment-confirmed', 'trade', $trade_proposal->id))
+      console.log('🔄 Setting trade status to payment-confirmed for trade proposal:', tradeProposalId);
+      const { setTradeProposalStatus } = await import('../services/tradeStatus.service.js');
+      const statusResult = await setTradeProposalStatus(tradeProposalId, 'payment-confirmed');
+      console.log('📊 Status update result:', statusResult);
+      
+      if (!statusResult.success) {
+        console.error('❌ Failed to update trade status:', statusResult.error);
+        
+        // Fallback: Direct status update
+        console.log('🔄 Attempting direct status update...');
       const paymentConfirmedStatus = await TradeProposalStatus.findOne({
         where: { alias: 'payment-confirmed' }
       });
@@ -5485,9 +5494,15 @@ export class UserService {
           { trade_proposal_status_id: paymentConfirmedStatus.id },
           { where: { id: tradeProposalId } }
         );
+          console.log('✅ Direct status update completed');
+        } else {
+          console.error('❌ Payment confirmed status not found in database');
+        }
+      } else {
+        console.log('✅ Trade status updated successfully to payment-confirmed');
       }
 
-      // Get sender and receiver details
+      // Get sender and receiver details (Laravel: $receiver = User::find($trade_proposal->trade_sent_to); $sender = User::find($trade_proposal->trade_sent_by))
       const sender = await User.findByPk(tradeData.trade_sent_by, {
         attributes: ['id', 'first_name', 'last_name', 'email']
       });
@@ -5495,7 +5510,9 @@ export class UserService {
         attributes: ['id', 'first_name', 'last_name', 'email']
       });
 
-      // Get trading card details for notifications
+      const tradeAmountAmount = tradeData.trade_amount_amount;
+
+      // Get trading cards details (Laravel: TradingCard::whereIn('id', [$trade_proposal->send_cards])->get(['search_param']))
       const sendCardsIds = tradeData.send_cards ? tradeData.send_cards.split(',').map(id => parseInt(id.trim())) : [];
       const receiveCardsIds = tradeData.receive_cards ? tradeData.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
 
@@ -5509,17 +5526,82 @@ export class UserService {
         attributes: ['search_param']
       });
 
-      // Create notification for payment confirmation
-      const notificationMessage = `Payment confirmed for trade #${tradeData.code}`;
-      
-      await TradeNotification.create({
-        notification_sent_by: userId,
-        notification_sent_to: userId === tradeData.trade_sent_by ? tradeData.trade_sent_to : tradeData.trade_sent_by,
-        message: notificationMessage,
-        trade_proposal_id: tradeProposalId,
-        created_at: new Date(),
-        updated_at: new Date()
-      } as any);
+      // Format card lists (Laravel: foreach($sentCards as $card) { $itemsSend[] = $card->search_param; })
+      const itemsSend = sendCards.map(card => card.search_param).filter(Boolean);
+      const itemsReceived = receiveCards.map(card => card.search_param).filter(Boolean);
+
+      // Create numbered lists (Laravel: foreach ($itemsSend as $index => $cardName) { $itemsSendList .= ($index + 1) . '. ' . $cardName . "\n"; })
+      const itemsSendList = itemsSend.map((cardName, index) => `${index + 1}. ${cardName}`).join('\n');
+      const itemsReceivedList = itemsReceived.map((cardName, index) => `${index + 1}. ${cardName}`).join('\n');
+
+      // Import helper functions
+      const { setTradersNotificationOnVariousActionBasis } = await import('../controllers/cart.controller.js');
+      const { EmailHelperService } = await import('../services/emailHelper.service.js');
+
+      // Handle notifications and emails based on user role (Laravel: if ($trade_proposal->trade_sent_to == auth()->user()->id))
+      if (tradeData.trade_sent_to === userId) {
+        // User is receiver - send notifications and emails
+        const act = 'payment-received';
+        const sentBy = tradeData.trade_sent_to;
+        const sentTo = tradeData.trade_sent_by;
+        
+        // Send notification (Laravel: Helper::__setTradersNotificationOnVariousActionBasis($act, $sent_by, $sent_to, $trade_proposal->id, 'Trade'))
+        if (sentBy && sentTo) {
+          await setTradersNotificationOnVariousActionBasis(act, sentBy, sentTo, tradeProposalId, 'Trade');
+        }
+
+        // Send email to sender (Laravel: HelperEmailSender::executeMailSender('payment-confirmed-to-sender', $mailInputs))
+        if (sender) {
+          const mailInputs = {
+            to: sender.email,
+            name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
+            other_user_name: EmailHelperService.setName(receiver?.first_name || '', receiver?.last_name || ''),
+            cardyousend: itemsSendList.replace(/\n/g, '<br>'),
+            cardyoureceive: itemsReceivedList.replace(/\n/g, '<br>'),
+            proposedamount: tradeAmountAmount,
+            viewTransactionDeatilsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/ongoing-trades/${tradeProposalId}`,
+            transaction_id: tradeData.code
+          };
+          
+          try {
+            await EmailHelperService.executeMailSender('payment-confirmed-to-sender', mailInputs);
+            console.log('✅ Payment confirmed email sent to sender');
+          } catch (emailError) {
+            console.error('❌ Failed to send payment confirmed email to sender:', emailError);
+          }
+        }
+      } else if (tradeData.trade_sent_by === userId) {
+        // User is sender - send notifications and emails
+        const act = 'payment-received';
+        const sentBy = tradeData.trade_sent_by;
+        const sentTo = tradeData.trade_sent_to;
+        
+        // Send notification (Laravel: Helper::__setTradersNotificationOnVariousActionBasis($act, $sent_by, $sent_to, $trade_proposal->id, 'Trade'))
+        if (sentBy && sentTo) {
+          await setTradersNotificationOnVariousActionBasis(act, sentBy, sentTo, tradeProposalId, 'Trade');
+        }
+
+        // Send email to receiver (Laravel: HelperEmailSender::executeMailSender('payment-received-confirmed-by-sender', $mailInputs))
+        if (receiver) {
+          const mailInputs = {
+            to: receiver.email,
+            name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
+            other_user_name: EmailHelperService.setName(sender?.first_name || '', sender?.last_name || ''),
+            cardyousend: itemsReceivedList.replace(/\n/g, '<br>'),
+            cardyoureceive: itemsSendList.replace(/\n/g, '<br>'),
+            proposedamount: tradeAmountAmount,
+            viewTransactionDeatilsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/ongoing-trades/${tradeProposalId}`,
+            transaction_id: tradeData.code
+          };
+          
+          try {
+            await EmailHelperService.executeMailSender('payment-received-confirmed-by-sender', mailInputs);
+            console.log('✅ Payment received confirmed email sent to receiver');
+          } catch (emailError) {
+            console.error('❌ Failed to send payment received confirmed email to receiver:', emailError);
+          }
+        }
+      }
 
       return {
         success: true,
@@ -5539,9 +5621,9 @@ export class UserService {
             name: `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim(),
             email: receiver.email
           } : null,
-          send_cards: sendCards.map(card => card.search_param).filter(Boolean),
-          receive_cards: receiveCards.map(card => card.search_param).filter(Boolean),
-          trade_amount: tradeData.trade_amount_amount
+          send_cards: itemsSend,
+          receive_cards: itemsReceived,
+          trade_amount: tradeAmountAmount
         }
       };
 

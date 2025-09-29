@@ -4385,56 +4385,66 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
       ? weightDisplay.join(' ') 
       : `${shipParcelDetails.weight} ${shipment.parcel_weight_unit}`;
 
-    // Format package details with debugging
+    // Build package details from trade cards being sent by the current user
     console.log('Postage label data:', {
       has_object: !!postageLabel.object,
       object_type: typeof postageLabel.object,
       object_value: postageLabel.object
     });
-    
-    let packageDetails = [];
-    if (postageLabel.object && typeof postageLabel.object === 'string' && postageLabel.object.trim() !== '') {
-      packageDetails = postageLabel.object.split(' | ').filter((item: string) => item.trim() !== '');
-    } else {
-      // Fallback: Try to get package details from other sources
-      console.log('Postage label object is empty, trying fallback sources...');
-      
-      // Check if there are any other fields in postageLabel that might contain package info
+
+    let packageDetails = [] as string[];
+
+    try {
+      // Fetch trade proposal to determine which cards the current user is sending
+      const tradeProposal = await TradeProposal.findByPk(tradeId);
+      if (tradeProposal) {
+        // Determine IDs of cards the current user is sending in this shipment
+        let sendingCardIds: number[] = [];
+        if (tradeProposal.trade_sent_to === userId) {
+          // Current user is receiver; they send the cards listed in receive_cards
+          sendingCardIds = tradeProposal.receive_cards
+            ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())).filter((n: number) => !isNaN(n))
+            : [];
+        } else if (tradeProposal.trade_sent_by === userId) {
+          // Current user is sender; they send the cards listed in send_cards
+          sendingCardIds = tradeProposal.send_cards
+            ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())).filter((n: number) => !isNaN(n))
+            : [];
+        }
+
+        if (sendingCardIds.length > 0) {
+          const sendingCards = await TradingCard.findAll({
+            where: { id: { [Op.in]: sendingCardIds } },
+            attributes: ['id', 'search_param']
+          });
+          packageDetails = sendingCards
+            .map(card => (card.search_param || '').trim())
+            .filter(name => name.length > 0);
+        }
+      }
+    } catch (pkgErr) {
+      console.error('Error building package details from trade cards:', pkgErr);
+    }
+
+    // Fallbacks if no card names were found
+    if (packageDetails.length === 0) {
       if (postageLabel && typeof postageLabel === 'object') {
-        console.log('Available postage label fields:', Object.keys(postageLabel));
-        
-        // Try different possible field names
-        const possibleFields = ['description', 'contents', 'items', 'package_contents', 'label_object'];
+        const possibleFields = ['object', 'description', 'contents', 'items', 'package_contents', 'label_object'];
         for (const field of possibleFields) {
-          if (postageLabel[field] && typeof postageLabel[field] === 'string' && postageLabel[field].trim() !== '') {
-            packageDetails = postageLabel[field].split(' | ').filter((item: string) => item.trim() !== '');
-            console.log(`Found package details in field '${field}':`, packageDetails);
+          const val = postageLabel[field];
+          if (typeof val === 'string' && val.trim() !== '') {
+            packageDetails = val.split(' | ').filter((item: string) => item.trim() !== '');
             break;
           }
         }
       }
-      
-      // If still empty, create a default package detail
-      if (packageDetails.length === 0) {
-        packageDetails = ['Package contents not specified'];
-        console.log('Using default package detail');
-      }
     }
-    
-    console.log('Final package details:', packageDetails);
 
+    if (packageDetails.length === 0) {
+      packageDetails = ['Package contents not specified'];
+    }
     const responseData = {
       sender_address: {
-        name: shipmentResponse.to_address?.name || '',
-        street1: shipmentResponse.to_address?.street1 || '',
-        street2: shipmentResponse.to_address?.street2 || '',
-        city: shipmentResponse.to_address?.city || '',
-        state: shipmentResponse.to_address?.state || '',
-        zip: shipmentResponse.to_address?.zip || '',
-        phone: shipmentResponse.to_address?.phone || '',
-        email: shipmentResponse.to_address?.email || ''
-      },
-      receiver_address: {
         name: shipmentResponse.from_address?.name || '',
         street1: shipmentResponse.from_address?.street1 || '',
         street2: shipmentResponse.from_address?.street2 || '',
@@ -4443,6 +4453,16 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
         zip: shipmentResponse.from_address?.zip || '',
         phone: shipmentResponse.from_address?.phone || '',
         email: shipmentResponse.from_address?.email || ''
+      },
+      receiver_address: {
+        name: shipmentResponse.to_address?.name || '',
+        street1: shipmentResponse.to_address?.street1 || '',
+        street2: shipmentResponse.to_address?.street2 || '',
+        city: shipmentResponse.to_address?.city || '',
+        state: shipmentResponse.to_address?.state || '',
+        zip: shipmentResponse.to_address?.zip || '',
+        phone: shipmentResponse.to_address?.phone || '',
+        email: shipmentResponse.to_address?.email || ''
       },
       package_dimensions: {
         length: shipParcelDetails.length || 0,
@@ -5057,17 +5077,34 @@ export const shippingTradeSuccess = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "Trade proposal not found", []);
     }
 
-    // Update trade proposal based on user role
+    // Update trade proposal based on user role and set status
     if (tradeProposal.trade_sent_by === userId) {
+      console.log(`🚚 User ${userId} is sender, updating shipped_by_trade_sent_by to 1`);
       await tradeProposal.update({
         shipped_by_trade_sent_by: 1,
         shipped_on_by_trade_sent_by: new Date()
       });
+      
+      // Set status using HelperTradeAndOfferStatus equivalent
+      console.log(`🔄 Setting status to 'shipped-by-sender' for trade proposal ${tradeProposal.id}`);
+      const statusResult = await setTradeProposalStatus(tradeProposal.id, 'shipped-by-sender');
+      console.log(`📊 Status update result for shipped-by-sender:`, statusResult);
     } else if (tradeProposal.trade_sent_to === userId) {
+      console.log(`📦 User ${userId} is receiver, updating shipped_by_trade_sent_to to 1`);
       await tradeProposal.update({
         shipped_by_trade_sent_to: 1,
         shipped_on_by_trade_sent_to: new Date()
       });
+      
+      // Set status using HelperTradeAndOfferStatus equivalent
+      console.log(`🔄 Setting status to 'shipped-by-receiver' for trade proposal ${tradeProposal.id}`);
+      const statusResult = await setTradeProposalStatus(tradeProposal.id, 'shipped-by-receiver');
+      console.log(`📊 Status update result for shipped-by-receiver:`, statusResult);
+    }
+
+    // Check if both traders have shipped (Laravel HelperTradeAndOfferStatus logic)
+    if (tradeProposal.shipped_by_trade_sent_by === 1 && tradeProposal.shipped_by_trade_sent_to === 1) {
+      await setTradeProposalStatus(tradeProposal.id, 'both-traders-shipped');
     }
 
     // Get card names for email
@@ -5106,34 +5143,35 @@ export const shippingTradeSuccess = async (req: Request, res: Response) => {
 
         // Email to current user
         const { EmailHelperService } = await import("../services/emailHelper.service.js");
+        const currentUserName = EmailHelperService.setName(currentUser.first_name || '', currentUser.last_name || '');
+        const otherUserName = EmailHelperService.setName(otherUser.first_name || '', otherUser.last_name || '');
+
+        
         await EmailHelperService.executeMailSender('product-shipped-by-you', {
           to: currentUser.email,
-          name: `${currentUser.first_name} ${currentUser.last_name}`,
-          other_user_name: `${otherUser.first_name} ${otherUser.last_name}`,
+          name: currentUserName,
+          other_user_name: otherUserName,
           ...mailInputs
         });
 
         // Email to other user
         await EmailHelperService.executeMailSender('product-shipped-by-other', {
           to: otherUser.email,
-          name: `${otherUser.first_name} ${otherUser.last_name}`,
-          other_user_name: `${currentUser.first_name} ${currentUser.last_name}`,
+          name: otherUserName,
+          other_user_name: currentUserName,
           ...mailInputs
         });
       }
     }
 
-    // Create notification
-    const notificationData = {
-      type: 'shipped-proposal',
-      from_user_id: userId,
-      to_user_id: tradeProposal.trade_sent_by === userId ? tradeProposal.trade_sent_to : tradeProposal.trade_sent_by,
-      trade_id: tradeProposal.id,
-      entity_type: 'Trade'
-    };
-
-    // Create notification record (simplified)
-    await TradeNotification.create(notificationData as any);
+    // Create notification using helper function (Laravel equivalent)
+    await setTradersNotificationOnVariousActionBasis(
+      'shipped-proposal',
+      userId,
+      tradeProposal.trade_sent_by === userId ? tradeProposal.trade_sent_to! : tradeProposal.trade_sent_by!,
+      tradeProposal.id,
+      'Trade'
+    );
 
     const responseData = {
       shipment_id: shipment.id,
@@ -5148,6 +5186,26 @@ export const shippingTradeSuccess = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('Shipping trade success error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Debug API to check available trade proposal statuses
+export const getTradeProposalStatuses = async (req: Request, res: Response) => {
+  try {
+    const { TradeProposalStatus } = await import("../models/tradeProposalStatus.model.js");
+    
+    const statuses = await TradeProposalStatus.findAll({
+      attributes: ['id', 'alias', 'name', 'to_sender', 'to_receiver'],
+      where: { status: '1' },
+      order: [['alias', 'ASC']]
+    });
+
+    console.log('📋 Available trade proposal statuses:', statuses.map(s => ({ id: s.id, alias: s.alias, name: s.name })));
+
+    return sendApiResponse(res, 200, true, "Trade proposal statuses retrieved", statuses);
+  } catch (error: any) {
+    console.error('Error getting trade proposal statuses:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };
@@ -6354,12 +6412,12 @@ export const getShippingCheckoutBuysell = async (req: Request, res: Response) =>
         buy_id: Number(buy_id),
         shipment_id: shipment.id,
         selected_rate_id: shipment.selected_rate || rateData.id,
-        buy_sell_card: buySellCard ? {
-          id: buySellCard.id,
-          buyer: buySellCard.buyer,
-          seller: buySellCard.seller,
-          offer_amt_buyer: buySellCard.offer_amt_buyer
-        } : null
+      buy_sell_card: buySellCard ? {
+        id: buySellCard.id,
+        buyer: buySellCard.buyer,
+        seller: buySellCard.seller,
+        offer_amt_buyer: buySellCard.offer_amt_buyer
+      } : null
       }
     };
 
@@ -6427,7 +6485,7 @@ export const makeCheckoutBuysell = async (req: Request, res: Response) => {
     const responseData = {
       buy_id: Number(buy_id),
       shipment_id: shipment.id,
-      selected_rate_id,
+      selected_rate_id, 
       amount: parseFloat(amount),
       currency: process.env.PAYPAL_CURRENCY || 'USD',
       paypal_config: {
@@ -6450,7 +6508,7 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
   try {
     const userId = (req as any).user?.id;
     const { buy_sell_id } = req.params;
-    const { paymentId, token, PayerID } = req.body;
+    const { paymentId, token, PayerID, cancel } = req.body;
 
     if (!userId) {
       return sendApiResponse(res, 401, false, "User not authenticated", []);
@@ -6460,6 +6518,36 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
       return sendApiResponse(res, 400, false, "Buy sell ID is required", []);
     }
 
+    // Check if this is a cancel request
+    if (cancel === true || cancel === 'true') {
+      // Handle cancel scenario
+    const shipment = await Shipment.findOne({
+      where: {
+          buy_sell_id: Number(buy_sell_id),
+        user_id: userId
+      }
+    });
+
+    if (!shipment) {
+      return sendApiResponse(res, 404, false, "Shipment not found", []);
+    }
+
+      // Update shipment payment status to cancelled (3)
+      await Shipment.update(
+        { shipment_payment_status: 3 },
+        { where: { buy_sell_id: Number(buy_sell_id) } }
+      );
+
+      console.log(`Shipment payment cancelled for buy_sell_id: ${buy_sell_id}`);
+
+      return sendApiResponse(res, 200, true, "Shipment Payment cancelled", [{
+        buy_sell_id: Number(buy_sell_id),
+        shipment_payment_status: 3,
+        message: "Payment has been cancelled successfully"
+      }]);
+    }
+
+    // Handle success scenario
     if (!paymentId || !token || !PayerID) {
       return sendApiResponse(res, 400, false, "Payment parameters (paymentId, token, PayerID) are required", []);
     }
@@ -6658,8 +6746,8 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
               );
             }
 
-            // Prepare response data
-            const responseData = {
+    // Prepare response data
+    const responseData = {
               buy_sell_id: Number(buy_sell_id),
               tracking_id: data.tracking_code,
               shipment_status: 'Pre-Transit',

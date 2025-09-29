@@ -3,7 +3,7 @@ import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getT
 import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
 import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
-import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess, confirmPaymentReceived, completeTradeSender, getShippingAddressDetails, shippingBuysellInitialize, getShippingParcelBuysell, saveParcelBuysell, getShipmentCarrierBuysell, shippingCheckoutBuysell, getShippingCheckoutBuysell, makeCheckoutBuysell, shipmentCostPaymentSuccessForBuySell, receiveShipment, insureShipment, getAndUpdateShipmentStatus } from "../controllers/cart.controller.js";
+import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess, confirmPaymentReceived, completeTradeSender, getShippingAddressDetails, shippingBuysellInitialize, getShippingParcelBuysell, saveParcelBuysell, getShipmentCarrierBuysell, shippingCheckoutBuysell, getShippingCheckoutBuysell, makeCheckoutBuysell, shipmentCostPaymentSuccessForBuySell, receiveShipment, insureShipment, getAndUpdateShipmentStatus, getTradeProposalStatuses } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -221,6 +221,9 @@ router.post("/shipment-insure", userAuth, insureShipment);
 
 // Get and update shipment status route
 router.post("/get-and-update-shipment-status", userAuth, getAndUpdateShipmentStatus);
+
+// Debug API to check available trade proposal statuses
+router.get("/debug-trade-proposal-statuses", userAuth, getTradeProposalStatuses);
 
 // Payment processing routes
 router.post("/pay-to-change-trade-status", userAuth, payToChangeTradeStatus);

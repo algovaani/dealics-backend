@@ -4,6 +4,7 @@ import { TradeProposal } from '../models/tradeProposal.model.js';
 import { User } from '../models/user.model.js';
 import { TradingCard } from '../models/tradingcard.model.js';
 import { TradeNotification } from '../models/tradeNotification.model.js';
+import { CreditDeductionLog } from '../models/creditDeductionLog.model.js';
 import { sendApiResponse } from '../utils/apiResponse.js';
 import { setTradeProposalStatus } from '../services/tradeStatus.service.js';
 import { setTradersNotificationOnVariousActionBasis } from './cart.controller.js';
@@ -30,6 +31,15 @@ export const payToChangeTradeStatus = async (req: Request, res: Response) => {
       });
     }
 
+    console.log(`📋 Current trade proposal status:`, {
+      id: tradeProposal.id,
+      trade_status: tradeProposal.trade_status,
+      trade_proposal_status_id: tradeProposal.trade_proposal_status_id,
+      add_cash: tradeProposal.add_cash,
+      ask_cash: tradeProposal.ask_cash,
+      trade_amount_paid_on: tradeProposal.trade_amount_paid_on
+    });
+
     // Get PayPal business email
     const paypalEmailData = await getUnifiedPayPalEmail(tradeProposal, userId);
     const paypalBusinessEmail = paypalEmailData.email;
@@ -49,13 +59,26 @@ export const payToChangeTradeStatus = async (req: Request, res: Response) => {
     await processUnifiedTradingCards(tradeProposal, modelid);
 
     // Update trade status and send notifications
+    console.log(`🔄 Updating trade status for trade proposal: ${tradeProposal.id}, payment type: ${paymentType}`);
     await updateUnifiedTradeStatus(tradeProposal, paymentType, userId);
+    console.log(`✅ Trade status update completed for trade proposal: ${tradeProposal.id}`);
+    
+    // Verify status update by fetching fresh data
+    const updatedTradeProposal = await TradeProposal.findByPk(tradeProposal.id);
+    console.log(`🔍 Final trade proposal status after update:`, {
+      id: updatedTradeProposal?.id,
+      trade_status: updatedTradeProposal?.trade_status,
+      trade_proposal_status_id: updatedTradeProposal?.trade_proposal_status_id,
+      add_cash: updatedTradeProposal?.add_cash,
+      ask_cash: updatedTradeProposal?.ask_cash,
+      trade_amount_paid_on: updatedTradeProposal?.trade_amount_paid_on
+    });
 
     // Initialize payment
     await tradeProposal.update({
       is_payment_init: 1,
       payment_init_date: new Date(),
-      is_payment_received: 2
+      // is_payment_received: 2
     });
 
     // Submit payment to PayPal
@@ -165,21 +188,42 @@ const handleUnifiedCoinError = (coinStatus: any, tradeProposal: any, res: Respon
 
 // Validate trading cards for unified function
 const validateUnifiedCards = async (tradeProposal: any, res: Response) => {
-  // Commented out is_traded check since trade proposal is already accepted
-  // const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',') : [];
-  // const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
-  // const allCards = [...sendCards, ...receiveCards];
+  console.log(`🔍 Validating trading cards for trade proposal: ${tradeProposal.id}`);
+  
+  const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',') : [];
+  const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
+  const allCards = [...sendCards, ...receiveCards];
 
-  // for (const cardId of allCards) {
-  //   const tradeCard = await TradingCard.findByPk(cardId.trim());
-  //   if (tradeCard && tradeCard.is_traded === '1') {
-  //     const errorMessage = `${tradeCard.search_param} product is in a Pending Trade with another user. Please select a different product to continue.`;
-  //     return sendApiResponse(res, 400, false, errorMessage, [], {
-  //       redirect_url: '/ongoing-trades'
-  //     });
-  //   }
-  // }
+  console.log(`📋 Cards to validate:`, { sendCards, receiveCards, allCards });
 
+  for (const cardId of allCards) {
+    const tradeCard = await TradingCard.findByPk(cardId.trim());
+    console.log(`🔍 Checking card ${cardId}:`, {
+      id: tradeCard?.id,
+      search_param: tradeCard?.search_param,
+      is_traded: tradeCard?.is_traded,
+      trader_id: tradeCard?.trader_id
+    });
+    
+    // Commented out is_traded check as requested
+    // if (tradeCard && tradeCard.is_traded === '1') {
+    //   console.log(`❌ Card ${cardId} (${tradeCard.search_param}) is already traded`);
+    //   console.log(`🔍 Card details:`, {
+    //     id: tradeCard.id,
+    //     search_param: tradeCard.search_param,
+    //     is_traded: tradeCard.is_traded,
+    //     trader_id: tradeCard.trader_id,
+    //     trading_card_status: tradeCard.trading_card_status
+    //   });
+    //   
+    //   const errorMessage = `${tradeCard.search_param} product is in a Pending Trade with another user. Please select a different product to continue.`;
+    //   return sendApiResponse(res, 400, false, errorMessage, [], {
+    //     redirect_url: '/ongoing-trades'
+    //   });
+    // }
+  }
+
+  console.log(`✅ All cards validated successfully`);
   return true;
 };
 
@@ -245,12 +289,57 @@ const updateUnifiedTradeStatus = async (tradeProposal: any, paymentType: string,
   }
 
   // Set trade status based on cash requirements
+  console.log(`🔍 Checking cash requirements:`, {
+    add_cash: tradeProposal.add_cash,
+    ask_cash: tradeProposal.ask_cash,
+    trade_amount_paid_on: tradeProposal.trade_amount_paid_on,
+    paymentType: paymentType
+  });
+
   if (tradeProposal.add_cash > 0 && !tradeProposal.trade_amount_paid_on) {
     const status = paymentType === 'counter_offer' ? 'counter-offer-accepted-sender-pay' : 'trade-offer-accepted-sender-pay';
-    await setTradeProposalStatus(tradeProposal.id, status);
+    console.log(`🔄 Setting trade status to ${status} for trade proposal:`, tradeProposal.id);
+    console.log(`🔍 Trade proposal details before status update:`, {
+      id: tradeProposal.id,
+      trade_proposal_status_id: tradeProposal.trade_proposal_status_id,
+      add_cash: tradeProposal.add_cash,
+      ask_cash: tradeProposal.ask_cash,
+      trade_amount_paid_on: tradeProposal.trade_amount_paid_on
+    });
+    
+    const statusResult = await setTradeProposalStatus(tradeProposal.id, status);
+    console.log(`📊 Status update result for ${status}:`, statusResult);
+    
+    if (!statusResult.success) {
+      console.error(`❌ Failed to update trade status to ${status}:`, statusResult.error);
+    } else {
+      console.log(`✅ Trade status updated successfully to ${status}`);
+    }
   } else if (tradeProposal.ask_cash > 0 && !tradeProposal.trade_amount_paid_on) {
     const status = paymentType === 'counter_offer' ? 'counter-offer-accepted-receiver-pay' : 'trade-offer-accepted-receiver-pay';
-    await setTradeProposalStatus(tradeProposal.id, status);
+    console.log(`🔄 Setting trade status to ${status} for trade proposal:`, tradeProposal.id);
+    console.log(`🔍 Trade proposal details before status update:`, {
+      id: tradeProposal.id,
+      trade_proposal_status_id: tradeProposal.trade_proposal_status_id,
+      add_cash: tradeProposal.add_cash,
+      ask_cash: tradeProposal.ask_cash,
+      trade_amount_paid_on: tradeProposal.trade_amount_paid_on
+    });
+    
+    const statusResult = await setTradeProposalStatus(tradeProposal.id, status);
+    console.log(`📊 Status update result for ${status}:`, statusResult);
+    
+    if (!statusResult.success) {
+      console.error(`❌ Failed to update trade status to ${status}:`, statusResult.error);
+    } else {
+      console.log(`✅ Trade status updated successfully to ${status}`);
+    }
+  } else {
+    console.log(`⚠️ No status update needed. Conditions not met:`, {
+      add_cash_condition: tradeProposal.add_cash > 0,
+      ask_cash_condition: tradeProposal.ask_cash > 0,
+      payment_not_paid: !tradeProposal.trade_amount_paid_on
+    });
   }
 };
 
@@ -410,8 +499,79 @@ const sendAcceptAndPaymentNotifications = async (tradeProposal: any, userId: num
 
 // Deduct coins helper function
 const deductCoins = async (tradeSentTo: number, tradeSentBy: number, tradeProposal: any) => {
-  // Implement coin deduction logic here
+  console.log(`🪙 Deducting coins for trade proposal: ${tradeProposal.id}`);
+  
+  try {
+    // Get both users' coin information
+    const [userTo, userBy] = await Promise.all([
+      User.findByPk(tradeSentTo, { attributes: ['id', 'cxp_coins'] }),
+      User.findByPk(tradeSentBy, { attributes: ['id', 'cxp_coins'] })
+    ]);
+
+    if (!userTo || !userBy) {
+      console.error(`❌ Users not found: tradeSentTo=${tradeSentTo}, tradeSentBy=${tradeSentBy}`);
+      return { status: false, message: 'Users not found', action: 'error' };
+    }
+
+    console.log(`📊 User coin status:`, {
+      userTo: { id: userTo.id, coins: userTo.cxp_coins },
+      userBy: { id: userBy.id, coins: userBy.cxp_coins }
+    });
+
+    // Check if both users have enough coins
+    if ((userTo.cxp_coins || 0) < 1) {
+      console.log(`❌ User ${tradeSentTo} doesn't have enough coins`);
+      return { 
+        status: false, 
+        message: 'You don\'t have enough coins to proceed with this trade. Please purchase coins to continue.', 
+        action: 'buycoin' 
+      };
+    }
+
+    if ((userBy.cxp_coins || 0) < 1) {
+      console.log(`❌ User ${tradeSentBy} doesn't have enough coins`);
+      return { 
+        status: false, 
+        message: 'The other trader doesn\'t have enough coins to proceed with this trade.', 
+        action: 'chat-now' 
+      };
+    }
+
+    // Deduct coins from both users
+    await Promise.all([
+      userTo.update({ cxp_coins: Math.max(0, (userTo.cxp_coins || 0) - 1) }),
+      userBy.update({ cxp_coins: Math.max(0, (userBy.cxp_coins || 0) - 1) })
+    ]);
+
+    // Create credit deduction logs for both users
+    await Promise.all([
+      CreditDeductionLog.create({
+        trade_id: tradeProposal.id,
+        sent_to: tradeSentTo,
+        sent_by: tradeSentBy,
+        coin: 1,
+        trade_status: 'In Progress',
+        status: 'Success',
+        deduction_from: 'Receiver'
+      } as any),
+      CreditDeductionLog.create({
+        trade_id: tradeProposal.id,
+        sent_to: tradeSentBy,
+        sent_by: tradeSentTo,
+        coin: 1,
+        trade_status: 'In Progress',
+        status: 'Success',
+        deduction_from: 'Sender'
+      } as any)
+    ]);
+
+    console.log(`✅ Coins deducted successfully for both users`);
   return { status: true };
+
+  } catch (error: any) {
+    console.error(`❌ Error deducting coins:`, error);
+    return { status: false, message: 'Error processing coin deduction', action: 'error' };
+  }
 };
 
 // Helper function to check CXP coins before trade status update
@@ -998,7 +1158,32 @@ export const handlePayPalResponse = async (req: Request, res: Response) => {
           is_payment_received: 2
         });
 
-        await setTradeProposalStatus(tradeProposal.id, 'payment-made');
+        console.log('🔄 Setting trade status to payment-made for trade proposal:', tradeProposal.id);
+        const statusResult = await setTradeProposalStatus(tradeProposal.id, 'payment-made');
+        console.log('📊 Status update result for payment-made:', statusResult);
+        
+        if (!statusResult.success) {
+          console.error('❌ Failed to update trade status to payment-made:', statusResult.error);
+          
+          // Fallback: Direct status update
+          console.log('🔄 Attempting direct status update for payment-made...');
+          const { TradeProposalStatus } = await import('../models/tradeProposalStatus.model.js');
+          const paymentMadeStatus = await TradeProposalStatus.findOne({
+            where: { alias: 'payment-made' }
+          });
+          
+          if (paymentMadeStatus) {
+            await TradeProposal.update(
+              { trade_proposal_status_id: paymentMadeStatus.id },
+              { where: { id: tradeProposal.id } }
+            );
+            console.log('✅ Direct status update completed for payment-made');
+          } else {
+            console.error('❌ Payment-made status not found in database');
+          }
+        } else {
+          console.log('✅ Trade status updated successfully to payment-made');
+        }
       } else {
         return sendApiResponse(res, 400, false, "Some error occurred in payment. Missing trade ID.", []);
       }
@@ -1188,7 +1373,32 @@ export const payPalPaymentSuccess = async (req: Request, res: Response) => {
     });
 
     // Set trade status
-    await setTradeProposalStatus(tradeProposal.id, 'trade-accepted');
+    console.log('🔄 Setting trade status to trade-accepted for trade proposal:', tradeProposal.id);
+    const statusResult = await setTradeProposalStatus(tradeProposal.id, 'trade-accepted');
+    console.log('📊 Status update result for trade-accepted:', statusResult);
+    
+    if (!statusResult.success) {
+      console.error('❌ Failed to update trade status to trade-accepted:', statusResult.error);
+      
+      // Fallback: Direct status update
+      console.log('🔄 Attempting direct status update for trade-accepted...');
+      const { TradeProposalStatus } = await import('../models/tradeProposalStatus.model.js');
+      const tradeAcceptedStatus = await TradeProposalStatus.findOne({
+        where: { alias: 'trade-accepted' }
+      });
+      
+      if (tradeAcceptedStatus) {
+        await TradeProposal.update(
+          { trade_proposal_status_id: tradeAcceptedStatus.id },
+          { where: { id: tradeProposal.id } }
+        );
+        console.log('✅ Direct status update completed for trade-accepted');
+      } else {
+        console.error('❌ Trade-accepted status not found in database');
+      }
+    } else {
+      console.log('✅ Trade status updated successfully to trade-accepted');
+    }
 
     // Send notifications
     await TradeNotification.create({

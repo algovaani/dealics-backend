@@ -23,8 +23,15 @@ export const setTradeProposalStatus = async (tradeProposalId: number, statusAlia
     });
 
     if (!tradeProposal) {
+      console.error(`Trade proposal with ID ${tradeProposalId} not found`);
       return { success: false, error: 'Trade proposal not found' };
     }
+
+    console.log(`📋 Trade proposal found:`, {
+      id: tradeProposal.id,
+      trade_proposal_status_id: tradeProposal.trade_proposal_status_id,
+      current_status_alias: (tradeProposal as any).tradeProposalStatus?.alias
+    });
 
     let statusUpdateFlag = false;
 
@@ -95,16 +102,34 @@ export const setTradeProposalStatus = async (tradeProposalId: number, statusAlia
     }
 
     if (statusUpdateFlag) {
+      console.log(`🔍 Looking for status with alias: ${statusAlias}`);
       const newStatus = await TradeProposalStatus.findOne({
         where: { alias: statusAlias },
         attributes: ['id']
       });
 
+      console.log(`📋 Found status:`, newStatus);
+
       if (newStatus) {
-        await tradeProposal.update({
-          trade_proposal_status_id: newStatus.id
+        console.log(`🔄 Updating trade proposal ${tradeProposalId} with status ID: ${newStatus.id}`);
+        console.log(`🔍 Trade proposal instance before update:`, {
+          id: tradeProposal.id,
+          isNewRecord: tradeProposal.isNewRecord,
+          primaryKey: TradeProposal.primaryKeyAttribute,
+          primaryKeyValue: tradeProposal.getDataValue('id')
         });
+        
+        // Use direct database update instead of instance update to avoid primary key issues
+        const updateResult = await TradeProposal.update(
+          { trade_proposal_status_id: newStatus.id },
+          { where: { id: tradeProposalId } }
+        );
+        console.log(`✅ Status update completed:`, updateResult);
+      } else {
+        console.error(`❌ Status with alias '${statusAlias}' not found in database`);
       }
+    } else {
+      console.log(`⚠️ Status update flag is false for alias: ${statusAlias}`);
     }
 
     return { success: true };

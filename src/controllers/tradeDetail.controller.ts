@@ -48,9 +48,14 @@ export const getTradeDetail = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "Trade proposal not found", []);
     }
 
-    // Set trade as viewed
-    await setTradeProposalStatus(tradeProposal.id, 'trade-viewed');
-    await setTradeProposalStatus(tradeProposal.id, 'counter-offer-viewed');
+    // Set viewed statuses following Laravel parity
+    const currentAlias = (tradeProposal as any).tradeProposalStatus?.alias;
+    if (currentAlias === 'trade-sent' && userId === tradeProposal.trade_sent_to) {
+      await setTradeProposalStatus(tradeProposal.id, 'trade-viewed');
+    }
+    if (currentAlias === 'counter-trade-offer' && userId === tradeProposal.trade_sent_by) {
+      await setTradeProposalStatus(tradeProposal.id, 'counter-offer-viewed');
+    }
 
     // Determine send and receive cards based on user role
     let sendCards: number[] = [];

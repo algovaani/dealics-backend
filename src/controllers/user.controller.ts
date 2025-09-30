@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { UserService } from "../services/user.service.js";
 import { sendApiResponse } from "../utils/apiResponse.js";
+import bcrypt from "bcryptjs";
+import { User } from "../models/index.js";
 import { uploadOne } from "../utils/fileUpload.js";
 import jwt from "jsonwebtoken";
 import { decodeJWTToken } from "../utils/jwt.js";
@@ -1927,6 +1929,51 @@ export const cancelShippingPayment = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Cancel shipping payment error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// POST /api/users/change-password - Change password with old password check
+export const changePassword = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id || req.user?.user_id || req.user?.sub;
+    const { old_password, new_password, confirm_password } = req.body || {};
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!old_password || !new_password || !confirm_password) {
+      return sendApiResponse(res, 400, false, "Old, new and confirm password are required", []);
+    }
+
+    if (typeof new_password !== 'string' || new_password.length < 6) {
+      return sendApiResponse(res, 400, false, "Password must be at least 6 characters long", []);
+    }
+
+    if (new_password !== confirm_password) {
+      return sendApiResponse(res, 400, false, "New password and confirm password do not match", []);
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user || !(user as any).password) {
+      return sendApiResponse(res, 404, false, "User not found", []);
+    }
+
+    const matches = await bcrypt.compare(old_password, (user as any).password);
+    if (!matches) {
+      return sendApiResponse(res, 400, false, "Old password is incorrect", []);
+    }
+
+    const hashed = await bcrypt.hash(new_password, 10);
+    await User.update(
+      { password: hashed, recover_password_token: '' },
+      { where: { id: userId } }
+    );
+
+    return sendApiResponse(res, 200, true, "Password changed successfully", []);
+  } catch (error: any) {
+    console.error("Change password error:", error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };
 

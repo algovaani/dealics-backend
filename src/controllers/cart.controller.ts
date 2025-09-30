@@ -694,6 +694,24 @@ const setTradeAndOfferStatus = async (alias: string, setFor: string, triggerId: 
           { where: { id: triggerId } }
         );
       }
+    } else if (setFor === 'trade') {
+      // Update TradeProposal status by alias
+      const { TradeProposalStatus } = await import('../models/tradeProposalStatus.model.js');
+      const { TradeProposal } = await import('../models/tradeProposal.model.js');
+
+      const tradeStatus = await TradeProposalStatus.findOne({
+        where: { alias }
+      });
+
+      if (tradeStatus) {
+        const [affected] = await TradeProposal.update(
+          { trade_proposal_status_id: tradeStatus.id },
+          { where: { id: triggerId } }
+        );
+        console.log(`✅ Trade status updated for trade ${triggerId} → alias: ${alias}, status_id: ${tradeStatus.id}, rows: ${affected}`);
+      } else {
+        console.warn(`TradeProposalStatus alias not found: ${alias}`);
+      }
     }
   } catch (error) {
     console.error('Error setting trade and offer status:', error);
@@ -4391,7 +4409,7 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
       object_type: typeof postageLabel.object,
       object_value: postageLabel.object
     });
-
+    
     let packageDetails = [] as string[];
 
     try {
@@ -4436,34 +4454,135 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
             packageDetails = val.split(' | ').filter((item: string) => item.trim() !== '');
             break;
           }
+          }
         }
       }
+      
+      if (packageDetails.length === 0) {
+        packageDetails = ['Package contents not specified'];
+      }
+    // Build sender/receiver address with fallbacks to Address table when shipment_response lacks full data
+    let senderAddressData = {
+      name: shipmentResponse.from_address?.name || '',
+      street1: shipmentResponse.from_address?.street1 || '',
+      street2: shipmentResponse.from_address?.street2 || '',
+      city: shipmentResponse.from_address?.city || '',
+      state: shipmentResponse.from_address?.state || '',
+      zip: shipmentResponse.from_address?.zip || '',
+      phone: shipmentResponse.from_address?.phone || '',
+      email: shipmentResponse.from_address?.email || ''
+    };
+
+    let receiverAddressData = {
+      name: shipmentResponse.to_address?.name || '',
+      street1: shipmentResponse.to_address?.street1 || '',
+      street2: shipmentResponse.to_address?.street2 || '',
+      city: shipmentResponse.to_address?.city || '',
+      state: shipmentResponse.to_address?.state || '',
+      zip: shipmentResponse.to_address?.zip || '',
+      phone: shipmentResponse.to_address?.phone || '',
+      email: shipmentResponse.to_address?.email || ''
+    };
+
+    try {
+      // If missing critical fields, fallback to Address records stored on Shipment
+      const needsSenderFallback = !senderAddressData.name || !senderAddressData.street1;
+      const needsReceiverFallback = !receiverAddressData.name || !receiverAddressData.street1;
+
+      // @ts-ignore: shipment may have numeric address ids
+      const fromAddressId = (shipment as any).from_address;
+      // @ts-ignore
+      const toAddressId = (shipment as any).to_address;
+
+      if (needsSenderFallback && fromAddressId) {
+        const senderAddrRow = await Address.findByPk(Number(fromAddressId));
+        if (senderAddrRow) {
+          senderAddressData = {
+            name: senderAddrRow.name || '',
+            street1: senderAddrRow.street1 || '',
+            street2: senderAddrRow.street2 || '',
+            city: senderAddrRow.city || '',
+            state: senderAddrRow.state || '',
+            zip: senderAddrRow.zip || '',
+            phone: senderAddrRow.phone || '',
+            email: senderAddrRow.email || ''
+          };
+        }
+      }
+
+      if (needsReceiverFallback && toAddressId) {
+        const receiverAddrRow = await Address.findByPk(Number(toAddressId));
+        if (receiverAddrRow) {
+          receiverAddressData = {
+            name: receiverAddrRow.name || '',
+            street1: receiverAddrRow.street1 || '',
+            street2: receiverAddrRow.street2 || '',
+            city: receiverAddrRow.city || '',
+            state: receiverAddrRow.state || '',
+            zip: receiverAddrRow.zip || '',
+            phone: receiverAddrRow.phone || '',
+            email: receiverAddrRow.email || ''
+          };
+        }
+      }
+
+      // If receiver still mirrors sender (or still missing), try partner's shipment to resolve receiver details
+      const receiverLooksSameAsSender = (
+        receiverAddressData.name === senderAddressData.name &&
+        receiverAddressData.street1 === senderAddressData.street1 &&
+        receiverAddressData.city === senderAddressData.city &&
+        receiverAddressData.state === senderAddressData.state &&
+        receiverAddressData.zip === senderAddressData.zip
+      );
+
+      if (receiverLooksSameAsSender || !receiverAddressData.street1) {
+        const partnerShipment = await Shipment.findOne({
+          where: {
+            trade_id: tradeId,
+            user_id: { [Op.ne]: userId }
+          },
+          include: [{
+            model: Address,
+            as: 'toAddress',
+            attributes: ['name','street1','street2','city','state','zip','phone','email']
+          }]
+        });
+
+        const partnerToAddress: any = (partnerShipment as any)?.toAddress;
+        if (partnerToAddress) {
+          receiverAddressData = {
+            name: partnerToAddress.name || receiverAddressData.name,
+            street1: partnerToAddress.street1 || receiverAddressData.street1,
+            street2: partnerToAddress.street2 || receiverAddressData.street2,
+            city: partnerToAddress.city || receiverAddressData.city,
+            state: partnerToAddress.state || receiverAddressData.state,
+            zip: partnerToAddress.zip || receiverAddressData.zip,
+            phone: partnerToAddress.phone || receiverAddressData.phone,
+            email: partnerToAddress.email || receiverAddressData.email
+          };
+        } else if ((partnerShipment as any)?.to_address) {
+          const partnerToAddrRow = await Address.findByPk(Number((partnerShipment as any).to_address));
+          if (partnerToAddrRow) {
+            receiverAddressData = {
+              name: partnerToAddrRow.name || receiverAddressData.name,
+              street1: partnerToAddrRow.street1 || receiverAddressData.street1,
+              street2: partnerToAddrRow.street2 || receiverAddressData.street2,
+              city: partnerToAddrRow.city || receiverAddressData.city,
+              state: partnerToAddrRow.state || receiverAddressData.state,
+              zip: partnerToAddrRow.zip || receiverAddressData.zip,
+              phone: partnerToAddrRow.phone || receiverAddressData.phone,
+              email: partnerToAddrRow.email || receiverAddressData.email
+            };
+          }
+        }
+      }
+    } catch (addrErr) {
+      console.warn('Address fallback failed:', addrErr);
     }
 
-    if (packageDetails.length === 0) {
-      packageDetails = ['Package contents not specified'];
-    }
     const responseData = {
-      sender_address: {
-        name: shipmentResponse.from_address?.name || '',
-        street1: shipmentResponse.from_address?.street1 || '',
-        street2: shipmentResponse.from_address?.street2 || '',
-        city: shipmentResponse.from_address?.city || '',
-        state: shipmentResponse.from_address?.state || '',
-        zip: shipmentResponse.from_address?.zip || '',
-        phone: shipmentResponse.from_address?.phone || '',
-        email: shipmentResponse.from_address?.email || ''
-      },
-      receiver_address: {
-        name: shipmentResponse.to_address?.name || '',
-        street1: shipmentResponse.to_address?.street1 || '',
-        street2: shipmentResponse.to_address?.street2 || '',
-        city: shipmentResponse.to_address?.city || '',
-        state: shipmentResponse.to_address?.state || '',
-        zip: shipmentResponse.to_address?.zip || '',
-        phone: shipmentResponse.to_address?.phone || '',
-        email: shipmentResponse.to_address?.email || ''
-      },
+      sender_address: senderAddressData,
+      receiver_address: receiverAddressData,
       package_dimensions: {
         length: shipParcelDetails.length || 0,
         width: shipParcelDetails.width || 0,

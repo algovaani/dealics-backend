@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment } from "../controllers/user.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment, changePassword } from "../controllers/user.controller.js";
 import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
 import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
@@ -230,6 +230,7 @@ router.post("/pay-to-change-trade-status", userAuth, payToChangeTradeStatus);
 router.post("/pay-to-change-trade-status-counter-offer", userAuth, payToChangeTradeStatusCounterOffer);
 router.post("/handle-paypal-response", userAuth, handlePayPalResponse);
 router.get("/payment-success/:refId/:itemName", payPalPaymentSuccess);
+router.post("/change-password", userAuth, changePassword);
 router.get("/payment-cancel/:refId", payPalPaymentCancel);
 
 // Product copy/form routes

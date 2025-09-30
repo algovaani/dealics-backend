@@ -1,6 +1,7 @@
 import { TradeProposal } from '../models/tradeProposal.model.js';
 import { TradeProposalStatus } from '../models/tradeProposalStatus.model.js';
 import { Shipment } from '../models/shipment.model.js';
+import { Op } from 'sequelize';
 
 // Set trade proposal status (matches Laravel HelperTradeAndOfferStatus)
 export const setTradeProposalStatus = async (tradeProposalId: number, statusAlias: string) => {
@@ -66,23 +67,32 @@ export const setTradeProposalStatus = async (tradeProposalId: number, statusAlia
       case 'shipped-by-sender':
         statusUpdateFlag = true;
 
+        // Check shipments for both parties with valid tracking IDs
         const shippedBySender = await Shipment.findOne({
-          where: { 
-            trade_id: tradeProposalId, 
-            user_id: tradeProposal.trade_sent_by 
+          where: {
+            trade_id: tradeProposalId,
+            user_id: tradeProposal.trade_sent_by,
+            [Op.and]: [
+              { tracking_id: { [Op.ne]: null } },
+              { tracking_id: { [Op.ne]: '' } }
+            ]
           },
           attributes: ['id', 'tracking_id']
         });
 
         const shippedByReceiver = await Shipment.findOne({
-          where: { 
-            trade_id: tradeProposalId, 
-            user_id: tradeProposal.trade_sent_to 
+          where: {
+            trade_id: tradeProposalId,
+            user_id: tradeProposal.trade_sent_to,
+            [Op.and]: [
+              { tracking_id: { [Op.ne]: null } },
+              { tracking_id: { [Op.ne]: '' } }
+            ]
           },
           attributes: ['id', 'tracking_id']
         });
 
-        const bothTradersShipped = shippedBySender?.tracking_id && shippedByReceiver?.tracking_id;
+        const bothTradersShipped = !!(shippedBySender?.tracking_id && shippedByReceiver?.tracking_id);
         if (bothTradersShipped) {
           await setTradeProposalStatus(tradeProposalId, 'both-traders-shipped');
         }

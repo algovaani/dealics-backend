@@ -1088,7 +1088,7 @@ export class TradingCardService {
           // Tables that need special category filtering
           const specialTables = [
             'grade_ratings', 'professional_graders', 'packages', 'publishers',
-            'brands', 'Brand', 'certifications', 'circulateds', 'coin_names', 'countries',
+            'brands', 'Brand', 'certifications', 'circulateds', 'coin_names', 'countries', 'Country',
             'denominations', 'coin_stamp_grade_ratings', 'mint_marks', 'item_types', 'ItemType', 'ItemTypes',
             'sports', 'Sports', 'console_models', 'ConsoleModel', 'consolemodels',
             'region_codes', 'RegionCode', 'regioncodes', 'storage_capacities', 'StorageCapacity', 'storagecapacities',
@@ -1130,7 +1130,7 @@ export class TradingCardService {
             // Tables that need special category filtering
             const specialTables = [
               'grade_ratings', 'professional_graders', 'packages', 'publishers', 'Publisher',
-              'brands', 'Brand', 'certifications', 'circulateds', 'coin_names', 'countries',
+              'brands', 'Brand', 'certifications', 'circulateds', 'coin_names', 'countries', 'Country',
               'denominations', 'coin_stamp_grade_ratings', 'mint_marks', 'item_types', 'ItemType', 'ItemTypes',
               'sports', 'Sports', 'console_models', 'ConsoleModel', 'consolemodels',
               'region_codes', 'RegionCode', 'regioncodes', 'storage_capacities', 'StorageCapacity', 'storagecapacities',
@@ -1156,14 +1156,19 @@ export class TradingCardService {
             console.log(`Raw data retrieved:`, loopData);
             
             if (loopData && loopData.length > 0) {
-              // Transform data to include id and label for select box
+              // Transform data to include id, label, value and the master column (e.g., name)
               const selectOptions = loopData.map((item: any) => {
                 const label = item[itemColumn.rel_model_col] || item.label || item.name || `Option ${item.id}`;
-                return {
+                const option: any = {
                   id: item.id,
                   label: label,
                   value: item.id
                 };
+                const relTable = (itemColumn.rel_master_table || '').toLowerCase();
+                if (itemColumn.rel_model_col && (relTable === 'country' || relTable === 'countries')) {
+                  option[itemColumn.rel_model_col] = item[itemColumn.rel_model_col] ?? label;
+                }
+                return option;
               });
               
               console.log(`Transformed select options:`, selectOptions);
@@ -1180,6 +1185,7 @@ export class TradingCardService {
               console.log(`Successfully set is_loop for ${itemColumn.name} with ${selectOptions.length} options`);
             } else {
               console.log(`No data found for ${itemColumn.name} in table ${itemColumn.rel_master_table}`);
+              itemColumn.is_loop = [];
             }
           } catch (error) {
             console.error(`Error getting loop data for field ${itemColumn.name}:`, error);

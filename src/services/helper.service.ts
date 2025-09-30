@@ -93,11 +93,17 @@ export class HelperService {
       'Publishers': 'publishers',
       'Brand': 'brands',
       'Certifications': 'certifications',
+      'Certification': 'certifications',
       'Circulateds': 'circulateds',
+      'Circulated': 'circulateds',
       'CoinNames': 'coin_names',
+      'CoinName': 'coin_names',
       'Denominations': 'denominations',
+      'Denomination': 'denominations',
       'CoinStampGradeRatings': 'coin_stamp_grade_ratings',
-      'MintMarks': 'mint_marks'
+      'CoinStampGradeRating': 'coin_stamp_grade_ratings',
+      'MintMarks': 'mint_marks',
+      'MintMark': 'mint_marks'
     };
     
     const mappedName = tableNameMapping[tableName] || tableNameMapping[tableName.toLowerCase()] || tableName;
@@ -179,11 +185,29 @@ export class HelperService {
         'Types'
       ];
       
+      // Determine if table has a status column to filter active records
+      let hasStatusColumn = false;
+      try {
+        const statusInfo = await sequelize.query(`
+          SELECT COLUMN_NAME 
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_NAME = :tableName 
+          AND COLUMN_NAME = 'status'
+        `, {
+          replacements: { tableName: mappedTableName },
+          type: QueryTypes.SELECT
+        });
+        hasStatusColumn = statusInfo.length > 0;
+      } catch {}
+
       if (commaSeparatedTables.includes(mappedTableName) && categoryId) {
-        // For these tables, filter by category_id containing the specific category ID
+        // For these tables, filter by category_id using FIND_IN_SET for comma-separated values
         // The category_id column contains comma-separated values like "15,18,24,29"
-        query += ` WHERE category_id LIKE :categoryIdPattern`;
-        replacements.categoryIdPattern = `%${categoryId}%`;
+        query += ` WHERE FIND_IN_SET(:categoryId, category_id)`;
+        replacements.categoryId = String(categoryId);
+        if (hasStatusColumn) {
+          query += ` AND status IN ('1', 1)`;
+        }
       }
       // If category_id is provided and the table is not a global table, filter by it
       else if (categoryId && !globalTables.includes(mappedTableName)) {
@@ -201,16 +225,38 @@ export class HelperService {
         if (tableInfo.length > 0) {
           query += ` WHERE category_id = :categoryId`;
           replacements.categoryId = categoryId;
+          if (hasStatusColumn) {
+            query += ` AND status IN ('1', 1)`;
+          }
+        } else if (hasStatusColumn) {
+          // No category filter, but still filter by active status
+          query += ` WHERE status IN ('1', 1)`;
         }
+      } else if (hasStatusColumn) {
+        // No category filtering applied; still filter active records if status exists
+        query += ` WHERE status IN ('1', 1)`;
       }
       
       query += ` ORDER BY id ASC`;
       
-      const result = await sequelize.query(query, {
+      let result = await sequelize.query(query, {
         replacements,
         type: QueryTypes.SELECT
       });
       
+      // Fallback: if no rows for countries with category filter, return all active countries
+      if (mappedTableName === 'countries' && categoryId && result.length === 0) {
+        let fallbackQuery = `SELECT * FROM ${mappedTableName}`;
+        // Apply active status filter if exists
+        if (hasStatusColumn) {
+          fallbackQuery += ` WHERE status IN ('1', 1)`;
+        }
+        fallbackQuery += ` ORDER BY id ASC`;
+        result = await sequelize.query(fallbackQuery, {
+          type: QueryTypes.SELECT
+        });
+      }
+
       console.log(`getMasterDatas - Query: ${query}, Result count: ${result.length}`);
       console.log(`getMasterDatas - Sample result:`, result.slice(0, 2));
       

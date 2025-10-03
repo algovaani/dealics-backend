@@ -1323,6 +1323,27 @@ export const getPopularTradingCards = async (req: Request, res: Response) => {
     const result = await TradingCardService.getPopularTradingCards(page, perPage);
 
     if (result.success && result.data) {
+      // Optionally determine user-specific interested_in if JWT provided
+      let interestedIds = new Set<number>();
+      try {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+          const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+          if (userId) {
+            const cardIds = result.data.cards.map((c: any) => c.id);
+            if (cardIds.length > 0) {
+              const rows = await sequelize.query(
+                `SELECT trading_card_id FROM interested_in WHERE user_id = :userId AND trading_card_id IN (:ids)`,
+                { replacements: { userId, ids: cardIds }, type: QueryTypes.SELECT }
+              );
+              interestedIds = new Set((rows as any[]).map(r => Number((r as any).trading_card_id)));
+            }
+          }
+        }
+      } catch {}
+
       // Transform the response to include only necessary fields
       const response = result.data.cards.map((card: any) => ({
         id: card.id,
@@ -1338,7 +1359,7 @@ export const getPopularTradingCards = async (req: Request, res: Response) => {
         trader_id: card.trader_id,
         trader_name: card.trader_name,
         trade_card_status: card.trade_card_status,
-        interested_in: true,
+        interested_in: interestedIds.size > 0 ? interestedIds.has(card.id) : false,
         card_condition: card.card_condition
       }));
 

@@ -6,6 +6,9 @@ import { User } from "../models/index.js";
 import { uploadOne } from "../utils/fileUpload.js";
 import jwt from "jsonwebtoken";
 import { decodeJWTToken } from "../utils/jwt.js";
+import { BuySellCard } from "../models/buySellCard.model.js";
+import { ReviewCollection } from "../models/reviewCollection.model.js";
+import { QueryTypes } from "sequelize";
 
 // Extend Request interface to include user property
 declare global {
@@ -1929,6 +1932,116 @@ export const cancelShippingPayment = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Cancel shipping payment error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// POST /api/users/boughtsoldfeedback - Submit review for buy/sell collection (optimized)
+export const buyCardCollectionReview = async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return sendApiResponse(res, 401, false, 'Authorization token is required', []);
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, 'Valid user ID not found in token', []);
+    }
+
+    const { buy_sell_id, rating, review } = req.body as { buy_sell_id?: number; rating?: number; review?: string };
+
+    if (!rating || isNaN(Number(rating)) || Number(rating) < 1 || Number(rating) > 10) {
+      return sendApiResponse(res, 400, false, 'Rating must be between 1 and 10', []);
+    }
+    if (!buy_sell_id || isNaN(Number(buy_sell_id))) {
+      return sendApiResponse(res, 400, false, 'Valid buy_sell_id is required', []);
+    }
+
+    const tx = await (BuySellCard.sequelize as any).transaction();
+    try {
+      const card = await BuySellCard.findByPk(buy_sell_id, { transaction: tx });
+      if (!card) {
+        await tx.rollback();
+        return sendApiResponse(res, 404, false, 'Buy/Sell record not found', []);
+      }
+
+      const normalizedRating = Number(rating) / 2; // match Laravel logic
+
+      // Determine role of current user relative to this record
+      const isBuyer = card.buyer === userId;
+      const isSeller = card.seller === userId;
+      if (!isBuyer && !isSeller) {
+        await tx.rollback();
+        return sendApiResponse(res, 403, false, 'Not authorized to review this transaction', []);
+      }
+
+      // Update BuySellCard columns per role
+      if (isBuyer) {
+        await card.update({
+          buyer_rating: normalizedRating,
+          buyer_review: review || undefined,
+          reviewed_on: new Date()
+        } as any, { transaction: tx });
+
+        await ReviewCollection.create({
+          buy_sell_card_id: card.id,
+          user_id: card.buyer ?? null,
+          sender_id: card.seller ?? null,
+          rating: normalizedRating,
+          content: review || null
+        } as any, { transaction: tx });
+
+        // TODO: optional notification hook
+      }
+
+      if (isSeller) {
+        await card.update({
+          seller_rating: normalizedRating,
+          seller_review: review || undefined,
+          reviewed_by_seller_on: new Date()
+        } as any, { transaction: tx });
+
+        await ReviewCollection.create({
+          buy_sell_card_id: card.id,
+          user_id: card.seller ?? null,
+          sender_id: card.buyer ?? null,
+          rating: normalizedRating,
+          content: review || null
+        } as any, { transaction: tx });
+
+        // TODO: optional notification hook
+      }
+
+      // Recompute aggregate rating for the seller (optimized):
+      // average of: Reviews(trader_id), Reviews(user_id), BuySellCard(buyer_rating where seller=this), BuySellCard(seller_rating where buyer=this)
+      const sellerId = card.seller as number;
+      const [agg] = await (User.sequelize as any).query(`
+        SELECT
+          (SELECT AVG(user_rating) FROM reviews WHERE trader_id = :sellerId) AS avg_trader_rating,
+          (SELECT AVG(trader_rating) FROM reviews WHERE user_id = :sellerId) AS avg_user_rating,
+          (SELECT AVG(buyer_rating) FROM buy_sell_cards WHERE seller = :sellerId) AS avg_buyer_rating,
+          (SELECT AVG(seller_rating) FROM buy_sell_cards WHERE buyer = :sellerId) AS avg_seller_rating
+      `, { replacements: { sellerId }, type: QueryTypes.SELECT, transaction: tx });
+
+      const avgTrader = Number((agg as any)?.avg_trader_rating) || 0;
+      const avgUser = Number((agg as any)?.avg_user_rating) || 0;
+      const avgBuyer = Number((agg as any)?.avg_buyer_rating) || 0;
+      const avgSeller = Number((agg as any)?.avg_seller_rating) || 0;
+
+      const parts = [avgTrader, avgUser, avgBuyer, avgSeller].filter(v => v > 0);
+      const finalRating = parts.length > 0 ? Number((parts.reduce((a, b) => a + b, 0) / parts.length).toFixed(1)) : 0;
+
+      await User.update({ ratings: String(finalRating) }, { where: { id: sellerId }, transaction: tx });
+
+      await tx.commit();
+      return sendApiResponse(res, 200, true, 'Review submitted successfully', { id: card.id, rating: normalizedRating });
+    } catch (err: any) {
+      await tx.rollback();
+      return sendApiResponse(res, 500, false, err.message || 'Internal server error', []);
+    }
+  } catch (error: any) {
+    return sendApiResponse(res, 500, false, error.message || 'Internal server error', []);
   }
 };
 

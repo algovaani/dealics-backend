@@ -287,6 +287,33 @@ export class HelperService {
         });
       }
 
+      // Fallback: if no rows for card_conditions with category filter, return all active card_conditions
+      if (mappedTableName === 'card_conditions' && categoryId && result.length === 0) {
+        let fallbackQuery = `SELECT * FROM ${mappedTableName}`;
+        // card_conditions uses card_condition_status column
+        try {
+          const statusColInfo = await sequelize.query(`
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = :tableName 
+            AND COLUMN_NAME = 'card_condition_status'
+          `, {
+            replacements: { tableName: mappedTableName },
+            type: QueryTypes.SELECT
+          });
+          const hasCardConditionStatus = statusColInfo.length > 0;
+          if (hasCardConditionStatus) {
+            fallbackQuery += ` WHERE card_condition_status IN ('1', 1)`;
+          } else if (hasStatusColumn) {
+            fallbackQuery += ` WHERE status IN ('1', 1)`;
+          }
+        } catch {}
+        fallbackQuery += ` ORDER BY id ASC`;
+        result = await sequelize.query(fallbackQuery, {
+          type: QueryTypes.SELECT
+        });
+      }
+
       
       return result;
     } catch (error) {

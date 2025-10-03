@@ -2770,8 +2770,7 @@ export class UserService {
       const totalCount = await Address.count({
         where: {
           user_id: userId,
-          is_deleted: '0',
-          is_sender: '1'
+          is_deleted: '0'
         }
       });
 
@@ -2779,8 +2778,7 @@ export class UserService {
       const addresses = await Address.findAll({
         where: {
           user_id: userId,
-          is_deleted: '0',
-          is_sender: '1'
+          is_deleted: '0'
         },
         order: [['mark_default', 'ASC'], ['created_at', 'DESC']],
         limit: limit,
@@ -2955,7 +2953,7 @@ export class UserService {
         state: addressData.state.trim(),
         country: addressData.country.trim(),
         zip: addressData.zip.trim(),
-        is_sender: addressData.is_sender || '0',
+        is_sender: '1',
         latitude: addressData.latitude ? parseFloat(addressData.latitude) : null,
         longitude: addressData.longitude ? parseFloat(addressData.longitude) : null,
         adr_id: addressData.adr_id ? addressData.adr_id.trim() : null,
@@ -5259,6 +5257,7 @@ export class UserService {
         return {
           id: tradeData.id,
           code: tradeData.order_id, // Use order_id as code for completed trades
+          trade_id: tradeData.trade_proposal_id, // expose underlying trade proposal id
           trade_sent_by: tradeData.trade_sent_by_key,
           trade_sent_to: tradeData.trade_sent_to_key,
           sender_name: sender_name,

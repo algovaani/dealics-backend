@@ -19,6 +19,7 @@ export class HelperService {
       'manufacturers': 'manufacturers',
       'brands': 'brands',
       'countries': 'countries',
+      'country': 'countries',
       'states': 'states',
       'cities': 'cities',
       'item_columns': 'item_columns',
@@ -81,6 +82,7 @@ export class HelperService {
       'Manufacturers': 'manufacturers',
       'Brands': 'brands',
       'Countries': 'countries',
+      'Country': 'countries',
       'States': 'states',
       'Cities': 'cities',
       'ItemColumns': 'item_columns',
@@ -103,11 +105,17 @@ export class HelperService {
       'CoinStampGradeRatings': 'coin_stamp_grade_ratings',
       'CoinStampGradeRating': 'coin_stamp_grade_ratings',
       'MintMarks': 'mint_marks',
-      'MintMark': 'mint_marks'
+      'MintMark': 'mint_marks',
+      // Publication Year mappings
+      'PublicationYear': 'publication_years',
+      'PublicationYears': 'publication_years',
+      'publicationyear': 'publication_years',
+      'publicationyears': 'publication_years',
+      'publication_year': 'publication_years',
+      'publication_years': 'publication_years'
     };
     
     const mappedName = tableNameMapping[tableName] || tableNameMapping[tableName.toLowerCase()] || tableName;
-    console.log(`Mapping table name: ${tableName} -> ${mappedName}`);
     return mappedName;
   }
 
@@ -121,8 +129,6 @@ export class HelperService {
       const mappedTableName = this.mapTableName(tableName);
       let query = `SELECT * FROM ${mappedTableName}`;
       const replacements: any = {};
-      
-      console.log(`getMasterDatas - Original table: ${tableName}, Mapped: ${mappedTableName}, CategoryId: ${categoryId}`);
       
       // Tables that don't need category filtering (global master data)
       const globalTables = [
@@ -237,6 +243,30 @@ export class HelperService {
         query += ` WHERE status IN ('1', 1)`;
       }
       
+      // Special handling for card_conditions: allow category filtering even though it's global
+      if (mappedTableName === 'card_conditions' && categoryId) {
+        // Check if the table has a category_id column
+        const tableInfo = await sequelize.query(`
+          SELECT COLUMN_NAME 
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_NAME = :tableName 
+          AND COLUMN_NAME = 'category_id'
+        `, {
+          replacements: { tableName: mappedTableName },
+          type: QueryTypes.SELECT
+        });
+        
+        if (tableInfo.length > 0) {
+          // Add category filter for card_conditions
+          if (query.includes('WHERE')) {
+            query += ` AND category_id = :categoryId`;
+          } else {
+            query += ` WHERE category_id = :categoryId`;
+          }
+          replacements.categoryId = categoryId;
+        }
+      }
+      
       query += ` ORDER BY id ASC`;
       
       let result = await sequelize.query(query, {
@@ -257,8 +287,6 @@ export class HelperService {
         });
       }
 
-      console.log(`getMasterDatas - Query: ${query}, Result count: ${result.length}`);
-      console.log(`getMasterDatas - Sample result:`, result.slice(0, 2));
       
       return result;
     } catch (error) {

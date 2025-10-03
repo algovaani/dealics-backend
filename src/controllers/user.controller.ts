@@ -1966,7 +1966,7 @@ export const buyCardCollectionReview = async (req: Request, res: Response) => {
         return sendApiResponse(res, 404, false, 'Buy/Sell record not found', []);
       }
 
-      const normalizedRating = Number(rating) / 2; // match Laravel logic
+      const normalizedRating = Number(rating);
 
       // Determine role of current user relative to this record
       const isBuyer = card.buyer === userId;

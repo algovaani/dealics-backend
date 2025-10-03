@@ -5775,7 +5775,7 @@ export class UserService {
       });
 
       let reviewRecord: any;
-      const normalizedRating = rating / 2; // Laravel divides by 2
+      const normalizedRating = rating; // store exact rating provided (1..10)
 
       if (existingReview) {
         // Update existing review
@@ -5837,6 +5837,7 @@ export class UserService {
       // Create review collection record
       const reviewCollectionRecord = await ReviewCollection.create({
         review_id: reviewRecord.id,
+        buy_sell_card_id: 0,
         user_id: isSender ? tradeData.trade_sent_to : tradeData.trade_sent_by,
         sender_id: isSender ? tradeData.trade_sent_by : tradeData.trade_sent_to,
         rating: normalizedRating,

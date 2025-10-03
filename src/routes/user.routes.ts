@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment, changePassword } from "../controllers/user.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment, changePassword, buyCardCollectionReview } from "../controllers/user.controller.js";
 import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
 import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
@@ -103,6 +103,8 @@ router.get("/my-tickets", userAuth, getMyTickets);
 
 // Payment confirmation API
 router.post("/confirm-payment", userAuth, confirmPayment);
+// Buy/Sell review submission (authenticated)
+router.post("/boughtsoldfeedback", userAuth, buyCardCollectionReview);
 
 // Rating submission API
 router.post("/submit-rating", userAuth, submitRating);

@@ -56,6 +56,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
       username: profileData.user.username,
       profile_picture: profileData.user.profile_picture,
       email: profileData.user.email,
+      paypal_business_email: (profileData.user as any).paypal_business_email,
       phone_number: profileData.user.phone_number,
       country_code: profileData.user.country_code,
       about_user: profileData.user.about_user,

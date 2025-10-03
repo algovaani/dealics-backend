@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { login, register, forgotPassword, resetPassword } from "../controllers/auth.controller.js";
+import { login, register, forgotPassword, resetPassword, socialRegister } from "../controllers/auth.controller.js";
 import { uploadProfile } from "../utils/fileUpload.js";
 
 const router = Router();
@@ -26,6 +26,7 @@ router.use(authCorsMiddleware);
 
 router.post("/login", login);
 router.post("/register", uploadProfile.single('profile_image'), register);
+router.post("/social-register", socialRegister);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 

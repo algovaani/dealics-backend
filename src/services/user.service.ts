@@ -119,7 +119,6 @@ export class UserService {
   // Get user's social media links (original format)
   static async getUserSocialMedia(userId: number) {
     try {
-      console.log('🔍 Getting social media for user ID:', userId);
       
       const socialMediaData = await UserSocialMedia.findAll({
         where: { 
@@ -135,16 +134,12 @@ export class UserService {
         order: [['created_at', 'ASC']]
       });
 
-      console.log('✅ Social media data found:', socialMediaData.length, 'records');
-      console.log('📋 Social media data:', JSON.stringify(socialMediaData, null, 2));
 
       // Transform to original array format
       const socialLinks: any[] = [];
       socialMediaData.forEach((item: any) => {
-        console.log('🔄 Processing item:', item.dataValues);
         if (item.SocialMedia && item.social_media_url) {
           const platformName = item.SocialMedia.social_media_name?.toLowerCase();
-          console.log('📱 Platform name:', platformName, 'URL:', item.social_media_url);
           if (platformName) {
             socialLinks.push({
               platform: platformName,
@@ -155,7 +150,6 @@ export class UserService {
         }
       });
 
-      console.log('🎯 Final social links:', socialLinks);
       return socialLinks;
     } catch (error: any) {
       console.error('❌ Error getting user social media:', error);
@@ -166,20 +160,15 @@ export class UserService {
   // Update user's social media links
   static async updateUserSocialMedia(userId: number, socialMediaData: any) {
     try {
-      console.log('📱 Updating social media for user ID:', userId);
-      console.log('📱 Social media data:', socialMediaData);
 
       const results = [];
 
       // Process each social media platform from FormData
-      console.log('📱 Processing social media platforms:', Object.keys(socialMediaData));
       
       for (const [platformKey, platformData] of Object.entries(socialMediaData)) {
-        console.log(`📱 Processing ${platformKey}:`, platformData);
         
         if (platformData && typeof platformData === 'object' && 'url' in platformData) {
           const url = platformData.url as string;
-          console.log(`📱 ${platformKey} URL:`, url);
           
           if (url && url.trim() !== '') {
             // Find social media platform by name (MySQL compatible)
@@ -230,7 +219,6 @@ export class UserService {
               name: socialMediaPlatform.social_media_name
             });
 
-            console.log(`✅ Updated ${platformKey}:`, url);
           } else {
             // Remove or deactivate social media link if URL is empty
             const socialMediaPlatform = await SocialMedia.findOne({
@@ -253,7 +241,6 @@ export class UserService {
                 await userSocialMedia.update({
                   social_media_url_status: '0'
                 });
-                console.log(`❌ Deactivated ${platformKey} link`);
               }
             }
           }
@@ -582,7 +569,6 @@ export class UserService {
         WHERE trader_id = :followingId AND user_id = :followerId AND follower_status = '1'
       `;
 
-      console.log('🔍 Checking following status:', { followerId, followingId });
 
       const result = await sequelize.query(query, {
         replacements: { followerId, followingId },
@@ -592,7 +578,6 @@ export class UserService {
       const count = (result[0] as any)?.count || 0;
       const isFollowing = count > 0;
       
-      console.log('📊 Following check result:', { count, isFollowing });
 
       return isFollowing;
     } catch (error) {
@@ -707,8 +692,6 @@ export class UserService {
   // Update user profile (excludes email and username)
   static async updateUserProfile(userId: number, profileData: any) {
     try {
-      console.log('🔍 Updating user profile for ID:', userId);
-      console.log('📋 Profile data received:', profileData);
 
       // Validate userId
       if (!userId || isNaN(userId) || userId <= 0) {
@@ -731,8 +714,6 @@ export class UserService {
       const { email, username, ...allowedFields } = profileData;
       
       // Log what fields are being updated
-      console.log('✅ Allowed fields to update:', Object.keys(allowedFields));
-      console.log('🚫 Excluded fields (non-editable):', email ? 'email' : '', username ? 'username' : '');
 
       // Validate required fields
       const validationErrors: string[] = [];
@@ -812,12 +793,10 @@ export class UserService {
         }
       });
 
-      console.log('📝 Final update data:', filteredData);
 
       // Update the user
       try {
         await user.update(filteredData);
-        console.log('✅ User profile updated successfully');
       } catch (updateError: any) {
         console.error('❌ Database update error:', updateError);
         console.error('❌ Update data that caused error:', filteredData);
@@ -912,8 +891,6 @@ export class UserService {
       }
       
       // Debug: Log the values
-      console.log('createdAtValue from userData:', createdAtValue);
-      console.log('formatted joinedDate:', joinedDate);
       
       // Create formatted user object with joined_date
       const formattedUser = {
@@ -921,7 +898,6 @@ export class UserService {
         joined_date: joinedDate
       };
       
-      console.log('formattedUser joined_date:', formattedUser.joined_date);
 
       return {
         user: formattedUser,
@@ -1566,7 +1542,6 @@ export class UserService {
       let totalCount = 0;
 
       if (type === 'purchase' || type === 'all') {
-        console.log('Fetching purchase logs for type:', type);
         // Get coin purchase history
         const purchaseCount = await CreditPurchaseLog.count({
           where: { user_id: userId }
@@ -1599,7 +1574,6 @@ export class UserService {
       }
 
       if (type === 'deduction' || type === 'all') {
-        console.log('Fetching deduction logs for type:', type);
         // Get coin deduction history
         const deductionCount = await CreditDeductionLog.count({
           where: { 
@@ -2796,7 +2770,8 @@ export class UserService {
       const totalCount = await Address.count({
         where: {
           user_id: userId,
-          is_deleted: '0'
+          is_deleted: '0',
+          is_sender: '1'
         }
       });
 
@@ -2804,7 +2779,8 @@ export class UserService {
       const addresses = await Address.findAll({
         where: {
           user_id: userId,
-          is_deleted: '0'
+          is_deleted: '0',
+          is_sender: '1'
         },
         order: [['mark_default', 'ASC'], ['created_at', 'DESC']],
         limit: limit,
@@ -3884,11 +3860,6 @@ export class UserService {
         }
 
         // Debug: Log shipment data to help identify the issue
-        console.log('=== DEBUG SHIPMENT DATA ===');
-        console.log('Trade ID:', tradeData.id, 'Code:', tradeData.code);
-        console.log('Shipmenttrader:', tradeData.shipmenttrader);
-        console.log('Shipmentself:', tradeData.shipmentself);
-        console.log('=== END DEBUG ===');
 
         return {
           id: tradeData.id,
@@ -5282,27 +5253,8 @@ export class UserService {
         
         // Debug: Log the raw data to help identify the issue
         if (tradeData.send_cards || tradeData.receive_cards) {
-          console.log('=== DEBUG TRADE CARD DATA ===');
-          console.log('Trade ID:', tradeData.id);
-          console.log('Send cards raw:', tradeData.send_cards, 'Type:', typeof tradeData.send_cards);
-          console.log('Receive cards raw:', tradeData.receive_cards, 'Type:', typeof tradeData.receive_cards);
-          console.log('Send cards parsed:', sendCardsDetails);
-          console.log('Receive cards parsed:', receiveCardsDetails);
-          console.log('Final send cards:', finalSendCards);
-          console.log('Final receive cards:', finalReceiveCards);
-          console.log('=== END DEBUG ===');
         }
 
-        // Debug: Log shipment data
-        console.log('=== DEBUG SHIPMENT DATA ===');
-        console.log('Trade ID:', tradeData.id);
-        console.log('Trade Proposal ID:', tradeData.trade_proposal_id);
-        console.log('Trade sent by key:', tradeData.trade_sent_by_key);
-        console.log('Trade sent to key:', tradeData.trade_sent_to_key);
-        console.log('Current logged in user ID:', userId);
-        console.log('Direct shipmenttrader query result:', shipmenttrader);
-        console.log('Direct shipmentself query result:', shipmentself);
-        console.log('=== END SHIPMENT DEBUG ===');
 
         return {
           id: tradeData.id,
@@ -5475,16 +5427,13 @@ export class UserService {
       );
 
       // Set trade status using helper function (Laravel: HelperTradeAndOfferStatus::___setStatus('payment-confirmed', 'trade', $trade_proposal->id))
-      console.log('🔄 Setting trade status to payment-confirmed for trade proposal:', tradeProposalId);
       const { setTradeProposalStatus } = await import('../services/tradeStatus.service.js');
       const statusResult = await setTradeProposalStatus(tradeProposalId, 'payment-confirmed');
-      console.log('📊 Status update result:', statusResult);
       
       if (!statusResult.success) {
         console.error('❌ Failed to update trade status:', statusResult.error);
         
         // Fallback: Direct status update
-        console.log('🔄 Attempting direct status update...');
       const paymentConfirmedStatus = await TradeProposalStatus.findOne({
         where: { alias: 'payment-confirmed' }
       });
@@ -5494,7 +5443,6 @@ export class UserService {
           { trade_proposal_status_id: paymentConfirmedStatus.id },
           { where: { id: tradeProposalId } }
         );
-          console.log('✅ Direct status update completed');
         } else {
           console.error('❌ Payment confirmed status not found in database');
         }

@@ -3,6 +3,7 @@ import { Cart, CartDetail, TradingCard, User, BuyOfferAttempt, CreditDeductionLo
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 import { exit } from "process";
+import { EmailHelperService } from "../services/emailHelper.service.js";
 
 // Helper function to send standardized API responses
 const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any, extra?: any) => {
@@ -218,7 +219,7 @@ const calcCartAmounts = async (cartId: number, userId: number) => {
       // Get user default address
       const userDefaultAddress = await sequelize.query(`
         SELECT country FROM addresses 
-        WHERE mark_default = '1' 
+        WHERE mark_default = 1 
         AND user_id = ${userId} 
         AND is_deleted = '0'
         LIMIT 1
@@ -708,7 +709,6 @@ const setTradeAndOfferStatus = async (alias: string, setFor: string, triggerId: 
           { trade_proposal_status_id: tradeStatus.id },
           { where: { id: triggerId } }
         );
-        console.log(`✅ Trade status updated for trade ${triggerId} → alias: ${alias}, status_id: ${tradeStatus.id}, rows: ${affected}`);
       } else {
         console.warn(`TradeProposalStatus alias not found: ${alias}`);
       }
@@ -721,8 +721,6 @@ const setTradeAndOfferStatus = async (alias: string, setFor: string, triggerId: 
 // Helper function to create notifications (Enhanced based on Laravel __setTradersNotificationOnVariousActionBasis)
 export const setTradersNotificationOnVariousActionBasis = async (act: string, sentBy: number, sentTo: number, dataSetId: number, setFor: string) => {
   try {
-    console.log(`🔔 Creating notification - Action: ${act}, SentBy: ${sentBy}, SentTo: ${sentTo}, DataSetId: ${dataSetId}, SetFor: ${setFor}`);
-
     // Get notification data based on action and setFor
     const notificationData = getNotificationData(act, setFor);
     
@@ -744,7 +742,6 @@ export const setTradersNotificationOnVariousActionBasis = async (act: string, se
         }
 
         await TradeNotification.create(senderCollection);
-        console.log(`✅ Sender notification created: ${notificationData.messages.sender}`);
       }
 
       // Create receiver notification
@@ -764,10 +761,7 @@ export const setTradersNotificationOnVariousActionBasis = async (act: string, se
         }
 
         await TradeNotification.create(receiverCollection);
-        console.log(`✅ Receiver notification created: ${notificationData.messages.receiver}`);
       }
-    } else {
-      console.log(`⚠️ No notification data found for action: ${act}, setFor: ${setFor}`);
     }
 
   } catch (error: any) {
@@ -942,7 +936,7 @@ export const processCheckout = async (req: Request, res: Response) => {
     // Check if user has default address
     const userDefaultAddress = await Address.findOne({
       where: {
-        mark_default: '1',
+        mark_default: 1,
         is_deleted: '0',
         user_id: userId
       }
@@ -1018,7 +1012,6 @@ export const processCheckout = async (req: Request, res: Response) => {
     if (buyOfferAttemptProducts.length > 0) {
       // Note: You'll need to create BuyOfferproduct model for this
       // For now, we'll skip this part as the model doesn't exist
-      console.log('Multiple products checkout - BuyOfferproduct model needed');
     }
 
     // Create notifications
@@ -1288,8 +1281,6 @@ const sendPaymentConfirmationEmailsForBuySell = async (id: number) => {
     };
 
     // Execute email sending (you can implement the actual email sending logic here)
-    console.log('Sending payment confirmation email to buyer:', buyerMailInputs);
-    console.log('Sending payment confirmation email to seller:', sellerMailInputs);
 
   } catch (error) {
     console.error('Error sending payment confirmation emails:', error);
@@ -1328,14 +1319,12 @@ const makeOfferPayment = async (id: number) => {
       
       // Note: TradeProposals model would need to be implemented for this functionality
       // For now, we'll skip the trade cancellation logic
-      console.log(`Main card ${mainCard} purchased - trade cancellation logic would go here`);
     } else {
       // Handle multiple products
       const buyOfferWithProducts = buyOffer as any;
       if (buyOfferWithProducts.buy_offer_product && buyOfferWithProducts.buy_offer_product.length > 0) {
         for (const product of buyOfferWithProducts.buy_offer_product) {
           // Cancel related trade proposals for each product
-          console.log(`Product ${product.main_card} purchased - trade cancellation logic would go here`);
         }
       }
     }
@@ -1379,7 +1368,6 @@ const makeOfferPayment = async (id: number) => {
     }
 
     // Send email notifications (simplified - would need email service implementation)
-    console.log('Email notifications would be sent here for purchase success');
 
     // Send payment completion notifications
     await sendPaymentCompletionNotifications(buyOffer);
@@ -1414,7 +1402,6 @@ export const feedPayPalPaymentReturn = async (req: Request, res: Response) => {
     // For payment processing, we should not return 304 as it's a critical operation
     // But we can implement conditional logic for non-critical responses
     if (ifNoneMatch && ifNoneMatch === currentETag) {
-      console.log(`🔄 Conditional request detected - ETag match for ${refId}`);
       // For payment processing, we'll still process but log the conditional request
     }
 
@@ -1424,7 +1411,6 @@ export const feedPayPalPaymentReturn = async (req: Request, res: Response) => {
     if (global.requestCache && global.requestCache[requestKey]) {
       const timeDiff = now - global.requestCache[requestKey];
       if (timeDiff < 5000) { // 5 seconds
-        console.log(`🔄 Duplicate request detected within 5 seconds for ${refId}`);
         return res.status(304).end();
       }
     }
@@ -1534,12 +1520,9 @@ export const completeTradeSender = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "Trade proposal not found", []);
     }
 
-    console.log(`🔄 Processing trade completion for TradeProposal ID: ${trade_proposal_id}`);
-    console.log(`Trade sent by: ${tradeProposal.trade_sent_by}, Trade sent to: ${tradeProposal.trade_sent_to}, Current user: ${userId}`);
 
     // Check if user is the sender
     if (tradeProposal.trade_sent_by === userId) {
-      console.log(`✅ User is the sender - marking sender confirmation`);
       
       // Update sender confirmation
       await tradeProposal.update({
@@ -1554,32 +1537,32 @@ export const completeTradeSender = async (req: Request, res: Response) => {
       const receiveProducts = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
       const allProducts = [...sendProducts, ...receiveProducts];
 
-      console.log(`📦 Products to update: Send=${sendProducts.length}, Receive=${receiveProducts.length}, Total=${allProducts.length}`);
+      // Reload trade proposal to get updated confirmation status
+      await tradeProposal.reload();
 
       // Check if both parties have confirmed
       if (tradeProposal.receiver_confirmation === '1') {
-        console.log(`✅ Both parties confirmed - marking trade as complete`);
-        
         // Mark trade as complete
         await tradeProposal.update({
           trade_status: 'complete'
         });
 
+        // Create TradeTransaction record and handle all completion tasks
+        await tradeTransactionInsert(tradeProposal.id);
+
         // Send review notification
         await setTradersNotificationOnVariousActionBasis('give-review-to-trader', tradeProposal.trade_sent_to!, tradeProposal.trade_sent_by!, tradeProposal.id, 'Trade');
 
-        // Update trading cards status
+        // Update trading cards status (keep as is_traded = '0' for availability)
         if (allProducts.length > 0) {
           await TradingCard.update(
             { is_traded: '0' },
             { where: { id: { [Op.in]: allProducts } } }
           );
-          console.log(`✅ Updated ${allProducts.length} trading cards to not traded`);
         }
       }
 
       // Send completion email (simplified)
-      console.log(`📧 Sending trade completion email to receiver`);
 
       // Set trade status
       await setTradeAndOfferStatus('marked-trade-completed-by-sender', 'trade', tradeProposal.id);
@@ -1587,7 +1570,7 @@ export const completeTradeSender = async (req: Request, res: Response) => {
       // Determine response based on confirmation status
       if (tradeProposal.trade_sender_confrimation === '1' && tradeProposal.receiver_confirmation === '1') {
         return sendApiResponse(res, 200, true, "Trade completed successfully", {
-          redirect_url: `/trade-transaction-insert/${trade_proposal_id}`,
+          redirect_url: `/completed-trades?id=${trade_proposal_id}`,
           status: 'completed'
         });
       } else if (tradeProposal.trade_sender_confrimation !== '1' && tradeProposal.receiver_confirmation === '1') {
@@ -1603,7 +1586,6 @@ export const completeTradeSender = async (req: Request, res: Response) => {
       }
 
     } else if (tradeProposal.trade_sent_to === userId) {
-      console.log(`✅ User is the receiver - marking receiver confirmation`);
       
       // Update receiver confirmation
       await tradeProposal.update({
@@ -1613,14 +1595,18 @@ export const completeTradeSender = async (req: Request, res: Response) => {
       // Send notification
       await setTradersNotificationOnVariousActionBasis('mark-completed-proposal', tradeProposal.trade_sent_to!, tradeProposal.trade_sent_by!, tradeProposal.id, 'Trade');
 
+      // Reload trade proposal to get updated confirmation status
+      await tradeProposal.reload();
+
       // Check if both parties have confirmed
       if (tradeProposal.trade_sender_confrimation === '1') {
-        console.log(`✅ Both parties confirmed - marking trade as complete`);
-        
         // Mark trade as complete
         await tradeProposal.update({
           trade_status: 'complete'
         });
+
+        // Create TradeTransaction record and handle all completion tasks
+        await tradeTransactionInsert(tradeProposal.id);
 
         // Send review notification
         await setTradersNotificationOnVariousActionBasis('give-review-to-trader', tradeProposal.trade_sent_by!, tradeProposal.trade_sent_to!, tradeProposal.id, 'Trade');
@@ -1630,18 +1616,16 @@ export const completeTradeSender = async (req: Request, res: Response) => {
         const receiveProducts = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
         const allProducts = [...sendProducts, ...receiveProducts];
 
-        // Update trading cards status
+        // Update trading cards status (keep as is_traded = '0' for availability)
         if (allProducts.length > 0) {
           await TradingCard.update(
             { is_traded: '0' },
             { where: { id: { [Op.in]: allProducts } } }
           );
-          console.log(`✅ Updated ${allProducts.length} trading cards to not traded`);
         }
       }
 
       // Send completion email (simplified)
-      console.log(`📧 Sending trade completion email to sender`);
 
       // Set trade status
       await setTradeAndOfferStatus('marked-trade-completed-by-receiver', 'trade', tradeProposal.id);
@@ -1649,7 +1633,7 @@ export const completeTradeSender = async (req: Request, res: Response) => {
       // Determine response based on confirmation status
       if (tradeProposal.trade_sender_confrimation === '1' && tradeProposal.receiver_confirmation === '1') {
         return sendApiResponse(res, 200, true, "Trade completed successfully", {
-          redirect_url: `/trade-transaction-insert/${trade_proposal_id}`,
+          redirect_url: `/completed-trades?id=${trade_proposal_id}`,
           status: 'completed'
         });
       } else if (tradeProposal.trade_sender_confrimation !== '1' && tradeProposal.receiver_confirmation === '1') {
@@ -1665,7 +1649,6 @@ export const completeTradeSender = async (req: Request, res: Response) => {
       }
 
     } else {
-      console.error(`❌ User ${userId} is not authorized to complete this trade`);
       return sendApiResponse(res, 403, false, "You are not authorized to complete this trade", []);
     }
 
@@ -1674,6 +1657,192 @@ export const completeTradeSender = async (req: Request, res: Response) => {
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };
+
+// Trade Transaction Insert Function (based on Laravel trade_transcation_insert)
+export const tradeTransactionInsert = async (tradeProposalId: number): Promise<boolean> => {
+  try {
+    // Check if TradeTransaction already exists
+    const existingTransaction = await TradeTransaction.findOne({
+      where: { trade_proposal_id: tradeProposalId }
+    });
+
+    if (existingTransaction) {
+      return true; // Return true since transaction exists
+    }
+
+    // Get trade proposal data
+    const tradeProposal = await TradeProposal.findByPk(tradeProposalId, {
+      include: [
+        {
+          model: User,
+          as: 'tradeSender',
+          attributes: ['id', 'username', 'first_name', 'last_name', 'email']
+        },
+        {
+          model: User,
+          as: 'tradeReceiver', 
+          attributes: ['id', 'username', 'first_name', 'last_name', 'email']
+        }
+      ]
+    });
+
+    if (!tradeProposal) {
+      return false;
+    }
+
+    // Get main card name
+    let mainCardName = '';
+    if (tradeProposal.main_card) {
+      const mainCard = await TradingCard.findByPk(tradeProposal.main_card, {
+        attributes: ['search_param']
+      });
+      mainCardName = mainCard?.search_param || '';
+    }
+
+    // Check if notification exists for use_request_card_first
+    const notificationExists = await TradeNotification.count({
+      where: { trade_proposal_id: tradeProposalId }
+    });
+    const useRequestCardFirst = notificationExists > 0 ? '1' : '0';
+
+    // Prepare TradeTransaction data
+    const transactionData = {
+      order_id: tradeProposal.code,
+      trade_proposal_id: tradeProposalId,
+      trade_sent_by_key: tradeProposal.trade_sent_by,
+      trade_sent_by_value: (tradeProposal as any).tradeSender?.username || '',
+      trade_sent_to_key: tradeProposal.trade_sent_to,
+      trade_sent_to_value: (tradeProposal as any).tradeReceiver?.username || '',
+      trade_amount_paid_on: tradeProposal.trade_amount_paid_on,
+      trade_amount_pay_id: tradeProposal.trade_amount_pay_id,
+      trade_amount_payer_id: tradeProposal.trade_amount_payer_id,
+      trade_amount_amount: tradeProposal.trade_amount_amount,
+      trade_amount_pay_status: tradeProposal.trade_amount_pay_status,
+      main_card_id: tradeProposal.main_card,
+      main_card_name: mainCardName,
+      receive_cards: tradeProposal.receive_cards,
+      send_cards: tradeProposal.send_cards,
+      use_request_card_first: useRequestCardFirst,
+      add_cash: tradeProposal.add_cash,
+      ask_cash: tradeProposal.ask_cash,
+      message: tradeProposal.message,
+      counter_personalized_message: tradeProposal.counter_personalized_message,
+      sender_track_id: tradeProposal.trade_sender_track_id,
+      receiver_track_id: tradeProposal.trade_receiver_track_id,
+      admin_sender_track_id: tradeProposal.admin_sender_track_id,
+      admin_receiver_track_id: tradeProposal.admin_receiver_track_id,
+      confirmation_from_sender: tradeProposal.trade_sender_confrimation,
+      confirmation_from_receiver: tradeProposal.receiver_confirmation,
+      trade_created_at: tradeProposal.created_at,
+      created_at: new Date(),
+      updated_at: new Date()
+    };
+
+    // Create TradeTransaction record
+    await TradeTransaction.create(transactionData as any);
+
+    // Transfer card ownership
+    await transferCardOwnership(tradeProposal);
+
+    // Update users as veteran users
+    await User.update(
+      { is_veteran_user: true },
+      { where: { id: [tradeProposal.trade_sent_by!, tradeProposal.trade_sent_to!] } }
+    );
+
+    // Send completion emails
+    await sendTradeCompletionEmails(tradeProposal);
+
+    return true;
+
+  } catch (error: any) {
+    console.error('Error in tradeTransactionInsert:', error);
+    return false;
+  }
+};
+
+// Helper function to transfer card ownership
+const transferCardOwnership = async (tradeProposal: any): Promise<void> => {
+  try {
+    const sendCards = tradeProposal.send_cards ? 
+      tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())).filter((id: number) => !isNaN(id)) : [];
+    const receiveCards = tradeProposal.receive_cards ? 
+      tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())).filter((id: number) => !isNaN(id)) : [];
+
+    // Transfer send_cards ownership: from sender to receiver
+    if (sendCards.length > 0) {
+      await TradingCard.update({
+        trader_id: tradeProposal.trade_sent_to,
+        previous_owner_id: tradeProposal.trade_sent_by,
+        trading_card_status: '0',
+        seller_notes: '',
+        shipping_details: '',
+        updated_at: new Date()
+      }, {
+        where: { id: { [Op.in]: sendCards } }
+      });
+    }
+
+    // Transfer receive_cards ownership: from receiver to sender  
+    if (receiveCards.length > 0) {
+      await TradingCard.update({
+        trader_id: tradeProposal.trade_sent_by,
+        previous_owner_id: tradeProposal.trade_sent_to,
+        trading_card_status: '0',
+        seller_notes: '',
+        shipping_details: '',
+        updated_at: new Date()
+      }, {
+        where: { id: { [Op.in]: receiveCards } }
+      });
+    }
+
+  } catch (error: any) {
+    console.error('❌ Error transferring card ownership:', error);
+  }
+};
+
+// Helper function to send trade completion emails
+const sendTradeCompletionEmails = async (tradeProposal: any): Promise<void> => {
+  try {
+    const senderUser = (tradeProposal as any).tradeSender;
+    const receiverUser = (tradeProposal as any).tradeReceiver;
+
+    if (!senderUser || !receiverUser) {
+      console.error('❌ Sender or receiver user data not found for emails');
+      return;
+    }
+
+    const transactionListUrl = `${process.env.FRONTEND_URL}/completed-trades?id=${tradeProposal.id}`;
+    const senderName = `${senderUser.first_name || ''} ${senderUser.last_name || ''}`.trim() || senderUser.username;
+    const receiverName = `${receiverUser.first_name || ''} ${receiverUser.last_name || ''}`.trim() || receiverUser.username;
+
+    // Email to sender
+    const senderMailInputs = {
+      to: senderUser.email,
+      name: senderName,
+      transaction_id: tradeProposal.code,
+      leavefeedbacklink: transactionListUrl,
+    };
+
+    // Email to receiver
+    const receiverMailInputs = {
+      to: receiverUser.email,
+      name: receiverName,
+      transaction_id: tradeProposal.code,
+      leavefeedbacklink: transactionListUrl,
+    };
+
+    // Send emails using EmailHelperService
+    await EmailHelperService.executeMailSender('share-your-feedback-trade', senderMailInputs);
+    await EmailHelperService.executeMailSender('share-your-feedback-trade', receiverMailInputs);
+
+
+  } catch (error: any) {
+    console.error('❌ Error sending trade completion emails:', error);
+  }
+};
+
 
 // Payment Confirmation API (based on Laravel ___isPaymentReceive function)
 export const confirmPaymentReceived = async (req: Request, res: Response) => {
@@ -2308,12 +2477,10 @@ const sendTradeEmailNotifications = async (tradeProposal: any, status: string, a
     // Send emails (you'll need to implement your email service)
     if (receiverTemplate) {
       // await emailService.sendEmail(receiverTemplate, receiverEmailData);
-      console.log('Email to receiver:', receiverTemplate, receiverEmailData);
     }
     
     if (senderTemplate) {
       // await emailService.sendEmail(senderTemplate, senderEmailData);
-      console.log('Email to sender:', senderTemplate, senderEmailData);
     }
 
   } catch (error) {
@@ -2368,7 +2535,6 @@ const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 
         : 'pay-to-continue-email-trade-sender';
 
       // await emailService.sendEmail(template, senderEmailData);
-      console.log('Pay-to-continue email to sender:', template, senderEmailData);
     } else {
       const receiverEmailData = {
         to: receiver.email,
@@ -2387,7 +2553,6 @@ const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 
         : 'pay-to-continue-email-trade-receiver';
 
       // await emailService.sendEmail(template, receiverEmailData);
-      console.log('Pay-to-continue email to receiver:', template, receiverEmailData);
     }
 
   } catch (error) {
@@ -3490,24 +3655,50 @@ export const getShippingAddress = async (req: Request, res: Response) => {
 
     // Get delivery address from the other trader
     if (userId === tradeProposal.trade_sent_by) {
-      const delAddress = await Address.findOne({
+      // First try to get default address
+      let delAddress = await Address.findOne({
         where: {
           user_id: tradeProposal.trade_sent_to,
-          mark_default: '1',
+          mark_default: 1,
           is_deleted: '0'
         }
       });
+      
+      // If no default address found, get any available address
+      if (!delAddress) {
+        delAddress = await Address.findOne({
+          where: {
+            user_id: tradeProposal.trade_sent_to,
+            is_deleted: '0'
+          },
+          order: [['mark_default', 'ASC'], ['created_at', 'DESC']]
+        });
+      }
+      
       if (delAddress) {
         deliveryAddress = delAddress.id;
       }
     } else if (userId === tradeProposal.trade_sent_to) {
-      const delAddress = await Address.findOne({
+      // First try to get default address
+      let delAddress = await Address.findOne({
         where: {
           user_id: tradeProposal.trade_sent_by,
-          mark_default: '1',
+          mark_default: 1,
           is_deleted: '0'
         }
       });
+      
+      // If no default address found, get any available address
+      if (!delAddress) {
+        delAddress = await Address.findOne({
+          where: {
+            user_id: tradeProposal.trade_sent_by,
+            is_deleted: '0'
+          },
+          order: [['mark_default', 'ASC'], ['created_at', 'DESC']]
+        });
+      }
+      
       if (delAddress) {
         deliveryAddress = delAddress.id;
       }
@@ -3987,10 +4178,8 @@ export const saveParcel = async (req: Request, res: Response) => {
       return sendApiResponse(res, 500, false, "EasyPost API key not configured", []);
     }
 
-    console.log('Using EasyPost API Key:', apiKey.substring(0, 10) + '...'); // Log first 10 chars for debugging
 
     const shipPostData = { shipment: shipmentForReq };
-console.log(shipPostData);
     try {
       const response = await fetch('https://api.easypost.com/v2/shipments', {
         method: 'POST',
@@ -4323,14 +4512,6 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
     }
 
     // Debug logging
-    console.log('Shipment found:', {
-      id: shipment.id,
-      user_id: shipment.user_id,
-      trade_id: shipment.trade_id,
-      has_shipment_response: !!shipment.shipment_response,
-      has_postage_label: !!shipment.postage_label,
-      has_parcel: !!shipment.parcel
-    });
 
     // Parse shipment data with error handling
     let shipmentResponse;
@@ -4348,12 +4529,6 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
       postageLabel = typeof shipment.postage_label === 'string' 
         ? (shipment.postage_label ? JSON.parse(shipment.postage_label) : {}) 
         : shipment.postage_label || {};
-      
-      console.log('Postage label parsed:', {
-        original_type: typeof shipment.postage_label,
-        original_value: shipment.postage_label,
-        parsed_value: postageLabel
-      });
     } catch (error) {
       console.error('Error parsing postage_label:', error);
       postageLabel = {};
@@ -4404,11 +4579,6 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
       : `${shipParcelDetails.weight} ${shipment.parcel_weight_unit}`;
 
     // Build package details from trade cards being sent by the current user
-    console.log('Postage label data:', {
-      has_object: !!postageLabel.object,
-      object_type: typeof postageLabel.object,
-      object_value: postageLabel.object
-    });
     
     let packageDetails = [] as string[];
 
@@ -4454,14 +4624,37 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
             packageDetails = val.split(' | ').filter((item: string) => item.trim() !== '');
             break;
           }
-          }
         }
       }
       
       if (packageDetails.length === 0) {
         packageDetails = ['Package contents not specified'];
       }
-    // Build sender/receiver address with fallbacks to Address table when shipment_response lacks full data
+    }
+
+    // Get trade proposal to determine sender/receiver roles
+    const tradeProposal = await TradeProposal.findByPk(tradeId);
+    if (!tradeProposal) {
+      return sendApiResponse(res, 400, false, "Trade proposal not found", []);
+    }
+
+    // Determine who is sender and receiver based on logged-in user
+    // Sender = logged-in user (current user shipping their cards)
+    // Receiver = the other party in the trade
+    let senderUserId = userId;
+    let receiverUserId: number;
+    
+    if (tradeProposal.trade_sent_by === userId) {
+      // Current user initiated the trade, receiver is trade_sent_to
+      receiverUserId = tradeProposal.trade_sent_to!;
+    } else if (tradeProposal.trade_sent_to === userId) {
+      // Current user received the trade, receiver is trade_sent_by
+      receiverUserId = tradeProposal.trade_sent_by!;
+    } else {
+      return sendApiResponse(res, 403, false, "Unauthorized access to this trade", []);
+    }
+
+    // Build sender address (logged-in user's address) - use from_address as it represents the current user
     let senderAddressData = {
       name: shipmentResponse.from_address?.name || '',
       street1: shipmentResponse.from_address?.street1 || '',
@@ -4473,6 +4666,7 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
       email: shipmentResponse.from_address?.email || ''
     };
 
+    // Build receiver address (other party's address) - use to_address as it represents the other user
     let receiverAddressData = {
       name: shipmentResponse.to_address?.name || '',
       street1: shipmentResponse.to_address?.street1 || '',
@@ -4526,7 +4720,7 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
         }
       }
 
-      // If receiver still mirrors sender (or still missing), try partner's shipment to resolve receiver details
+      // If receiver still mirrors sender (or still missing), try to get receiver's address directly
       const receiverLooksSameAsSender = (
         receiverAddressData.name === senderAddressData.name &&
         receiverAddressData.street1 === senderAddressData.street1 &&
@@ -4536,42 +4730,52 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
       );
 
       if (receiverLooksSameAsSender || !receiverAddressData.street1) {
-        const partnerShipment = await Shipment.findOne({
+        // Try to get receiver's address from their Address records
+        const receiverAddress = await Address.findOne({
           where: {
-            trade_id: tradeId,
-            user_id: { [Op.ne]: userId }
+            user_id: receiverUserId,
+            is_deleted: '0',
+            is_sender: '1' // Get their sender address (which becomes our receiver address)
           },
-          include: [{
-            model: Address,
-            as: 'toAddress',
-            attributes: ['name','street1','street2','city','state','zip','phone','email']
-          }]
+          order: [['mark_default', 'DESC'], ['created_at', 'DESC']]
         });
 
-        const partnerToAddress: any = (partnerShipment as any)?.toAddress;
-        if (partnerToAddress) {
+        if (receiverAddress) {
           receiverAddressData = {
-            name: partnerToAddress.name || receiverAddressData.name,
-            street1: partnerToAddress.street1 || receiverAddressData.street1,
-            street2: partnerToAddress.street2 || receiverAddressData.street2,
-            city: partnerToAddress.city || receiverAddressData.city,
-            state: partnerToAddress.state || receiverAddressData.state,
-            zip: partnerToAddress.zip || receiverAddressData.zip,
-            phone: partnerToAddress.phone || receiverAddressData.phone,
-            email: partnerToAddress.email || receiverAddressData.email
+            name: receiverAddress.name || receiverAddressData.name,
+            street1: receiverAddress.street1 || receiverAddressData.street1,
+            street2: receiverAddress.street2 || receiverAddressData.street2,
+            city: receiverAddress.city || receiverAddressData.city,
+            state: receiverAddress.state || receiverAddressData.state,
+            zip: receiverAddress.zip || receiverAddressData.zip,
+            phone: receiverAddress.phone || receiverAddressData.phone,
+            email: receiverAddress.email || receiverAddressData.email
           };
-        } else if ((partnerShipment as any)?.to_address) {
-          const partnerToAddrRow = await Address.findByPk(Number((partnerShipment as any).to_address));
-          if (partnerToAddrRow) {
+        } else {
+          // Fallback: try partner's shipment to resolve receiver details
+          const partnerShipment = await Shipment.findOne({
+            where: {
+              trade_id: tradeId,
+              user_id: receiverUserId
+            },
+            include: [{
+              model: Address,
+              as: 'toAddress',
+              attributes: ['name','street1','street2','city','state','zip','phone','email']
+            }]
+          });
+
+          const partnerToAddress: any = (partnerShipment as any)?.toAddress;
+          if (partnerToAddress) {
             receiverAddressData = {
-              name: partnerToAddrRow.name || receiverAddressData.name,
-              street1: partnerToAddrRow.street1 || receiverAddressData.street1,
-              street2: partnerToAddrRow.street2 || receiverAddressData.street2,
-              city: partnerToAddrRow.city || receiverAddressData.city,
-              state: partnerToAddrRow.state || receiverAddressData.state,
-              zip: partnerToAddrRow.zip || receiverAddressData.zip,
-              phone: partnerToAddrRow.phone || receiverAddressData.phone,
-              email: partnerToAddrRow.email || receiverAddressData.email
+              name: partnerToAddress.name || receiverAddressData.name,
+              street1: partnerToAddress.street1 || receiverAddressData.street1,
+              street2: partnerToAddress.street2 || receiverAddressData.street2,
+              city: partnerToAddress.city || receiverAddressData.city,
+              state: partnerToAddress.state || receiverAddressData.state,
+              zip: partnerToAddress.zip || receiverAddressData.zip,
+              phone: partnerToAddress.phone || receiverAddressData.phone,
+              email: partnerToAddress.email || receiverAddressData.email
             };
           }
         }
@@ -5198,27 +5402,21 @@ export const shippingTradeSuccess = async (req: Request, res: Response) => {
 
     // Update trade proposal based on user role and set status
     if (tradeProposal.trade_sent_by === userId) {
-      console.log(`🚚 User ${userId} is sender, updating shipped_by_trade_sent_by to 1`);
       await tradeProposal.update({
         shipped_by_trade_sent_by: 1,
         shipped_on_by_trade_sent_by: new Date()
       });
       
       // Set status using HelperTradeAndOfferStatus equivalent
-      console.log(`🔄 Setting status to 'shipped-by-sender' for trade proposal ${tradeProposal.id}`);
-      const statusResult = await setTradeProposalStatus(tradeProposal.id, 'shipped-by-sender');
-      console.log(`📊 Status update result for shipped-by-sender:`, statusResult);
+      await setTradeProposalStatus(tradeProposal.id, 'shipped-by-sender');
     } else if (tradeProposal.trade_sent_to === userId) {
-      console.log(`📦 User ${userId} is receiver, updating shipped_by_trade_sent_to to 1`);
       await tradeProposal.update({
         shipped_by_trade_sent_to: 1,
         shipped_on_by_trade_sent_to: new Date()
       });
       
       // Set status using HelperTradeAndOfferStatus equivalent
-      console.log(`🔄 Setting status to 'shipped-by-receiver' for trade proposal ${tradeProposal.id}`);
-      const statusResult = await setTradeProposalStatus(tradeProposal.id, 'shipped-by-receiver');
-      console.log(`📊 Status update result for shipped-by-receiver:`, statusResult);
+      await setTradeProposalStatus(tradeProposal.id, 'shipped-by-receiver');
     }
 
     // Check if both traders have shipped (Laravel HelperTradeAndOfferStatus logic)
@@ -5320,7 +5518,6 @@ export const getTradeProposalStatuses = async (req: Request, res: Response) => {
       order: [['alias', 'ASC']]
     });
 
-    console.log('📋 Available trade proposal statuses:', statuses.map(s => ({ id: s.id, alias: s.alias, name: s.name })));
 
     return sendApiResponse(res, 200, true, "Trade proposal statuses retrieved", statuses);
   } catch (error: any) {
@@ -5433,7 +5630,7 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
       const delAddress = await Address.findOne({
         where: {
           user_id: buySellCard.buyer,
-          mark_default: '1'
+          mark_default: 1
         }
       });
       if (delAddress) {
@@ -5443,7 +5640,7 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
       const delAddress = await Address.findOne({
         where: {
           user_id: buySellCard.seller,
-          mark_default: '1'
+          mark_default: 1
         }
       });
       if (delAddress) {
@@ -5592,6 +5789,63 @@ export const shippingBuysellInitialize = async (req: Request, res: Response) => 
 
   } catch (error: any) {
     console.error('Shipping buysell initialize error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+// Mark Address as Default Delivery Address API
+export const markAsDefaultDeliveryAddress = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { addressId } = req.body;
+
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    if (!addressId) {
+      return sendApiResponse(res, 400, false, "Address ID is required", []);
+    }
+
+    // Validate that the address belongs to the authenticated user
+    const address = await Address.findOne({
+      where: {
+        id: addressId,
+        user_id: userId,
+        is_deleted: '0'
+      }
+    });
+
+    if (!address) {
+      return sendApiResponse(res, 404, false, "Address not found or does not belong to user", []);
+    }
+
+    // First, set all user's addresses to mark_default = 2 (not default)
+    await Address.update(
+      { mark_default: 2 },
+      {
+        where: {
+          user_id: userId,
+          is_deleted: '0'
+        }
+      }
+    );
+
+    // Then, set the selected address to mark_default = 1 (default)
+    await Address.update(
+      { mark_default: 1 },
+      {
+        where: {
+          id: addressId,
+          user_id: userId
+        }
+      }
+    );
+
+    return sendApiResponse(res, 200, true, "Address marked as the default delivery address successfully.", []);
+
+  } catch (error: any) {
+    console.error('Mark default address error:', error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };
@@ -5991,14 +6245,6 @@ export const getShipmentCarrierBuysell = async (req: Request, res: Response) => 
         throw new Error('Invalid shipment response format');
       }
       
-      console.log('=== SHIPMENT RESPONSE DEBUG ===');
-      console.log('Shipment ID:', shipment.id);
-      console.log('Buy ID:', buy_id);
-      console.log('Original Type:', typeof shipment.shipment_response);
-      console.log('Parsed Type:', typeof shipmentResponse);
-      console.log('Rates:', shipmentResponse.rates);
-      console.log('Rates Length:', shipmentResponse.rates?.length);
-      console.log('=== END SHIPMENT RESPONSE DEBUG ===');
     } catch (parseError) {
       console.error('Shipment response parse error:', parseError);
       return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
@@ -6089,10 +6335,6 @@ export const getShipmentCarrierBuysell = async (req: Request, res: Response) => 
     let defaultSelectedRate = '0.00';
     let defaultSelectedRateId = '';
 
-    console.log('=== RATES DEBUG ===');
-    console.log('Rates array:', rates);
-    console.log('Rates length:', rates.length);
-    console.log('=== END RATES DEBUG ===');
 
     if (rates.length > 0) {
       // Find default rate (lowest cost)
@@ -6657,7 +6899,6 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
         { where: { buy_sell_id: Number(buy_sell_id) } }
       );
 
-      console.log(`Shipment payment cancelled for buy_sell_id: ${buy_sell_id}`);
 
       return sendApiResponse(res, 200, true, "Shipment Payment cancelled", [{
         buy_sell_id: Number(buy_sell_id),
@@ -6672,13 +6913,6 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
     }
 
     // Get shipment data
-    console.log('=== SHIPMENT SEARCH DEBUG ===');
-    console.log('buy_sell_id:', buy_sell_id);
-    console.log('userId:', userId);
-    console.log('Number(buy_sell_id):', Number(buy_sell_id));
-    console.log('Request params:', req.params);
-    console.log('Request body:', req.body);
-    console.log('=== END SHIPMENT SEARCH DEBUG ===');
 
     const shipment = await Shipment.findOne({
       where: {
@@ -6687,28 +6921,18 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
       }
     });
 
-    console.log('=== SHIPMENT RESULT DEBUG ===');
-    console.log('Shipment found:', !!shipment);
-    console.log('Shipment ID:', shipment?.id);
-    console.log('Shipment buy_sell_id:', shipment?.buy_sell_id);
-    console.log('Shipment user_id:', shipment?.user_id);
-    console.log('=== END SHIPMENT RESULT DEBUG ===');
 
     if (!shipment) {
       return sendApiResponse(res, 404, false, "Shipment not found", []);
     }
 
     // Update shipment with payment details
-    console.log('=== PAYMENT UPDATE DEBUG ===');
-    console.log('Updating shipment with payment details...');
     await shipment.update({
       paymentId: paymentId as string,
       token: token as string,
       PayerID: PayerID as string,
       shipment_payment_status: 1
     });
-    console.log('Payment details updated successfully');
-    console.log('=== END PAYMENT UPDATE DEBUG ===');
 
     // Create custom info (simplified version)
     const custom_info = {
@@ -6726,32 +6950,18 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
       // Parse shipment response
       let shipmentResponse;
       try {
-        console.log('=== SHIPMENT RESPONSE PARSING DEBUG ===');
-        console.log('Raw shipment_response type:', typeof shipment.shipment_response);
-        console.log('Raw shipment_response:', shipment.shipment_response);
-        
         if (typeof shipment.shipment_response === 'string') {
           const firstParse = JSON.parse(shipment.shipment_response);
-          console.log('First parse result:', firstParse);
-          console.log('First parse type:', typeof firstParse);
           
           if (typeof firstParse === 'string') {
             shipmentResponse = JSON.parse(firstParse);
-            console.log('Second parse result:', shipmentResponse);
           } else {
             shipmentResponse = firstParse;
           }
         } else {
           shipmentResponse = shipment.shipment_response;
         }
-        
-        console.log('Final shipmentResponse:', shipmentResponse);
-        console.log('EasyPost shipment ID:', shipmentResponse?.id);
-        console.log('=== END SHIPMENT RESPONSE PARSING DEBUG ===');
       } catch (parseError) {
-        console.log('=== PARSE ERROR DEBUG ===');
-        console.log('Parse error:', parseError);
-        console.log('=== END PARSE ERROR DEBUG ===');
         return sendApiResponse(res, 400, false, "Invalid shipment response data", []);
       }
 
@@ -6767,15 +6977,10 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
 
       // Call EasyPost API to buy shipment
       try {
-        console.log('=== EASYPOST API DEBUG ===');
-        console.log('Calling EasyPost API to buy shipment...');
         const apiKey = process.env.EASYPOST_API_KEY;
         if (!apiKey) {
-          console.log('EasyPost API key not configured');
           return sendApiResponse(res, 500, false, "EasyPost API key not configured", []);
         }
-        console.log('EasyPost API key found');
-        console.log('=== END EASYPOST API DEBUG ===');
 
         const response = await fetch(`https://api.easypost.com/v2/shipments/${shipmentResponse.id}/buy`, {
           method: 'POST',
@@ -6789,16 +6994,9 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
           })
         });
 
-        console.log('=== EASYPOST RESPONSE DEBUG ===');
-        console.log('EasyPost response status:', response.status);
-        console.log('EasyPost response ok:', response.ok);
-        console.log('=== END EASYPOST RESPONSE DEBUG ===');
 
         if (response.status === 200 || response.status === 201) {
           const data = await response.json();
-          console.log('=== EASYPOST DATA DEBUG ===');
-          console.log('EasyPost response data:', JSON.stringify(data, null, 2));
-          console.log('=== END EASYPOST DATA DEBUG ===');
 
           // Update shipment with tracking info
           await shipment.update({
@@ -6876,23 +7074,13 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
               message: "Shipment successfully completed"
             };
 
-            console.log('=== SUCCESS RESPONSE DEBUG ===');
-            console.log('Returning success response with data:', responseData);
-            console.log('=== END SUCCESS RESPONSE DEBUG ===');
             return sendApiResponse(res, 200, true, "Shipment successfully completed", [responseData]);
           } else {
-            console.log('=== BUYSELL CARD NOT FOUND DEBUG ===');
-            console.log('BuySellCard not found for buy_sell_id:', buy_sell_id);
-            console.log('=== END BUYSELL CARD NOT FOUND DEBUG ===');
             const errorData = await response.json();
             return sendApiResponse(res, 400, false, errorData.error?.message || "Failed to process shipment", []);
           }
         } else {
-          console.log('=== EASYPOST ERROR DEBUG ===');
-          console.log('EasyPost API returned error status:', response.status);
           const errorData = await response.json();
-          console.log('EasyPost error data:', errorData);
-          console.log('=== END EASYPOST ERROR DEBUG ===');
           return sendApiResponse(res, 400, false, errorData.error?.message || "Failed to process shipment", []);
         }
       } catch (apiError: any) {
@@ -7099,10 +7287,6 @@ const sendShipmentConfirmationEmailsForBuySell = async (buySellId: number) => {
     };
 
     // Note: Email sending would be implemented based on your email service
-    console.log('Shipment confirmation emails prepared:', {
-      seller: sellerMailInputs,
-      buyer: buyerMailInputs
-    });
 
   } catch (error: any) {
     console.error('Error sending shipment confirmation emails:', error);

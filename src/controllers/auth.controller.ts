@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { AuthService } from "../services/auth.service.js";
+import { User, CreditPurchaseLog } from "../models/index.js";
+import bcrypt from "bcryptjs";
 
 const authService = new AuthService();
 
@@ -156,6 +158,118 @@ export const resetPassword = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Reset password error:", error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
+
+// POST /api/auth/social-register
+// Accepts payload directly from frontend (no Google HTTP call)
+// {
+//   id: "google",
+//   email: string,
+//   firstName: string,
+//   lastName: string,
+//   contactNumber: string,
+//   countryCode: string,
+//   profile_picture: string
+// }
+export const socialRegister = async (req: Request, res: Response) => {
+  try {
+    const {
+      id,
+      email,
+      firstName,
+      lastName,
+      contactNumber,
+      countryCode,
+      profile_picture
+    } = req.body || {};
+
+    if (!email) {
+      return sendApiResponse(res, 400, false, "Email is required", []);
+    }
+
+    const provider = (id || '').toString(); // e.g., "google"
+    const cleanEmail = String(email).trim().toLowerCase();
+    const givenFirst = String(firstName || '').trim();
+    const givenLast = String(lastName || '').trim();
+
+    // Find by email
+    let user = await authService.findUserByEmail(cleanEmail);
+    let isNewUser = false;
+    if (!user) {
+      const randomPassword = await bcrypt.hash(String(Math.floor(100000 + Math.random() * 900000)), 10);
+      user = await User.create({
+        first_name: givenFirst || cleanEmail.split('@')[0],
+        last_name: givenLast || null,
+        email: cleanEmail,
+        phone_number: contactNumber || null,
+        country_code: countryCode || null,
+        profile_picture: profile_picture || null,
+        gmail_login: provider === 'google',
+        is_email_verified: "1",
+        email_verified_at: new Date(),
+        user_role: "user",
+        user_status: "1",
+        cxp_coins: 50,
+        password: randomPassword
+      } as any);
+      // Ensure a username exists
+      const baseName = (givenFirst || cleanEmail.split('@')[0] || 'user').replace(/\s+/g, '');
+      await user.update({ username: `${baseName}${user.id}` } as any);
+      isNewUser = true;
+    } else {
+      await user.update({
+        first_name: user.first_name || givenFirst || cleanEmail.split('@')[0],
+        last_name: user.last_name || givenLast || null,
+        phone_number: contactNumber ?? user.phone_number ?? null,
+        country_code: countryCode ?? user.country_code ?? null,
+        profile_picture: profile_picture ?? user.profile_picture ?? null,
+        gmail_login: provider === 'google' ? true : user.gmail_login,
+        is_email_verified: "1",
+        email_verified_at: new Date(),
+        user_status: "1"
+      } as any);
+      if (!user.username) {
+        const baseName = (givenFirst || cleanEmail.split('@')[0] || 'user').replace(/\s+/g, '');
+        await user.update({ username: `${baseName}${user.id}` } as any);
+      }
+    }
+
+    // Reward coins for new social register (mirror normal register)
+    if (isNewUser) {
+      const rand = Math.floor(Math.random() * 900) + 100;
+      const randStr = Math.random().toString(36).substring(2, 5).toUpperCase();
+      const invoiceNumber = `INV${rand}${randStr}`;
+      const transactionId = `TXN${rand}${randStr}`;
+
+      try {
+        await CreditPurchaseLog.create({
+          invoice_number: invoiceNumber,
+          user_id: (user as any).id,
+          amount: 0,
+          coins: 50,
+          transaction_id: transactionId,
+          payment_status: "Success",
+          payee_email_address: "Reward",
+          merchant_id: "N/A",
+          payment_source: "Reward",
+          payer_id: "N/A",
+          payer_full_name: "N/A",
+          payer_email_address: "N/A",
+          payer_address: "N/A",
+          payer_country_code: "N/A"
+        } as any);
+      } catch (e) {
+        console.error('Failed to record reward coins for social register:', e);
+      }
+    }
+
+    const jwtToken = authService.issueToken(user);
+    return sendApiResponse(res, 200, true, "Login successful", [{ token: jwtToken }]);
+  } catch (e: any) {
+    console.error('Social register error:', e);
+    return sendApiResponse(res, 500, false, "Server error", []);
   }
 };
 

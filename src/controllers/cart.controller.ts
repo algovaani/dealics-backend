@@ -2016,7 +2016,7 @@ export const tradeProposal = async (req: Request, res: Response) => {
         trader_id: userId,
         can_trade: '1',
         trading_card_status: '1',
-        is_traded: { [Op.ne]: '1' },
+        is_traded: '0',
         mark_as_deleted: null
       },
       attributes: [
@@ -2047,7 +2047,8 @@ export const tradeProposal = async (req: Request, res: Response) => {
         trader_id: interestedUser.id,
         can_trade: '1',
         trading_card_status: '1',
-        is_traded: { [Op.ne]: '1' }
+        is_traded: '0',
+        mark_as_deleted: null
       },
       attributes: [
         'id',

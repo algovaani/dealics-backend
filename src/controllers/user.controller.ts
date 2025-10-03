@@ -908,6 +908,7 @@ export const updateUserProfile = async (req: Request, res: Response) => {
         username: updatedProfileData.user.username,
         profile_picture: updatedProfileData.user.profile_picture,
         email: updatedProfileData.user.email,
+        paypal_business_email: (updatedProfileData.user as any).paypal_business_email,
         phone_number: updatedProfileData.user.phone_number,
         country_code: updatedProfileData.user.country_code,
         about_user: updatedProfileData.user.about_user,

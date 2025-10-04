@@ -1,7 +1,7 @@
 import { Sequelize } from "sequelize-typescript";
 
 export const sequelize = new Sequelize({
-  database: process.env.DB_NAME || "stagingtradeblock",
+  database: process.env.DB_NAME || "dealicsStaging",
   username: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "RockyLinux@DB1",
   host: process.env.DB_HOST || "localhost",

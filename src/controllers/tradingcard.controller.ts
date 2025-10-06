@@ -461,6 +461,8 @@ export const getTradingCard = async (req: Request, res: Response) => {
       trading_card_recent_trade_value: tradingCard.trading_card_recent_trade_value,
       can_trade: tradingCard.can_trade,
       can_buy: tradingCard.can_buy,
+      usa_shipping_flat_rate: (tradingCard as any).usa_shipping_flat_rate,
+      canada_shipping_flat_rate: (tradingCard as any).canada_shipping_flat_rate,
       // Add all non-null additional fields from trading card
       additionalFields: additionalFields,
       // Add card images data (now includes trading_card_img and trading_card_img_back)

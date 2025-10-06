@@ -2957,7 +2957,7 @@ export class UserService {
         latitude: addressData.latitude ? parseFloat(addressData.latitude) : null,
         longitude: addressData.longitude ? parseFloat(addressData.longitude) : null,
         adr_id: addressData.adr_id ? addressData.adr_id.trim() : null,
-        mark_default: addressData.mark_default || 2
+        mark_default: 1 //addressData.mark_default || 2
       } as any);
 
       return {

@@ -64,14 +64,25 @@ export const createSupportTicket = async (req: Request, res: Response) => {
     console.log('DEBUG: Support API - Extracted user_id:', userId);
 
     // Prepare support data
-    const supportData = {
+    const supportData: {
+      first_name: string;
+      last_name: string;
+      email: string;
+      subject: string;
+      comment: string;
+      user_id?: number;
+    } = {
       first_name: first_name.trim(),
       last_name: last_name.trim(),
       email: email.trim(),
       subject: subject.trim(),
-      comment: comment.trim(),
-      user_id: userId || undefined
+      comment: comment.trim()
     };
+
+    // Add user_id only if it exists
+    if (userId) {
+      supportData.user_id = userId;
+    }
 
     // Create support ticket
     const result = await supportService.createSupportTicket(supportData);

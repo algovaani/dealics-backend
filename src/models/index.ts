@@ -28,6 +28,7 @@ import { Cart } from './cart.model.js';
 import { CartDetail } from './cartDetail.model.js';
 import { BuyOfferAttempt } from './buyOfferAttempt.model.js';
 import { BuyOfferProduct } from './buyOfferProduct.model.js';
+import { ProductAttribute } from './productAttribute.model.js';
 
 // Import all models here
 export const models = [
@@ -59,7 +60,8 @@ export const models = [
   Cart,
   CartDetail,
   BuyOfferAttempt,
-  BuyOfferProduct
+  BuyOfferProduct,
+  ProductAttribute
 ];
 
 // Function to set up all associations
@@ -123,6 +125,18 @@ export function setupAssociations() {
   CategoryField.belongsTo(Category, {
     foreignKey: 'category_id',
     as: 'fieldCategory'
+  });
+
+  CategoryField.belongsTo(ItemColumn, {
+    foreignKey: 'fields',
+    targetKey: 'name',
+    as: 'item_column'
+  });
+
+  ItemColumn.hasMany(CategoryField, {
+    foreignKey: 'fields',
+    sourceKey: 'name',
+    as: 'categoryFields'
   });
 
   Category.hasMany(CategoryField, {

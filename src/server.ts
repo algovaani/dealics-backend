@@ -30,6 +30,7 @@ import userTradingcardRoutes from "./routes/user/tradingcard.routes.js";
 import userTradingcardFieldsRoutes from "./routes/user/tradingcardfields.routes.js";
 import sliderRoutes from "./routes/slider.routes.js";
 import emailRoutes from "./routes/email.routes.js";
+import supportRoutes from "./routes/support.routes.js";
 
 // Import middleware
 import { noCache } from "./middlewares/noCache.middleware.js";
@@ -104,6 +105,7 @@ app.use("/api/user/tradingcards", userTradingcardRoutes);
 app.use("/api/user/trading-cards-fields", userTradingcardFieldsRoutes);
 app.use("/api/sliders", sliderRoutes);
 app.use("/api/email", emailRoutes);
+app.use("/api/support", supportRoutes);
 
 // Add a 404 handler for unmatched routes
 app.use((req, res) => {
@@ -116,17 +118,15 @@ app.use((req, res) => {
 const start = async () => {
   try {
     await sequelize.authenticate();
-    console.log("✅ Database connection has been established successfully.");
     
     // Fix database schema first
     await fixDatabaseSchema();
     
     // Sync models without altering (to avoid foreign key constraint issues)
     await sequelize.sync({ force: false, alter: false });
-    console.log("✅ Models synchronized!");
     
     app.listen(PORT, () => {
-      console.log(`Server running at http://localhost:${PORT}`);
+      // Server started
     });
   } catch (err) {
     console.error("❌ DB Connection failed:", err);

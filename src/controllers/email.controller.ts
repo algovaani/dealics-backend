@@ -350,7 +350,6 @@ export const sendEmailVerification = async (req: Request, res: Response) => {
       name: EmailHelperService.setName('User', ''),
       verifylink: verifyLink,
     };
-console.log("mailInputs====",mailInputs);
     const success = await EmailHelperService.executeMailSender('verify-email-on-register', mailInputs);
 
     if (success) {

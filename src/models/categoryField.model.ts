@@ -55,6 +55,7 @@ export class CategoryField extends Model<CategoryField> {
 
   // Virtual properties for associations (will be populated by Sequelize)
   fieldCategory?: any;
+  item_column?: any;
 }
 
 

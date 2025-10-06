@@ -16,7 +16,6 @@ import {
 
 const router = Router();
 
-console.log("🔧 Registering email routes...");
 
 // Email sending endpoints
 router.post("/send", sendEmail);
@@ -38,6 +37,5 @@ router.get("/queue-status", getMailQueueStatus);
 router.post("/test-config", testEmailConfig);
 router.put("/settings", updateMailSettings);
 
-console.log("  ✅ Email routes registered successfully");
 
 export default router;

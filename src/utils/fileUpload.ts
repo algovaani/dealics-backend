@@ -6,20 +6,12 @@ import fs from 'fs';
 const uploadDir = path.join(process.cwd(), 'public', 'user', 'assets', 'images', 'trading_cards_img');
 const profileUploadDir = path.join(process.cwd(), 'public', 'user', 'assets', 'images', 'profile_images');
 
-console.log('📁 Upload directories:', {
-  uploadDir: uploadDir,
-  profileUploadDir: profileUploadDir,
-  uploadDirExists: fs.existsSync(uploadDir),
-  profileUploadDirExists: fs.existsSync(profileUploadDir)
-});
 
 if (!fs.existsSync(uploadDir)) {
-  console.log('📁 Creating upload directory:', uploadDir);
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 if (!fs.existsSync(profileUploadDir)) {
-  console.log('📁 Creating profile upload directory:', profileUploadDir);
   fs.mkdirSync(profileUploadDir, { recursive: true });
 }
 
@@ -97,17 +89,10 @@ export const uploadOne = (file: any, uploadType: string): string => {
     
     const fullPath = path.join(targetDir, filename);
     
-    console.log('📁 Upload details:', {
-      originalPath: file.path,
-      targetPath: fullPath,
-      filename: filename,
-      uploadType: uploadType
-    });
     
     // Move file to destination
     fs.renameSync(file.path, fullPath);
     
-    console.log('✅ File uploaded successfully:', filename);
     return filename;
   } catch (error: any) {
     console.error('❌ Error in uploadOne:', error);

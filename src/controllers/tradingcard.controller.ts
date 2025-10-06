@@ -45,10 +45,8 @@ export const getTradingCardsByCategoryName = async (req: Request, res: Response)
       try {
         const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
-        console.log('JWT Token decoded - User ID:', authenticatedUserId);
       } catch (jwtError) {
         // Token is invalid, but we'll continue without authentication
-        console.log('Invalid token in getTradingCardsByCategoryName API:', jwtError);
       }
     }
 
@@ -95,10 +93,8 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
       try {
         const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
-        console.log('JWT Token decoded - User ID:', authenticatedUserId);
       } catch (jwtError) {
         // Token is invalid, but we'll continue without authentication
-        console.log('Invalid token in trading cards API:', jwtError);
       }
     }
     
@@ -250,10 +246,8 @@ export const getTradingCards = async (req: Request, res: Response) => {
       try {
         const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
-        console.log('JWT Token decoded - User ID:', authenticatedUserId);
       } catch (jwtError) {
         // Token is invalid, but we'll continue without authentication
-        console.log('Invalid token in trading cards API:', jwtError);
       }
     }
     
@@ -388,15 +382,11 @@ export const getTradingCard = async (req: Request, res: Response) => {
       try {
         const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
-        console.log('JWT Token decoded - User ID:', authenticatedUserId);
       } catch (jwtError) {
         // Token is invalid, but we'll continue without authentication
-        console.log('Invalid token in getTradingCard API:', jwtError);
       }
     }
     
-    console.log("Controller - cardId:", cardId);
-    console.log("Controller - authenticatedUserId:", authenticatedUserId);
     
     const result = await tradingcardService.getTradingCardById(cardId, authenticatedUserId);
     
@@ -426,22 +416,16 @@ export const getTradingCard = async (req: Request, res: Response) => {
           attemptsCount = buyOfferAttempt.attempts || 0;
         }
         
-        console.log('=== OFFER LIMIT DEBUG ===');
-        console.log('BuyOfferAttempt found:', !!buyOfferAttempt);
-        console.log('Attempts count from DB:', attemptsCount);
         
         // Calculate remaining attempts
         let remainingAttempts = 3 - attemptsCount;
         
-        console.log('Remaining attempts calculated:', remainingAttempts);
         
         // Ensure remaining attempts is not negative
         if (remainingAttempts < 0) {
           remainingAttempts = 0;
         }
         
-        console.log('Final remaining attempts:', remainingAttempts);
-        console.log('=== END DEBUG ===');
 
         // Generate offer limit text based on attempts count
         // Show used attempts out of total 3
@@ -455,7 +439,6 @@ export const getTradingCard = async (req: Request, res: Response) => {
           offerLimitText = "Offer Limit: Exceeded, buy at asking price.";
         }
 
-        console.log('Final offer limit text:', offerLimitText);
       }
     }
     
@@ -611,7 +594,6 @@ export const getDeletedTradingCards = async (req: Request, res: Response) => {
 
     const userId = jwtResult.userId!;
     
-    console.log('🔍 getDeletedTradingCards controller - userId from JWT:', userId);
 
     // Get pagination parameters from query
     const pageParam = req.query.page as string;
@@ -733,9 +715,6 @@ export const getMyTradingCardsByCategory = async (req: Request, res: Response) =
     const page = parseInt((req.query.page as string) || "1", 10);
     const perPage = parseInt((req.query.perPage as string) || "9", 10);
 
-    console.log("getMyTradingCardsByCategory - categoryName:", categoryName);
-    console.log("getMyTradingCardsByCategory - userId:", userId);
-    console.log("getMyTradingCardsByCategory - loggedInUserId:", loggedInUserId);
 
     // Remove authentication requirement - allow access without login
     // if (!userId) {
@@ -756,13 +735,11 @@ export const getMyTradingCardsByCategory = async (req: Request, res: Response) =
       // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
       if (loggedInUserId && card.trader_id === loggedInUserId) {
         canTradeOrOffer = false;
-        console.log(`Card ${card.id}: User ${loggedInUserId} owns this card, canTradeOrOffer = false`);
       }
       
       // If card is already traded, user can't trade
       if (card.is_traded === '1') {
         canTradeOrOffer = false;
-        console.log(`Card ${card.id}: Card is already traded, canTradeOrOffer = false`);
       }
       
       return {
@@ -1203,10 +1180,8 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
       try {
         const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
-        console.log('JWT Token decoded - User ID:', authenticatedUserId);
       } catch (jwtError) {
         // Token is invalid, but we'll continue without authentication
-        console.log('Invalid token in public profile API:', jwtError);
       }
     }
 
@@ -1224,10 +1199,6 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
       return sendApiResponse(res, 400, false, "Invalid user ID provided");
     }
 
-    console.log("Debug - userId:", userId, "type:", typeof userId);
-    console.log("Debug - page:", page, "type:", typeof page);
-    console.log("Debug - perPage:", perPage, "type:", typeof perPage);
-    console.log("Debug - authenticatedUserId:", authenticatedUserId, "type:", typeof authenticatedUserId);
     
     const result = await tradingcardService.getPublicProfileTradingCards(
       Number(userId),
@@ -1237,7 +1208,6 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
       categoryId
     );
 
-    console.log("Service result:", result);
 
     // Check if service returned an error
     if (!result.status) {
@@ -1518,10 +1488,8 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
       try {
         const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
-        console.log('JWT Token decoded - User ID:', authenticatedUserId);
       } catch (jwtError) {
         // Token is invalid, but we'll continue without authentication
-        console.log('Invalid token in similar trading cards API:', jwtError);
       }
     }
 

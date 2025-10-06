@@ -211,7 +211,6 @@ export class EmailHelperService {
 
       // Send email
       const info = await transporter.sendMail(mailOptions);
-      console.log('Email sent successfully:', info.messageId);
       
       return true;
 
@@ -248,7 +247,6 @@ export class EmailHelperService {
         status: 0, // 0 = pending
       } as any);
 
-      console.log('Email saved to queue successfully');
       return true;
 
     } catch (error) {
@@ -371,7 +369,6 @@ export class EmailHelperService {
       });
 
       await transporter.verify();
-      console.log('Email configuration is valid');
       return true;
 
     } catch (error) {

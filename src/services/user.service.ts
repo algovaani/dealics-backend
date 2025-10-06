@@ -872,6 +872,11 @@ export class UserService {
       // Get social media links from userSocialMedia table
       const socialLinks = await this.getUserSocialMedia(userId);
 
+      // Determine if address exists for the user
+      const { Address } = await import('../models/index.js');
+      const addressCount = await Address.count({ where: { user_id: userId, is_deleted: '0' } });
+      const address_exist = addressCount > 0 ? 1 : 0;
+
       // Format user data with joined_date
       const userData = user.toJSON();
       
@@ -890,12 +895,11 @@ export class UserService {
         joinedDate = "01-01-2024"; // Fallback
       }
       
-      // Debug: Log the values
-      
-      // Create formatted user object with joined_date
+      // Create formatted user object with joined_date and address_exist
       const formattedUser = {
         ...userData,
-        joined_date: joinedDate
+        joined_date: joinedDate,
+        address_exist
       };
       
 
@@ -2933,13 +2937,12 @@ export class UserService {
         };
       }
 
-      // If this is being set as default, unset other defaults
-      if (addressData.mark_default === 1) {
-        await Address.update(
-          { mark_default: 2 },
-          { where: { user_id: userId } }
-        );
-      }
+      // Always unset other defaults for this user before creating a new one
+      const { Address } = await import('../models/index.js');
+      await Address.update(
+        { mark_default: 2 },
+        { where: { user_id: userId } }
+      );
 
       // Create the address
       const newAddress = await Address.create({
@@ -2957,7 +2960,7 @@ export class UserService {
         latitude: addressData.latitude ? parseFloat(addressData.latitude) : null,
         longitude: addressData.longitude ? parseFloat(addressData.longitude) : null,
         adr_id: addressData.adr_id ? addressData.adr_id.trim() : null,
-        mark_default: 1 //addressData.mark_default || 2
+        mark_default: 1 // New address is default
       } as any);
 
       return {
@@ -3355,6 +3358,8 @@ export class UserService {
         try {
           const fromDate = new Date(filters.from_date);
           if (!isNaN(fromDate.getTime())) {
+            // Normalize to start of day
+            fromDate.setHours(0, 0, 0, 0);
             whereClause.created_at = { [Op.gte]: fromDate };
             filterData.from_date = filters.from_date;
           }
@@ -3367,6 +3372,8 @@ export class UserService {
         try {
           const toDate = new Date(filters.to_date);
           if (!isNaN(toDate.getTime())) {
+            // Normalize to end of day
+            toDate.setHours(23, 59, 59, 999);
             if (whereClause.created_at) {
               whereClause.created_at[Op.lte] = toDate;
             } else {
@@ -3552,25 +3559,34 @@ export class UserService {
             paid_amount: cardData.paid_amount || 0,
             amount_paid_on: cardData.amount_paid_on ? UserService.formatDateToMMDDYY(cardData.amount_paid_on) : null
           },
-          // Ratings array with both seller and buyer ratings
-          ratings: [
-            {
-              "seller_rating": {
-                "username": seller_name,
-                "rating": cardData.seller_rating !== null && cardData.seller_rating !== undefined ? cardData.seller_rating : 0,
-                "review_date": cardData.reviewed_by_seller_on ? UserService.formatDateToMMDDYY(cardData.reviewed_by_seller_on) : "Not reviewed yet",
-                "review_comment": cardData.seller_review || "No review provided"
-              }
-            },
-            {
-              "buyer_rating": {
-                "username": buyer_name,
-                "rating": cardData.buyer_rating !== null && cardData.buyer_rating !== undefined ? cardData.buyer_rating : 0,
-                "review_date": cardData.reviewed_on ? UserService.formatDateToMMDDYY(cardData.reviewed_on) : "Not reviewed yet",
-                "review_comment": cardData.buyer_review || "No review provided"
-              }
+          // Ratings array in requested format (omit entries with 0 or missing rating)
+          ratings: (() => {
+            const ratingsArr: any[] = [];
+            const sellerRatingVal = (cardData.seller_rating !== null && cardData.seller_rating !== undefined) ? Number(cardData.seller_rating) : 0;
+            const buyerRatingVal = (cardData.buyer_rating !== null && cardData.buyer_rating !== undefined) ? Number(cardData.buyer_rating) : 0;
+
+            if (sellerRatingVal > 0) {
+              ratingsArr.push({
+                user_id: cardData.seller || null,
+                username: seller_name,
+                rating: sellerRatingVal,
+                review: cardData.seller_review || '',
+                type: 'sender'
+              });
             }
-          ]
+
+            if (buyerRatingVal > 0) {
+              ratingsArr.push({
+                user_id: cardData.buyer || null,
+                username: buyer_name,
+                rating: buyerRatingVal,
+                review: cardData.buyer_review || '',
+                type: 'receiver'
+              });
+            }
+
+            return ratingsArr;
+          })()
         };
       }));
 
@@ -3730,6 +3746,8 @@ export class UserService {
         try {
           const fromDate = new Date(filters.from_date);
           if (!isNaN(fromDate.getTime())) {
+            // Normalize to start of day
+            fromDate.setHours(0, 0, 0, 0);
             whereClause.created_at = { [Op.gte]: fromDate };
             filterData.from_date = filters.from_date;
           }
@@ -3742,6 +3760,8 @@ export class UserService {
         try {
           const toDate = new Date(filters.to_date);
           if (!isNaN(toDate.getTime())) {
+            // Normalize to end of day
+            toDate.setHours(23, 59, 59, 999);
             if (whereClause.created_at) {
               whereClause.created_at[Op.lte] = toDate;
             } else {
@@ -5066,6 +5086,8 @@ export class UserService {
         try {
           const fromDate = new Date(filters.from_date);
           if (!isNaN(fromDate.getTime())) {
+            // Normalize to start of day
+            fromDate.setHours(0, 0, 0, 0);
             whereClause.created_at = { [Op.gte]: fromDate };
             filterData.from_date = filters.from_date;
           }
@@ -5078,6 +5100,8 @@ export class UserService {
         try {
           const toDate = new Date(filters.to_date);
           if (!isNaN(toDate.getTime())) {
+            // Normalize to end of day
+            toDate.setHours(23, 59, 59, 999);
             if (whereClause.created_at) {
               whereClause.created_at[Op.lte] = toDate;
             } else {

@@ -5445,8 +5445,6 @@ export class UserService {
         } else {
           console.error('❌ Payment confirmed status not found in database');
         }
-      } else {
-        console.log('✅ Trade status updated successfully to payment-confirmed');
       }
 
       // Get sender and receiver details (Laravel: $receiver = User::find($trade_proposal->trade_sent_to); $sender = User::find($trade_proposal->trade_sent_by))
@@ -5512,7 +5510,6 @@ export class UserService {
           
           try {
             await EmailHelperService.executeMailSender('payment-confirmed-to-sender', mailInputs);
-            console.log('✅ Payment confirmed email sent to sender');
           } catch (emailError) {
             console.error('❌ Failed to send payment confirmed email to sender:', emailError);
           }
@@ -5543,7 +5540,6 @@ export class UserService {
           
           try {
             await EmailHelperService.executeMailSender('payment-received-confirmed-by-sender', mailInputs);
-            console.log('✅ Payment received confirmed email sent to receiver');
           } catch (emailError) {
             console.error('❌ Failed to send payment received confirmed email to receiver:', emailError);
           }

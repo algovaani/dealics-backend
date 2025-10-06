@@ -64,10 +64,8 @@ export class AuthService {
     
     // Clean email and validate
     const cleanEmail = input.email.trim().toLowerCase();
-    console.log('🔍 Email validation:', { original: input.email, cleaned: cleanEmail });
     
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
-      console.log('❌ Invalid email format:', cleanEmail);
       throw new Error("Please enter a valid email address.");
     }
     if (!input.phone_number?.trim()) throw new Error("Please enter your mobile number.");
@@ -134,7 +132,6 @@ export class AuthService {
           user.first_name || '',
           user.last_name || ''
         );
-        console.log('✅ Welcome email sent successfully');
       } catch (emailError) {
         console.error('❌ Failed to send welcome email:', emailError);
         // Don't fail registration if email fails
@@ -166,19 +163,15 @@ export class AuthService {
    */
   async updateUserRecoveryToken(userId: number, token: string) {
     try {
-      console.log('🔧 Updating recovery token for user ID:', userId);
-      console.log('🔧 Token to save:', token);
       
       const result = await User.update(
         { recover_password_token: token },
         { where: { id: userId } }
       );
       
-      console.log('🔧 Update result:', result);
       
       // Verify the token was saved
       const updatedUser = await User.findByPk(userId);
-      console.log('🔧 Token in database after update:', updatedUser?.recover_password_token);
       
       return result;
     } catch (error) {
@@ -192,7 +185,6 @@ export class AuthService {
    */
   async verifyRecoveryToken(token: string) {
     try {
-      console.log('🔍 Verifying token:', token);
       
       // Find user by token
       const user = await User.findOne({
@@ -201,20 +193,16 @@ export class AuthService {
         }
       });
 
-      console.log('🔍 User found:', user ? 'Yes' : 'No');
 
       if (!user) {
-        console.log('❌ No user found with this token');
         return null;
       }
 
       // Check if token is not empty
       if (!user.recover_password_token || user.recover_password_token.trim() === '') {
-        console.log('❌ Token is empty in database');
         return null;
       }
 
-      console.log('✅ Token verified successfully');
       return user;
     } catch (error) {
       console.error('❌ Token verification error:', error);

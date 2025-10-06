@@ -45,8 +45,6 @@ export const getMyProfile = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "User profile not found", []);
     }
 
-    console.log('Profile data received:', JSON.stringify(profileData, null, 2));
-    console.log('profileData.user.joined_date:', profileData.user.joined_date);
 
     // Transform the response to include only required user details
     const response = {
@@ -717,26 +715,15 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       return sendApiResponse(res, 400, false, "Profile data is required", []);
     }
 
-    console.log('📝 Update profile request for user:', userId);
-    console.log('📋 Request data:', profileData);
-    console.log('📋 Request data type:', typeof profileData);
-    console.log('📋 Request data keys:', Object.keys(profileData));
-    console.log('📋 Request body raw:', req.body);
-    console.log('📋 Request files:', req.file);
 
     // Handle profile picture update
-    console.log('📸 Profile picture handling - req.file:', req.file);
-    console.log('📸 Profile picture handling - profileData.profile_picture:', profileData.profile_picture);
     
     if (req.file) {
       // File upload - validate and upload new image
-      console.log('📸 Profile picture file received:', req.file.originalname);
-      console.log('📏 File size:', req.file.size, 'bytes');
       
       // Validate file size (10MB = 10 * 1024 * 1024 bytes)
       const maxSize = 10 * 1024 * 1024; // 10MB in bytes
       if (req.file.size > maxSize) {
-        console.log('❌ File size exceeds 10MB limit');
         return sendApiResponse(res, 400, false, "Profile picture size must not exceed 10MB", []);
       }
       
@@ -750,7 +737,6 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       ];
       
       if (!allowedMimeTypes.includes(req.file.mimetype)) {
-        console.log('❌ Invalid file type:', req.file.mimetype);
         return sendApiResponse(res, 400, false, "Profile picture must be a valid image file (JPEG, PNG, GIF, WebP)", []);
       }
       
@@ -759,60 +745,33 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       const fileExtension = req.file.originalname.toLowerCase().substring(req.file.originalname.lastIndexOf('.'));
       
       if (!allowedExtensions.includes(fileExtension)) {
-        console.log('❌ Invalid file extension:', fileExtension);
         return sendApiResponse(res, 400, false, "Profile picture must have a valid image extension (.jpg, .jpeg, .png, .gif, .webp)", []);
       }
       
-      console.log('✅ File validation passed - Size:', req.file.size, 'bytes, Type:', req.file.mimetype, 'Extension:', fileExtension);
-      
       // Upload the profile picture
       try {
-        console.log('📸 Attempting to upload file...');
-        console.log('📸 File details:', {
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size,
-          path: req.file.path
-        });
-        
         const filename = uploadOne(req.file, 'users');
-        console.log('📸 Upload result:', filename);
         
         if (filename) {
           profileData.profile_picture = filename;
-          console.log('✅ Profile picture uploaded successfully:', filename);
         } else {
-          console.log('❌ Profile picture upload failed - no filename returned');
           return sendApiResponse(res, 400, false, "Failed to upload profile picture - no filename generated", []);
         }
       } catch (uploadError: any) {
-        console.error('❌ File upload error:', uploadError);
-        console.error('❌ Upload error details:', {
-          message: uploadError.message,
-          code: uploadError.code,
-          errno: uploadError.errno
-        });
+        console.error('File upload error:', uploadError);
         return sendApiResponse(res, 500, false, `Error uploading profile picture: ${uploadError.message}`, []);
       }
     } else if (profileData.profile_picture !== undefined) {
       // Handle profile_picture field from form data (for blank/empty updates)
-      console.log('📸 Profile picture field received:', profileData.profile_picture);
-      
       if (profileData.profile_picture === '' || profileData.profile_picture === null || profileData.profile_picture === 'null') {
         // Set profile picture to blank/null
         profileData.profile_picture = null;
-        console.log('✅ Profile picture set to blank');
       } else if (profileData.profile_picture && typeof profileData.profile_picture === 'string') {
         // Keep existing profile picture (just a string value)
-        console.log('✅ Profile picture kept as:', profileData.profile_picture);
       }
     }
-    
-    console.log('📸 Final profile_picture value:', profileData.profile_picture);
 
     // Extract social media data from FormData (dynamic approach)
-    console.log('📱 Checking for social media fields:');
-    console.log('📱 All profileData keys:', Object.keys(profileData));
     
     // Common social media platforms
     const socialMediaPlatforms = ['facebook', 'instagram', 'whatsapp', 'twitter', 'linkedin', 'youtube', 'tiktok', 'snapchat'];
@@ -827,7 +786,6 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       const url = profileData[urlField] || profileData[directField] || '';
       
       if (url) {
-        console.log(`📱 Found ${platform}:`, url);
         socialMediaData[platform] = { url };
       }
     });
@@ -837,14 +795,11 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       if (key.includes('_url') || key.includes('url')) {
         const platform = key.replace('_url', '').replace('url', '');
         if (!socialMediaData[platform] && profileData[key]) {
-          console.log(`📱 Found additional social media ${platform}:`, profileData[key]);
           socialMediaData[platform] = { url: profileData[key] };
         }
       }
     });
 
-    console.log('📱 Social media data extracted:', socialMediaData);
-    console.log('📱 Original profileData keys:', Object.keys(profileData));
 
     // Update user profile (excluding social media fields)
     const socialMediaFields = [
@@ -869,28 +824,14 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       }
 
       // Update social media links
-      console.log('📱 Calling updateUserSocialMedia with:', socialMediaData);
-      
       // Check if there are any social media URLs to update
       const hasSocialMediaUrls = Object.values(socialMediaData).some((platform: any) => 
         platform.url && platform.url.trim() !== ''
       );
       
-      console.log('📱 Has social media URLs to update:', hasSocialMediaUrls);
-      
       let socialMediaResult = null;
       if (hasSocialMediaUrls) {
         socialMediaResult = await UserService.updateUserSocialMedia(userId, socialMediaData);
-        console.log('📱 Social media update result:', socialMediaResult);
-        
-        if (!socialMediaResult.success) {
-          console.log('⚠️ Social media update failed, but profile updated successfully');
-          console.log('⚠️ Social media error:', socialMediaResult.error);
-        } else {
-          console.log('✅ Social media updated successfully:', socialMediaResult.data);
-        }
-      } else {
-        console.log('📱 No social media URLs provided, skipping social media update');
       }
 
       // Get updated profile data with social media links

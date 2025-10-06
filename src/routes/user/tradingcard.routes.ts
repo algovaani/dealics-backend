@@ -17,7 +17,6 @@ import { upload } from "../../utils/fileUpload.js";
 
 const router = Router();
 
-console.log("🔧 Registering user trading card routes...");
 
 router.use(userAuth);
 
@@ -47,6 +46,5 @@ router.delete("/:id", deleteTradingCard);
 // Catch-all route must be last
 router.get("/:id", getTradingCard);
 
-console.log("  ✅ All routes registered successfully");
 
 export default router;

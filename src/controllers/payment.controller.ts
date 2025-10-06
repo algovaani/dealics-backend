@@ -31,14 +31,6 @@ export const payToChangeTradeStatus = async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`📋 Current trade proposal status:`, {
-      id: tradeProposal.id,
-      trade_status: tradeProposal.trade_status,
-      trade_proposal_status_id: tradeProposal.trade_proposal_status_id,
-      add_cash: tradeProposal.add_cash,
-      ask_cash: tradeProposal.ask_cash,
-      trade_amount_paid_on: tradeProposal.trade_amount_paid_on
-    });
 
     // Get PayPal business email
     const paypalEmailData = await getUnifiedPayPalEmail(tradeProposal, userId);
@@ -59,9 +51,7 @@ export const payToChangeTradeStatus = async (req: Request, res: Response) => {
     await processUnifiedTradingCards(tradeProposal, modelid);
 
     // Update trade status and send notifications
-    console.log(`🔄 Updating trade status for trade proposal: ${tradeProposal.id}, payment type: ${paymentType}`);
     await updateUnifiedTradeStatus(tradeProposal, paymentType, userId);
-    console.log(`✅ Trade status update completed for trade proposal: ${tradeProposal.id}`);
     
     // Verify status update by fetching fresh data
     const updatedTradeProposal = await TradeProposal.findByPk(tradeProposal.id);

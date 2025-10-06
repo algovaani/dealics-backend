@@ -40,8 +40,6 @@ export class TradingCardService {
     }
     
       // Debug: Log the where clause
-      console.log('getAllTradingCardsExceptOwn - Where clause:', whereClause);
-      console.log('getAllTradingCardsExceptOwn - Parameters:', { validPage, validPerPage, validCategoryId, validLoggedInUserId, validGraded });
 
       // Use raw SQL to get data with sport_name and interested_in status (match original structure)
       let interestedJoin = '';
@@ -104,8 +102,6 @@ export class TradingCardService {
         ${whereClause}
       `;
 
-      console.log('getAllTradingCardsExceptOwn - Count query:', countQuery);
-      console.log('getAllTradingCardsExceptOwn - Main query:', rawQuery);
 
       const countResult = await sequelize.query(countQuery, {
         type: QueryTypes.SELECT,
@@ -114,14 +110,11 @@ export class TradingCardService {
       const totalCount = countResult[0]?.total || 0;
       const totalPages = Math.ceil(totalCount / validPerPage);
       
-      console.log('getAllTradingCardsExceptOwn - Total count:', totalCount);
 
       const tradingCards = await sequelize.query(rawQuery, {
         type: QueryTypes.SELECT,
       });
 
-      console.log('getAllTradingCardsExceptOwn - Query result count:', tradingCards.length);
-      console.log('getAllTradingCardsExceptOwn - First few results:', tradingCards.slice(0, 2));
 
       return {
         success: true,
@@ -244,7 +237,6 @@ export class TradingCardService {
     const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
     const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
     
-    console.log('🔍 getDeletedTradingCards - userId from JWT:', userId);
     
     if (!userId || isNaN(userId) || userId <= 0) {
       throw new Error("Valid user ID is required");
@@ -324,7 +316,6 @@ export class TradingCardService {
   async getTradingCardById(id: number, loggedInUserId?: number) {
     // Validate the id parameter
     if (!id || isNaN(id) || id <= 0) {
-      console.log("getTradingCardById - Invalid id provided:", id);
       return null;
     }
     
@@ -633,18 +624,15 @@ export class TradingCardService {
   async deleteTradingCard(id: number) {
     // Validate the id parameter
     if (!id || isNaN(id) || id <= 0) {
-      console.log("deleteTradingCard - Invalid id provided:", id);
       return false;
     }
     
     const tradingCard = await TradingCard.findByPk(id);
     if (!tradingCard) {
-      console.log("deleteTradingCard - Trading card not found with id:", id);
       return false;
     }
     // Set mark_as_deleted = true instead of actually deleting
     await tradingCard.update({ mark_as_deleted: 1 });
-    console.log("deleteTradingCard - Trading card marked as deleted:", id);
     return {
       status: true,
       message: "Trading card marked as deleted successfully.",
@@ -1066,16 +1054,7 @@ export class TradingCardService {
       }
       
       // Process field categorization logic if item_column data is found
-      console.log(`\n--- Processing field: ${field.fields} ---`);
-      console.log(`ItemColumn found:`, !!itemColumn);
       if (itemColumn) {
-        console.log(`ItemColumn details:`, {
-          name: itemColumn.name,
-          type: itemColumn.type,
-          rel_master_table: itemColumn.rel_master_table,
-          rel_model_col: itemColumn.rel_model_col,
-          is_loop: itemColumn.is_loop
-        });
       }
       
       if (itemColumn && itemColumn.rel_master_table) {
@@ -1117,12 +1096,6 @@ export class TradingCardService {
         
         // Handle select fields - populate is_loop with table data for all select type fields
         if (itemColumn && itemColumn.type === 'select' && itemColumn.rel_master_table) {
-          console.log(`\n=== PROCESSING SELECT FIELD ===`);
-          console.log(`Field Name: ${itemColumn.name}`);
-          console.log(`Field Type: ${itemColumn.type}`);
-          console.log(`Rel Master Table: ${itemColumn.rel_master_table}`);
-          console.log(`Rel Model Column: ${itemColumn.rel_model_col}`);
-          console.log(`Category ID: ${categoryId}`);
           
           try {
             // Special handling for grade_ratings and professional_graders - use dynamic category ID
@@ -1153,7 +1126,6 @@ export class TradingCardService {
             );
             }
             
-            console.log(`Raw data retrieved:`, loopData);
             
             if (loopData && loopData.length > 0) {
               // Transform data to include id, label, value and the master column (e.g., name)
@@ -1171,7 +1143,6 @@ export class TradingCardService {
                 return option;
               });
               
-              console.log(`Transformed select options:`, selectOptions);
               
               // Store the select options in the field collection
               categoryFieldCollection[`${itemColumn.name}_options`] = selectOptions;
@@ -1182,29 +1153,20 @@ export class TradingCardService {
               // Update the itemColumn to include is_loop data
               itemColumn.is_loop = selectOptions;
               
-              console.log(`Successfully set is_loop for ${itemColumn.name} with ${selectOptions.length} options`);
             } else {
-              console.log(`No data found for ${itemColumn.name} in table ${itemColumn.rel_master_table}`);
               itemColumn.is_loop = [];
             }
           } catch (error) {
             console.error(`Error getting loop data for field ${itemColumn.name}:`, error);
           }
-          console.log(`=== END SELECT FIELD PROCESSING ===\n`);
         } else {
           if (itemColumn) {
-            console.log(`Field ${itemColumn.name} - Type: ${itemColumn.type}, Has rel_master_table: ${!!itemColumn.rel_master_table}`);
           }
         }
       }
       
       // Debug: Log the final itemColumn state
       if (itemColumn && itemColumn.type === 'select') {
-        console.log(`\n=== FINAL ITEM COLUMN STATE FOR ${itemColumn.name} ===`);
-        console.log(`is_loop value:`, itemColumn.is_loop);
-        console.log(`is_loop type:`, typeof itemColumn.is_loop);
-        console.log(`is_loop length:`, Array.isArray(itemColumn.is_loop) ? itemColumn.is_loop.length : 'not array');
-        console.log(`=== END FINAL STATE ===\n`);
       }
       
       return {
@@ -1217,14 +1179,10 @@ export class TradingCardService {
     }));
 
     // Debug: Log the final response structure
-    console.log(`\n=== FINAL RESPONSE DEBUG ===`);
-    console.log(`Total fields processed: ${transformedCategoryFields.length}`);
     transformedCategoryFields.forEach((field: any) => {
       if (field.item_column && field.item_column.type === 'select') {
-        console.log(`Field ${field.item_column.name} - is_loop:`, field.item_column.is_loop);
       }
     });
-    console.log(`=== END FINAL RESPONSE DEBUG ===\n`);
 
     return {
       category_id: categoryId,
@@ -1307,117 +1265,97 @@ export class TradingCardService {
     userId: number
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
-      // Base save data
+      // Base save data - exactly like Laravel
       const saveData: any = {
         creator_id: userId,
         trader_id: userId,
         category_id: categoryId,
       };
 
-      // Generate trading_card_slug and search_param from series_set, issue_number, story_title, variant
-      const slugParts: string[] = [];
-      const searchParts: string[] = [];
-      
-      // Add series_set
-      if (requestData.series_set && requestData.series_set.trim()) {
-        const seriesSet = requestData.series_set.trim();
-        slugParts.push(seriesSet.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
-        searchParts.push(seriesSet);
-      }
-      
-      // Add issue_number
-      if (requestData.issue_number && requestData.issue_number.trim()) {
-        const issueNumber = requestData.issue_number.trim();
-        slugParts.push(issueNumber);
-        searchParts.push(`#${issueNumber}`);
-      }
-      
-      // Add story_title
-      if (requestData.story_title && requestData.story_title.trim()) {
-        const storyTitle = requestData.story_title.trim();
-        slugParts.push(storyTitle.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
-        searchParts.push(storyTitle);
-      }
-      
-      // Add variant
-      if (requestData.variant && requestData.variant.trim()) {
-        const variant = requestData.variant.trim();
-        slugParts.push(variant.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
-        searchParts.push(variant);
-      }
-      
-      // Generate final strings
-      if (slugParts.length > 0) {
-        saveData.trading_card_slug = slugParts.join('-');
-        saveData.search_param = searchParts.join(' ');
-      }
-
-      // Get category fields with priority
+      // Get category fields with priority - exactly like Laravel
       const categoryFields = await CategoryField.findAll({
         where: { category_id: categoryId },
         order: [['priority', 'ASC']],
-        attributes: ['fields', 'is_required', 'additional_information']
+        attributes: ['fields', 'is_required', 'mark_as_title'],
+        include: [{
+          model: (await import('../models/index.js')).ItemColumn,
+          as: 'item_column'
+        }]
       });
 
-      // Process category fields
+      // Process category fields - exactly like Laravel
       const productAttributes: any = {};
       const markAsTitleArr: any = {};
       const markAsTitleColsArr: string[] = [];
+      
+      console.log('DEBUG: Category fields found:', categoryFields.length);
+      console.log('DEBUG: Category fields:', JSON.stringify(categoryFields, null, 2));
 
       for (const cField of categoryFields) {
         const fieldName = cField.fields;
         
+        // Add field to saveData if present in request - exactly like Laravel
         if (fieldName && requestData[fieldName] !== undefined) {
           saveData[fieldName] = requestData[fieldName];
         }
 
-        // Handle mark as title logic
-        if (fieldName && cField.additional_information) {
-          try {
-            const additionalInfo = JSON.parse(cField.additional_information);
-            if (additionalInfo.mark_as_title === 1) {
-              markAsTitleColsArr.push(fieldName);
-              
-              if (requestData[fieldName] && requestData[fieldName].trim()) {
-                markAsTitleArr[fieldName] = {
-                  value: requestData[fieldName]
-                };
+        // Handle mark as title logic - exactly like Laravel
+        if (fieldName && cField.mark_as_title === true) {
+          console.log('DEBUG: Field:', fieldName, 'Is mark as title:', cField.mark_as_title);
+          
+          if (cField.mark_as_title === true) {
+            markAsTitleColsArr.push(fieldName);
+            console.log('DEBUG: Mark as title field found:', fieldName);
+            
+            // Initialize markAsTitleArr object for this field
+            markAsTitleArr[fieldName] = {};
+            
+            // Get the field value from request - exactly like Laravel
+            if (requestData[fieldName] && requestData[fieldName].trim()) {
+              markAsTitleArr[fieldName].value = requestData[fieldName];
+              console.log('DEBUG: Added to markAsTitleArr:', fieldName, requestData[fieldName]);
+            }
+
+            // Get item column data for prefix and type - exactly like Laravel
+            if (cField.item_column) {
+              if (cField.item_column.prefix) {
+                markAsTitleArr[fieldName].prefix = cField.item_column.prefix;
               }
 
-              // Get item column data for prefix and type
-              const itemColumnData = await HelperService.getMasterDatas('item_columns', categoryId);
-              const itemColumn = itemColumnData.find((item: any) => item.name === fieldName);
-              
-              if (itemColumn) {
-                if (itemColumn.prefix) {
-                  markAsTitleArr[fieldName].prefix = itemColumn.prefix;
-                }
-
-                if (itemColumn.type === 'select' || itemColumn.type === 'autocomplete') {
+                // Handle select/autocomplete fields - exactly like Laravel
+                if (cField.item_column.type === 'select' || cField.item_column.type === 'autocomplete') {
                   const textFieldName = `${fieldName}_text`;
                   if (requestData[textFieldName] && requestData[textFieldName].trim()) {
                     markAsTitleArr[fieldName].value = requestData[textFieldName];
                   } else {
-                    markAsTitleArr[fieldName].rel_model_fun = itemColumn.rel_model_fun || null;
-                    markAsTitleArr[fieldName].rel_model_col = itemColumn.rel_model_col || null;
+                    markAsTitleArr[fieldName].rel_model_fun = cField.item_column.rel_model_fun;
+                    markAsTitleArr[fieldName].rel_model_col = cField.item_column.rel_model_col;
                   }
                 }
               }
             }
-          } catch (parseError) {
-            console.log(`Could not parse additional_information for field ${fieldName}`);
-          }
         }
 
-        // Handle select/autocomplete fields with master data
-        if (fieldName) {
-          const textFieldName = `${fieldName}_text`;
-          if (requestData[textFieldName] && requestData[textFieldName].trim()) {
-            // Get item column data to check field type
-            const itemColumnData = await HelperService.getMasterDatas('item_columns', categoryId);
-            const itemColumn = itemColumnData.find((item: any) => item.name === fieldName);
-            
-            if (itemColumn && (itemColumn.type === 'select' || itemColumn.type === 'autocomplete')) {
+        // Handle select/autocomplete fields with master data - exactly like Laravel
+        if (fieldName && cField.item_column) {
+          if (cField.item_column.type === 'select') {
+            const textFieldName = `${fieldName}_text`;
+            if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+              const masterId = await HelperService.saveMasterDataAndReturnMasterId(
+                requestData[textFieldName],
+                fieldName,
+                categoryId
+              );
+              
+              if (masterId > 0) {
+                saveData[fieldName] = masterId;
+              }
+            }
+          }
+
+          if (cField.item_column.type === 'autocomplete') {
+            const textFieldName = `${fieldName}_text`;
+            if (requestData[textFieldName] && requestData[textFieldName].trim()) {
               const masterId = await HelperService.saveMasterDataAndReturnMasterId(
                 requestData[textFieldName],
                 fieldName,
@@ -1432,42 +1370,104 @@ export class TradingCardService {
         }
       }
 
-      // Handle image fields
-      if (requestData.trading_card_img) {
-        saveData.trading_card_img = requestData.trading_card_img;
-      }
-      if (requestData.trading_card_img_back) {
-        saveData.trading_card_img_back = requestData.trading_card_img_back;
-      }
-      
-      // Handle additional images array - will be stored in card_images table after trading card creation
-
-      // Create trading card
+      // Create trading card first - exactly like Laravel
       const tradingCard = await TradingCard.create(saveData);
 
       if (!tradingCard.id) {
         throw new Error("Failed to create TradingCard record");
       }
 
-      // Handle additional images - store in card_images table
+      // Generate code - exactly like Laravel
+      const code = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14) + tradingCard.id;
+
+      // Handle ProductAttribute creation - exactly like Laravel
+      if (Object.keys(productAttributes).length > 0) {
+        const ProductAttribute = (await import('../models/productAttribute.model.js')).ProductAttribute;
+        const createData: any = {
+          product_id: tradingCard.id,
+          collection: JSON.stringify(productAttributes)
+        };
+        await ProductAttribute.create(createData);
+      }
+
+      // Generate search parameters and slug - exactly like Laravel
+      let searchParam = '';
+      let tradingCardSlug = '';
+      
+      console.log('DEBUG: markAsTitleArr before processing:', JSON.stringify(markAsTitleArr, null, 2));
+      console.log('DEBUG: markAsTitleColsArr:', markAsTitleColsArr);
+
+      if (Object.keys(markAsTitleArr).length > 0) {
+        const paramAndSlug = await this.createProductSearchParametersAndSlug(
+          markAsTitleArr, 
+          tradingCard.id, 
+          markAsTitleColsArr
+        );
+        searchParam = paramAndSlug.search_param;
+        tradingCardSlug = paramAndSlug.trading_card_slug;
+        console.log('DEBUG: Generated search_param:', searchParam);
+        console.log('DEBUG: Generated trading_card_slug:', tradingCardSlug);
+      } else {
+        console.log('DEBUG: No mark as title fields found, search_param will be empty');
+      }
+
+      // Handle image fields - exactly like Laravel
+      let tradingCardImg = '';
+      let tradingCardImgBack = '';
+
+      if (requestData.trading_card_img) {
+        tradingCardImg = requestData.trading_card_img;
+      }
+      if (requestData.trading_card_img_back) {
+        tradingCardImgBack = requestData.trading_card_img_back;
+      }
+
+      // Update trading card with final data - exactly like Laravel
+      await TradingCard.update({
+        code: code,
+        search_param: searchParam,
+        trading_card_slug: tradingCardSlug,
+        trading_card_img: tradingCardImg,
+        trading_card_img_back: tradingCardImgBack
+      }, {
+        where: { id: tradingCard.id }
+      });
+
+      // Handle additional images - exactly like Laravel
       if (requestData.additional_images && Array.isArray(requestData.additional_images) && requestData.additional_images.length > 0) {
         const { CardImage } = await import('../models/index.js');
         
-        // Create card image record with additional images
         const cardImageData: any = {
-          mainCardId: tradingCard.id,
-          traderId: userId,
-          cardImageStatus: '1'
+          main_card_id: tradingCard.id,
+          trader_id: userId,
+          card_image_status: '1'
         };
 
-        // Map additional images to card_image_1, card_image_2, etc.
+        // Map additional images to card_image_1, card_image_2, etc. - exactly like Laravel
         requestData.additional_images.forEach((imagePath: string, index: number) => {
           if (index < 4) { // Only support up to 4 additional images
-            cardImageData[`cardImage${index + 1}`] = imagePath;
+            cardImageData[`card_image_${index + 1}`] = imagePath;
           }
         });
 
         await CardImage.create(cardImageData);
+      }
+
+      // Update user trading card count - exactly like Laravel
+      await this.getUserTradingCardCount(userId);
+
+      // Handle ex_product_id - exactly like Laravel
+      if (requestData.ex_product_id && requestData.ex_product_id > 0) {
+        await TradingCard.update({
+          can_trade: '0',
+          can_buy: '0',
+          trading_card_status: '0'
+        }, {
+          where: {
+            id: requestData.ex_product_id,
+            is_demo: 1
+          }
+        });
       }
 
       // Store additional data for response
@@ -1489,6 +1489,126 @@ export class TradingCardService {
         success: false,
         error: error.message || 'Unknown error occurred'
       };
+    }
+  }
+
+  /**
+   * Create product search parameters and slug (equivalent to Laravel ____createProductSearchParametersAndSlug)
+   */
+  async createProductSearchParametersAndSlug(
+    markAsTitleArr: any,
+    cardId: number,
+    markAsTitleColsArr: string[]
+  ): Promise<{ search_param: string; trading_card_slug: string }> {
+    try {
+      // Add 'id' to markAsTitleColsArr - exactly like Laravel
+      markAsTitleColsArr.push('id');
+      
+      // Get trading card data with specified columns - exactly like Laravel
+      const tradingCard = await TradingCard.findByPk(cardId, {
+        attributes: markAsTitleColsArr
+      });
+
+      if (!tradingCard) {
+        return { search_param: '', trading_card_slug: '' };
+      }
+
+      const searchParamArr: string[] = [];
+      const titleArr: string[] = [];
+
+      if (Object.keys(markAsTitleArr).length > 0) {
+        for (const [key, value] of Object.entries(markAsTitleArr)) {
+          let title = '';
+          
+          // Handle relationship model - exactly like Laravel
+          if ((value as any).rel_model_fun && (value as any).rel_model_fun.trim()) {
+            const relFun = (value as any).rel_model_fun;
+            const relCol = (value as any).rel_model_col;
+            
+            // Load relationship and get value - exactly like Laravel
+            // Note: This would need proper relationship loading in Sequelize
+            // For now, we'll use the direct value
+            title = (tradingCard as any)[key] || '';
+          } else {
+            // Use direct value - exactly like Laravel
+            if ((value as any).value && (value as any).value.trim()) {
+              title = (value as any).value;
+            } else {
+              title = (tradingCard as any)[key] || '';
+            }
+          }
+
+          title = String(title || '').trim();
+
+          // Add prefix - exactly like Laravel
+          if ((value as any).prefix && (value as any).prefix.trim()) {
+            title = (value as any).prefix + title;
+          }
+
+          // Process search parameter - exactly like Laravel
+          let searchParamText = title;
+          let text = searchParamText.replace(/\./g, '');
+          text = text.replace(/\//g, '-');
+          text = text.replace(/\[/g, '');
+          text = text.replace(/\]/g, '');
+          text = text.replace(/\{/g, '');
+          text = text.replace(/\}/g, '');
+          
+          if (text.trim()) {
+            searchParamArr.push(text);
+          }
+
+          // Process slug - exactly like Laravel
+          text = title.replace(/[^a-zA-Z0-9_ -]/g, '');
+          text = text.replace(/\s+/g, '-');
+          text = text.replace(/\./g, '');
+          text = text.replace(/\[/g, '');
+          text = text.replace(/\]/g, '');
+          text = text.replace(/\{/g, '');
+          text = text.replace(/\}/g, '');
+          
+          if (text.trim()) {
+            titleArr.push(text);
+          }
+        }
+      }
+
+      const tradingCardSlug = titleArr.length > 0 ? titleArr.join('-') : '';
+      const searchParamTitle = searchParamArr.length > 0 ? searchParamArr.join(' ') : '';
+
+      return {
+        search_param: searchParamTitle,
+        trading_card_slug: tradingCardSlug.toLowerCase()
+      };
+
+    } catch (error: any) {
+      console.error('Error creating search parameters and slug:', error);
+      return { search_param: '', trading_card_slug: '' };
+    }
+  }
+
+  /**
+   * Get user trading card count (equivalent to Laravel getUserTradingCardCount)
+   */
+  async getUserTradingCardCount(traderId: number): Promise<number> {
+    try {
+      const { User } = await import('../models/index.js');
+      
+      const totalTradingCards = await TradingCard.count({
+        where: { creator_id: traderId }
+      });
+
+      // Update user's trading_cards count - exactly like Laravel
+      await User.update(
+        { trading_cards: totalTradingCards },
+        { where: { id: traderId } }
+      );
+
+      return totalTradingCards;
+
+    } catch (error: any) {
+      console.error('Error getting user trading card count:', error);
+      return 0;
     }
   }
 
@@ -1583,10 +1703,6 @@ export class TradingCardService {
       const markAsTitleArr: any = {};
       const markAsTitleColsArr: string[] = [];
 
-      console.log('Category fields found:', categoryFields.map(f => f.fields));
-      console.log('Request data keys:', Object.keys(requestData));
-      console.log('set_name in requestData:', requestData.set_name);
-      console.log('set_name in categoryFields:', categoryFields.find(f => f.fields === 'set_name'));
 
       for (const cField of categoryFields) {
         const fieldName = cField.fields;
@@ -1594,14 +1710,11 @@ export class TradingCardService {
         if (fieldName && requestData[fieldName] !== undefined) {
           // Handle all field types - assign the value directly like in save method
           saveData[fieldName] = requestData[fieldName];
-          console.log(`Processing category field: ${fieldName} = ${requestData[fieldName]}`);
           
           // Special debug for set_name
           if (fieldName === 'set_name') {
-            console.log(`✅ set_name processed: ${requestData[fieldName]} -> saveData[${fieldName}] = ${saveData[fieldName]}`);
           }
         } else if (fieldName === 'set_name') {
-          console.log(`❌ set_name NOT processed - fieldName: ${fieldName}, requestData[fieldName]: ${requestData[fieldName]}`);
         }
         // Don't set default values for fields not provided - this is PATCH behavior
 
@@ -1661,8 +1774,6 @@ export class TradingCardService {
       }
 
       // Debug: Log what we're about to save
-      console.log('About to update trading card with saveData:', JSON.stringify(saveData, null, 2));
-      console.log('set_name in saveData:', saveData.set_name);
 
       // Update the trading card
       await TradingCard.update(saveData, { where: { id: cardId } });
@@ -1694,7 +1805,6 @@ export class TradingCardService {
       if (Object.keys(productAttributes).length > 0) {
         // You'll need to implement ProductAttribute model
         // For now, we'll skip this part
-        console.log('Product attributes to save:', productAttributes);
       }
 
       // Handle additional images - only update if provided
@@ -1801,42 +1911,6 @@ export class TradingCardService {
     }
   }
 
-  /**
-   * Create product search parameters and slug (equivalent to Laravel ____createProductSearchParametersAndSlug)
-   */
-  private async createProductSearchParametersAndSlug(
-    markAsTitleArr: any,
-    cardId: number,
-    markAsTitleColsArr: string[]
-  ): Promise<{ search_param: string; trading_card_slug: string }> {
-    try {
-      // This is a simplified version - you'll need to implement the full logic
-      const searchParam = Object.values(markAsTitleArr)
-        .map((value: any) => value.value || value)
-        .filter(Boolean)
-        .join(' ');
-      
-      const tradingCardSlug = Object.values(markAsTitleArr)
-        .map((value: any) => value.value || value)
-        .filter(Boolean)
-        .join('-')
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
-
-      return {
-        search_param: searchParam,
-        trading_card_slug: tradingCardSlug
-      };
-    } catch (error) {
-      console.error('Error creating search parameters and slug:', error);
-      return {
-        search_param: '',
-        trading_card_slug: ''
-      };
-    }
-  }
 
   /**
    * Simple method to populate search_param for existing trading cards
@@ -1858,7 +1932,6 @@ export class TradingCardService {
         type: QueryTypes.UPDATE
       });
 
-      console.log('Updated search_param for trading cards');
       return true;
     } catch (error) {
       console.error('Error populating search parameters:', error);

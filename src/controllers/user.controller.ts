@@ -64,6 +64,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
       cxp_coins: profileData.user.cxp_coins,
       joined_date: profileData.user.joined_date,
       updated_at: profileData.user.updatedAt,
+      address_exist: (profileData.user as any).address_exist,
       social_links: profileData.socialLinks,
       interestedCardsCount: profileData.interestedCardsCount,
       interested_categories: profileData.interestedCategories
@@ -859,6 +860,7 @@ export const updateUserProfile = async (req: Request, res: Response) => {
         cxp_coins: updatedProfileData.user.cxp_coins,
         joined_date: updatedProfileData.user.createdAt,
         updated_at: updatedProfileData.user.updatedAt,
+        address_exist: (updatedProfileData.user as any).address_exist,
         social_links: updatedProfileData.socialLinks,
         interestedCardsCount: updatedProfileData.interestedCardsCount,
         interested_categories: updatedProfileData.interestedCategories

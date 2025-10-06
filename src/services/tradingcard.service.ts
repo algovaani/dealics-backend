@@ -1,4 +1,3 @@
-
 import { TradingCard, Category, User, CategoryField, CardCondition, CardImage, InterestedIn } from "../models/index.js";
 import { HelperService } from "./helper.service.js";
 import { Sequelize, QueryTypes, Op } from "sequelize";
@@ -339,7 +338,9 @@ export class TradingCardService {
         'trading_card_recent_sell_link',
         'trading_card_recent_trade_value',
         'can_trade',
-        'can_buy'
+        'can_buy',
+        'usa_shipping_flat_rate',
+        'canada_shipping_flat_rate'
       ],
       include: [
         {

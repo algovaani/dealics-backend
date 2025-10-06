@@ -342,7 +342,14 @@ export const sendEmailVerification = async (req: Request, res: Response) => {
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return sendApiResponse(res, 400, false, "Please enter a valid email address");
+      return sendApiResponse(res, 400, false, "Please enter a valid email address", []);
+    }
+
+    // If email already exists, return error with status=false
+    const { User } = await import('../models/index.js');
+    const existing = await User.findOne({ where: { email } });
+    if (existing) {
+      return sendApiResponse(res, 400, false, "This email already exists in our system. Please log in instead.", []);
     }
 
     const mailInputs = {

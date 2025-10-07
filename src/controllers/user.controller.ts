@@ -31,6 +31,7 @@ declare global {
 // GET /api/user/my-profile - Get authenticated user's profile details
 export const getMyProfile = async (req: Request, res: Response) => {
   try {
+    
     // Get user ID from authenticated token
     const userId = req.user?.id || req.user?.user_id || req.user?.sub;
     
@@ -162,7 +163,9 @@ export const getUserProfile = async (req: Request, res: Response) => {
 // GET /api/user/:id - Get user by ID (existing method)
 export const getUserById = async (req: Request, res: Response) => {
   try {
+    
     const idParam = req.params.id;
+    
     if (!idParam || isNaN(Number(idParam))) {
       return sendApiResponse(res, 400, false, "Valid user ID is required");
     }

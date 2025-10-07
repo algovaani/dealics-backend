@@ -1277,7 +1277,7 @@ export class TradingCardService {
       const categoryFields = await CategoryField.findAll({
         where: { category_id: categoryId },
         order: [['priority', 'ASC']],
-        attributes: ['fields', 'is_required', 'mark_as_title'],
+        attributes: ['fields', 'is_required', 'additional_information', 'mark_as_title'],
         include: [{
           model: (await import('../models/index.js')).ItemColumn,
           as: 'item_column'
@@ -1342,14 +1342,38 @@ export class TradingCardService {
           if (cField.item_column.type === 'select') {
             const textFieldName = `${fieldName}_text`;
             if (requestData[textFieldName] && requestData[textFieldName].trim()) {
-              const masterId = await HelperService.saveMasterDataAndReturnMasterId(
+              const masterId = await HelperService.saveMasterByMeta(
                 requestData[textFieldName],
-                fieldName,
+                cField.item_column.rel_master_table,
+                cField.item_column.rel_model_col,
+                cField.item_column.rel_model_index,
                 categoryId
               );
               
               if (masterId > 0) {
-                saveData[fieldName] = masterId;
+                const relIndex = cField.item_column?.rel_model_index as string | undefined;
+                const targetCol = (relIndex && /_id$/i.test(relIndex)) ? relIndex : (cField.item_column?.name || fieldName);
+                saveData[targetCol] = masterId;
+              }
+            }
+
+            // Fallback: when client sent plain text in main field (create-or-get master)
+            if (
+              typeof requestData[fieldName] === 'string' &&
+              requestData[fieldName].trim() &&
+              isNaN(Number(requestData[fieldName]))
+            ) {
+              const masterId = await HelperService.saveMasterByMeta(
+                requestData[fieldName].trim(),
+                cField.item_column.rel_master_table,
+                cField.item_column.rel_model_col,
+                cField.item_column.rel_model_index,
+                categoryId
+              );
+              if (masterId > 0) {
+                const relIndex = cField.item_column?.rel_model_index as string | undefined;
+                const targetCol = (relIndex && /_id$/i.test(relIndex)) ? relIndex : (cField.item_column?.name || fieldName);
+                saveData[targetCol] = masterId;
               }
             }
           }
@@ -1357,16 +1381,72 @@ export class TradingCardService {
           if (cField.item_column.type === 'autocomplete') {
             const textFieldName = `${fieldName}_text`;
             if (requestData[textFieldName] && requestData[textFieldName].trim()) {
-              const masterId = await HelperService.saveMasterDataAndReturnMasterId(
+              const masterId = await HelperService.saveMasterByMeta(
                 requestData[textFieldName],
-                fieldName,
+                cField.item_column.rel_master_table,
+                cField.item_column.rel_model_col,
+                cField.item_column.rel_model_index,
                 categoryId
               );
               
               if (masterId > 0) {
-                saveData[fieldName] = masterId;
+                const relIndex = cField.item_column?.rel_model_index as string | undefined;
+                const targetCol = (relIndex && /_id$/i.test(relIndex)) ? relIndex : (cField.item_column?.name || fieldName);
+                saveData[targetCol] = masterId;
               }
             }
+
+            // Fallback: when client sent plain text in main field (create-or-get master)
+            if (
+              typeof requestData[fieldName] === 'string' &&
+              requestData[fieldName].trim() &&
+              isNaN(Number(requestData[fieldName]))
+            ) {
+              const masterId = await HelperService.saveMasterByMeta(
+                requestData[fieldName].trim(),
+                cField.item_column.rel_master_table,
+                cField.item_column.rel_model_col,
+                cField.item_column.rel_model_index,
+                categoryId
+              );
+              if (masterId > 0) {
+                const relIndex = cField.item_column?.rel_model_index as string | undefined;
+                const targetCol = (relIndex && /_id$/i.test(relIndex)) ? relIndex : (cField.item_column?.name || fieldName);
+                saveData[targetCol] = masterId;
+              }
+            }
+          }
+
+          // Type-agnostic fallback: if item column maps to a master table and the main field contains non-numeric text,
+          // create-or-get master and set its id.
+          if (
+            typeof requestData[fieldName] === 'string' &&
+            requestData[fieldName].trim() &&
+            isNaN(Number(requestData[fieldName]))
+          ) {
+            try {
+              const itemMetaRows = await HelperService.getMasterDatas('item_columns', categoryId);
+              const itemMeta = Array.isArray(itemMetaRows)
+                ? itemMetaRows.find((row: any) => row && row.name === fieldName)
+                : null;
+              if (itemMeta && (itemMeta.rel_master_table || itemMeta.rel_model_fun)) {
+                const masterId = await HelperService.saveMasterByMeta(
+                  requestData[fieldName].trim(),
+                  itemMeta.rel_master_table,
+                  itemMeta.rel_model_col,
+                  itemMeta.rel_model_index,
+                  categoryId
+                );
+                if (masterId > 0) {
+                  const relIndexMeta = (itemMeta && itemMeta.rel_model_index) as string | undefined;
+                  const relIndex = cField.item_column?.rel_model_index as string | undefined;
+                  const targetCol = (relIndexMeta && /_id$/i.test(relIndexMeta))
+                    ? relIndexMeta
+                    : ((relIndex && /_id$/i.test(relIndex)) ? relIndex : (cField.item_column?.name || fieldName));
+                  saveData[targetCol] = masterId;
+                }
+              }
+            } catch {}
           }
         }
       }
@@ -1436,22 +1516,31 @@ export class TradingCardService {
 
       // Handle additional images - exactly like Laravel
       if (requestData.additional_images && Array.isArray(requestData.additional_images) && requestData.additional_images.length > 0) {
+        // Filter out any blank/empty paths to avoid empty DB columns
+        const cleaned = requestData.additional_images
+          .map((p: any) => (typeof p === 'string' ? p.trim() : ''))
+          .filter((p: string) => !!p);
+        
+        if (cleaned.length > 0) {
         const { CardImage } = await import('../models/index.js');
         
         const cardImageData: any = {
-          main_card_id: tradingCard.id,
-          trader_id: userId,
-          card_image_status: '1'
+          // Use model attribute names (sequelize maps to snake_case columns)
+          mainCardId: tradingCard.id,
+          traderId: userId,
+          cardImageStatus: '1'
         };
 
         // Map additional images to card_image_1, card_image_2, etc. - exactly like Laravel
-        requestData.additional_images.forEach((imagePath: string, index: number) => {
+        cleaned.forEach((imagePath: string, index: number) => {
           if (index < 4) { // Only support up to 4 additional images
-            cardImageData[`card_image_${index + 1}`] = imagePath;
+            const key = `cardImage${index + 1}`; // maps to card_image_1..4
+            cardImageData[key] = imagePath;
           }
         });
 
         await CardImage.create(cardImageData);
+        }
       }
 
       // Update user trading card count - exactly like Laravel

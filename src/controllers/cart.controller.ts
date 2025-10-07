@@ -474,7 +474,8 @@ export const cartOffer = async (req: Request, res: Response) => {
         cart_id: currentCart.id,
         user_id: userId,
         product_id: tradingCardId,
-        product_amount: offerAmount
+        product_amount: offerAmount,
+        hold_expires_at: new Date(Date.now() + 10 * 60 * 1000)
       } as any);
 
       // Mark trading card as traded
@@ -606,6 +607,19 @@ export const getCart = async (req: Request, res: Response) => {
     });
 
     // Transform cart data for frontend
+    const formatDateTime = (input: any) => {
+      if (!input) return null;
+      const dt = new Date(input);
+      if (isNaN(dt.getTime())) return null;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const y = dt.getFullYear();
+      const m = pad(dt.getMonth() + 1);
+      const d = pad(dt.getDate());
+      const hh = pad(dt.getHours());
+      const mm = pad(dt.getMinutes());
+      const ss = pad(dt.getSeconds());
+      return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+    };
     let cartData = null;
     if (cart && cart.id) {
       cartData = {
@@ -620,6 +634,7 @@ export const getCart = async (req: Request, res: Response) => {
         cartDetails: (cart as any).cartDetails?.map((detail: any) => ({
           id: detail.id,
           cart_id: detail.cart_id,
+          hold_expires_at: formatDateTime(detail.hold_expires_at),
           product_amount: detail.product_amount,
           product: detail.product ? {
             id: detail.product.id,
@@ -4050,8 +4065,9 @@ export const saveParcel = async (req: Request, res: Response) => {
       return sendApiResponse(res, 401, false, "User not authenticated", []);
     }
 
-    // Validation
-    if (!trade_id || !lengthInput || !widthInput || !heightInput || !weightInput_lbs || !weightInput_oz) {
+    // Validation (allow weightInput_oz = 0)
+    const ozMissingForTrade = (weightInput_oz === undefined || weightInput_oz === null || weightInput_oz === '');
+    if (!trade_id || !lengthInput || !widthInput || !heightInput || !weightInput_lbs || ozMissingForTrade) {
       return sendApiResponse(res, 400, false, "All parcel dimensions and weight fields are required", []);
     }
 
@@ -6046,8 +6062,9 @@ export const saveParcelBuysell = async (req: Request, res: Response) => {
       buy_id 
     } = req.body;
 
-    // Validate required fields
-    if (!lengthInput || !widthInput || !heightInput || !weightInput_lbs || !weightInput_oz || !packageSelect || !buy_id) {
+    // Validate required fields (allow weightInput_oz = 0)
+    const ozMissing = (weightInput_oz === undefined || weightInput_oz === null || weightInput_oz === '');
+    if (!lengthInput || !widthInput || !heightInput || !weightInput_lbs || ozMissing || !packageSelect || !buy_id) {
       return sendApiResponse(res, 400, false, "Missing required fields: lengthInput, widthInput, heightInput, weightInput_lbs, weightInput_oz, packageSelect, buy_id", []);
     }
 

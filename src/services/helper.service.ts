@@ -331,13 +331,24 @@ export class HelperService {
     categoryId: number
   ): Promise<number> {
     try {
-      // Get item column data
+      // Build candidate field names to resolve item_columns row
+      const candidates: string[] = Array.from(new Set([
+        field,
+        field.replace(/_text$/i, ''),
+        field.replace(/_slt$/i, ''),
+        field.replace(/_id$/i, ''),
+        field.replace(/_name$/i, ''),
+        field.replace(/(_text|_slt|_id|_name)$/ig, ''),
+      ].filter(Boolean)));
+
+      // Get item column data using any of the candidate names
       const itemColumnData = await sequelize.query(
-        `SELECT rel_master_table, rel_model_col, rel_model_index 
+        `SELECT name, rel_master_table, rel_model_col, rel_model_index 
          FROM item_columns 
-         WHERE name = :field`,
+         WHERE name IN (:names) 
+         LIMIT 1`,
         {
-          replacements: { field },
+          replacements: { names: candidates },
           type: QueryTypes.SELECT,
         }
       );
@@ -358,16 +369,14 @@ export class HelperService {
 
       // Get without category masters (hardcoded for now, you can make this configurable)
       const withoutCategoryMasters = [
-        'manufacturers',
-        'brands',
         'countries',
         'states',
         'cities'
       ];
 
-      // Check if record already exists
+      // Check if record already exists (case-insensitive match for text columns)
       const existingRecord = await sequelize.query(
-        `SELECT id, category_id FROM ${mappedTableName} WHERE ${rel_model_col} = :value`,
+        `SELECT id, category_id FROM ${mappedTableName} WHERE LOWER(${rel_model_col}) = LOWER(:value)`,
         {
           replacements: { value },
           type: QueryTypes.SELECT,
@@ -426,6 +435,69 @@ export class HelperService {
       return result[0] as number;
     } catch (error) {
       console.error('Error in saveMasterDataAndReturnMasterId:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Save master by explicit meta (bypasses item_columns lookup)
+   */
+  static async saveMasterByMeta(
+    value: string,
+    rel_master_table: string,
+    rel_model_col: string,
+    rel_model_index: string | null | undefined,
+    categoryId: number
+  ): Promise<number> {
+    try {
+      if (!rel_master_table || !rel_model_col) return 0;
+
+      const mappedTableName = this.mapTableName(rel_master_table);
+
+      const withoutCategoryMasters = [
+        'countries',
+        'states',
+        'cities'
+      ];
+
+      const existingRecord = await sequelize.query(
+        `SELECT id, category_id FROM ${mappedTableName} WHERE LOWER(${rel_model_col}) = LOWER(:value)`,
+        { replacements: { value }, type: QueryTypes.SELECT }
+      );
+
+      if (existingRecord && existingRecord.length > 0) {
+        const record = existingRecord[0] as any;
+        if (record.id > 0) {
+          if (rel_model_index && !withoutCategoryMasters.includes(rel_model_index)) {
+            const existingCategoryIds = record.category_id
+              ? String(record.category_id).split(',').map((id: string) => id.trim()).filter(Boolean)
+              : [];
+            if (!existingCategoryIds.includes(String(categoryId))) {
+              existingCategoryIds.push(String(categoryId));
+              const updatedCategoryIds = Array.from(new Set(existingCategoryIds)).join(',');
+              await sequelize.query(
+                `UPDATE ${mappedTableName} SET category_id = :categoryIds WHERE id = :id`,
+                { replacements: { categoryIds: updatedCategoryIds, id: record.id }, type: QueryTypes.UPDATE }
+              );
+            }
+          }
+          return record.id as number;
+        }
+      }
+
+      const insertData: any = { [rel_model_col]: value, status: 1 };
+      if (rel_model_index && !withoutCategoryMasters.includes(rel_model_index)) {
+        insertData.category_id = categoryId;
+      }
+      const columns = Object.keys(insertData).join(', ');
+      const values = Object.keys(insertData).map((k) => `:${k}`).join(', ');
+      const result = await sequelize.query(
+        `INSERT INTO ${mappedTableName} (${columns}) VALUES (${values})`,
+        { replacements: insertData, type: QueryTypes.INSERT }
+      );
+      return result[0] as number;
+    } catch (error) {
+      console.error('Error in saveMasterByMeta:', error);
       return 0;
     }
   }

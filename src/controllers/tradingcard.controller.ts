@@ -906,9 +906,13 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
         const additionalImagePaths: string[] = [];
         for (const file of files.additional_images) {
           const uploadedPath = uploadOne(file as any, uploadPath);
-          additionalImagePaths.push(uploadedPath);
+          if (uploadedPath && String(uploadedPath).trim()) {
+            additionalImagePaths.push(uploadedPath);
+          }
         }
-        requestData.additional_images = additionalImagePaths;
+        if (additionalImagePaths.length > 0) {
+          requestData.additional_images = additionalImagePaths;
+        }
       }
     }
 

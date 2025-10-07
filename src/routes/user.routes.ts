@@ -242,6 +242,7 @@ router.get("/payment-cancel/:refId", payPalPaymentCancel);
 router.get("/copy-product-form-fields", userAuth, getCopyProductFormFields);
 
 // Other user routes (must be after specific routes to avoid conflicts)
+// These routes are moved to the end to avoid conflicts with specific routes
 router.get("/:id", getUserById);
 router.put("/:id", updateUser);
 router.delete("/:id", deleteUser);

@@ -30,6 +30,7 @@ import { BuyOfferAttempt } from './buyOfferAttempt.model.js';
 import { BuyOfferProduct } from './buyOfferProduct.model.js';
 import { PublicationYear } from './publicationYear.model.js';
 import { ProductAttribute } from './productAttribute.model.js';
+import { NotificationTemplate } from './notificationTemplate.model.js';
 
 // Import all models here
 export const models = [
@@ -63,6 +64,7 @@ export const models = [
   BuyOfferAttempt,
   BuyOfferProduct,
   ProductAttribute,
+  NotificationTemplate,
   PublicationYear
 ];
 
@@ -516,6 +518,7 @@ export {
   TradeProposalStatus,
   TradeTransaction,
   TradeNotification,
+  NotificationTemplate,
   ReviewCollection,
   Review,
   Support,

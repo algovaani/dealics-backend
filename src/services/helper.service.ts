@@ -112,7 +112,13 @@ export class HelperService {
       'publicationyear': 'publication_years',
       'publicationyears': 'publication_years',
       'publication_year': 'publication_years',
-      'publication_years': 'publication_years'
+      'publication_years': 'publication_years',
+      // Exclusive Event Retailers mapping (handle different casings)
+      'exclusive_event_retailers': 'exclusive_event_retailers',
+      'ExclusiveEventRetailer': 'exclusive_event_retailers',
+      'ExclusiveEventRetailers': 'exclusive_event_retailers',
+      'exclusiveeventretailer': 'exclusive_event_retailers',
+      'exclusiveeventretailers': 'exclusive_event_retailers'
     };
     
     const mappedName = tableNameMapping[tableName] || tableNameMapping[tableName.toLowerCase()] || tableName;

@@ -7,7 +7,7 @@ import { TradeNotification } from '../models/tradeNotification.model.js';
 import { CreditDeductionLog } from '../models/creditDeductionLog.model.js';
 import { sendApiResponse } from '../utils/apiResponse.js';
 import { setTradeProposalStatus } from '../services/tradeStatus.service.js';
-import { setTradersNotificationOnVariousActionBasis } from './cart.controller.js';
+import { setTradersNotificationOnVariousActionBasis } from '../services/notification.service.js';
 import { EmailHelperService } from '../services/emailHelper.service.js';
 
 // Unified Payment Processor API (Based on Laravel unifiedPaymentProcessor)
@@ -766,30 +766,31 @@ const sendMissingPayPalEmail = async (user: any) => {
   }
 };
 
-// Helper function to send counter accept and payment notifications
+// Helper function to send counter accept and payment notifications (Laravel-equivalent aliases via common helper)
 const sendCounterAcceptAndPaymentNotifications = async (tradeProposal: any, userId: number): Promise<void> => {
   try {
     const sentBy = userId;
     const sentTo = tradeProposal.trade_sent_by === userId ? tradeProposal.trade_sent_to : tradeProposal.trade_sent_by;
 
-    // Notification 1: accept-trade-counter-and-initiate-payment
-    await TradeNotification.create({
-      notification_sent_by: sentTo,
-      notification_sent_to: sentBy,
-      trade_proposal_id: tradeProposal.id,
-      message: "Counter offer accepted and payment initiated."
-    } as any);
+    // Alias 1: accept-trade-and-initiate-payment (for non-counter accept)
+    await setTradersNotificationOnVariousActionBasis(
+      'accept-trade-and-initiate-payment',
+      sentBy,
+      sentTo,
+      tradeProposal.id,
+      'Trade'
+    );
 
-    // Notification 2: pay-to-continue-counter-trade
-    await TradeNotification.create({
-      notification_sent_by: sentBy,
-      notification_sent_to: sentTo,
-      trade_proposal_id: tradeProposal.id,
-      message: "Payment required to continue counter trade."
-    } as any);
+    // Alias 2: pay-to-continue (generic)
+    await setTradersNotificationOnVariousActionBasis(
+      'pay-to-continue',
+      sentBy,
+      sentTo,
+      tradeProposal.id,
+      'Trade'
+    );
 
-    console.log('Counter accept and payment notifications sent successfully');
-
+    console.log('Counter accept and payment notifications sent successfully (via templates)');
   } catch (error: any) {
     console.error('Error sending counter accept notifications:', error);
   }
@@ -1310,6 +1311,50 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
     } catch (error) {
       console.error('❌ Failed to send payment success emails (sender paid):', error);
     }
+
+    // Notification per Laravel __sendPaymentNotifications (act: payment-made-for-trade)
+    await setTradersNotificationOnVariousActionBasis(
+      'payment-made-for-trade',
+      sender.id,
+      receiver.id,
+      tradeProposal.id,
+      'Trade'
+    );
+  } else {
+    // If receiver initiated payment (edge case), mirror emails and notification accordingly
+    const mailInputsSender = {
+      to: sender.email,
+      name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
+      other_user_name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
+      trade_amount: tradeAmountAmount,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      transaction_id: tradeProposal.code,
+    };
+    const mailInputsReceiver = {
+      to: receiver.email,
+      name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
+      other_user_name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
+      trade_amount: tradeAmountAmount,
+      transaction_id: tradeProposal.code,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+    };
+    try {
+      await Promise.all([
+        EmailHelperService.executeMailSender('payment-received-for-trade', mailInputsReceiver),
+        EmailHelperService.executeMailSender('payment-sent-for-trade', mailInputsSender)
+      ]);
+      console.log('✅ Payment success emails sent (receiver paid)');
+    } catch (error) {
+      console.error('❌ Failed to send payment success emails (receiver paid):', error);
+    }
+
+    await setTradersNotificationOnVariousActionBasis(
+      'payment-made-for-trade',
+      receiver.id,
+      sender.id,
+      tradeProposal.id,
+      'Trade'
+    );
   }
 
   if (userId === receiver.id) {

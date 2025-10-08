@@ -2339,6 +2339,7 @@ export class TradingCardService {
         c.sport_icon,
           tc.trader_id,
           tc.creator_id,
+          tc.created_at,
           tc.is_traded,
           tc.can_trade,
           tc.can_buy,

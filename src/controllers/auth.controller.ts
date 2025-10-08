@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AuthService } from "../services/auth.service.js";
 import { User, CreditPurchaseLog } from "../models/index.js";
+import { EmailHelperService } from "../services/emailHelper.service.js";
 import bcrypt from "bcryptjs";
 
 const authService = new AuthService();
@@ -12,6 +13,40 @@ const sendApiResponse = (res: Response, statusCode: number, status: boolean, mes
     message,
     data: data || []
   });
+};
+
+/**
+ * Send password reset success email
+ * Based on Laravel requirements
+ */
+const sendPasswordResetSuccessEmail = async (user: any): Promise<void> => {
+  try {
+    // Validate required parameters
+    if (!user || !user.email) {
+      console.warn('⚠️ Missing user data for password reset success email:', {
+        user: !!user,
+        email: !!user?.email
+      });
+      return;
+    }
+
+    // Prepare email data based on Laravel requirements
+    const mailInputs = {
+      to: user.email,
+      name: EmailHelperService.setName(user.first_name || '', user.last_name || ''),
+      username: user.username || user.email,
+      yourprofilelink: `${process.env.FRONTEND_URL}/profile`
+    };
+
+    // Send email using EmailHelperService
+    await EmailHelperService.executeMailSender('password-reset-successfully', mailInputs);
+
+    console.log('✅ Password reset success email sent successfully');
+
+  } catch (emailError) {
+    console.error('❌ Failed to send password reset success email:', emailError);
+    // Don't throw error to avoid breaking the main operation
+  }
 };
 
 export const login = async (req: Request, res: Response) => {
@@ -152,6 +187,9 @@ export const resetPassword = async (req: Request, res: Response) => {
     if (!success) {
       return sendApiResponse(res, 500, false, "Failed to reset password", []);
     }
+
+    // Send password reset success email
+    await sendPasswordResetSuccessEmail(user);
 
     return sendApiResponse(res, 200, true, "Password reset successfully. You can now login with your new password.", []);
 

@@ -3900,6 +3900,7 @@ export class UserService {
           counter_personalized_message: tradeData.counter_personalized_message,
           counter_offer: tradeData.counter_offer,
           is_new: tradeData.is_new,
+          is_edited: tradeData.is_edited,
           trade_status: tradeData.trade_status,
           accepted_on: tradeData.accepted_on ? UserService.formatDateToMMDDYY(tradeData.accepted_on) : null,
           is_payment_received: tradeData.is_payment_received,

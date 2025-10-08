@@ -5,6 +5,180 @@ import { QueryTypes, Op } from "sequelize";
 import { exit } from "process";
 import { EmailHelperService } from "../services/emailHelper.service.js";
 
+/**
+ * Timezone utility functions for server-native time handling
+ * Uses server's timezone for both storage and display
+ */
+const TimezoneUtils = {
+  /**
+   * Get current server time
+   * Uses server's native timezone
+   */
+  getCurrentServerTime: (): Date => {
+    return new Date();
+  },
+
+  /**
+   * Add minutes to current server time
+   * Returns server time for database storage
+   */
+  addMinutesToServerTime: (minutes: number): Date => {
+    const now = new Date(); // Server's native time
+    return new Date(now.getTime() + minutes * 60 * 1000);
+  },
+
+  /**
+   * Format server time for display
+   * Returns server time in YYYY-MM-DD HH:mm:ss format
+   */
+  formatServerTime: (input: any): string | null => {
+    if (!input) return null;
+    const dt = new Date(input);
+    if (isNaN(dt.getTime())) return null;
+    
+    // Use server's native timezone
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const y = dt.getFullYear();
+    const m = pad(dt.getMonth() + 1);
+    const d = pad(dt.getDate());
+    const hh = pad(dt.getHours());
+    const mm = pad(dt.getMinutes());
+    const ss = pad(dt.getSeconds());
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  },
+
+  /**
+   * Get current server time for display
+   * Shows server's current time
+   */
+  getCurrentServerTimeFormatted: (): string => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const y = now.getFullYear();
+    const m = pad(now.getMonth() + 1);
+    const d = pad(now.getDate());
+    const hh = pad(now.getHours());
+    const mm = pad(now.getMinutes());
+    const ss = pad(now.getSeconds());
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  }
+};
+
+/**
+ * Helper function to prepare card names for email
+ * Optimized for better performance and reusability
+ */
+const prepareCardNamesForEmail = async (buySellCard: any): Promise<string> => {
+  try {
+    // Check if main card exists
+    if (buySellCard.main_card && buySellCard.main_card > 0) {
+      const card = await TradingCard.findByPk(buySellCard.main_card, {
+        attributes: ['search_param']
+      });
+      return card?.search_param ? `1. ${card.search_param}` : 'Trading card';
+    }
+
+    // Get multiple cards from buy offer products
+    const buyOfferProducts = await BuyOfferProduct.findAll({
+      where: { buy_sell_id: buySellCard.id },
+      include: [{
+        model: TradingCard,
+        as: 'product',
+        attributes: ['search_param']
+      }],
+      attributes: ['id']
+    });
+
+    if (buyOfferProducts.length > 0) {
+      const cardNamesArray = buyOfferProducts
+        .map((item: any, index: number) => {
+          return item.product?.search_param 
+            ? `${index + 1}. ${item.product.search_param}` 
+            : null;
+        })
+        .filter(Boolean);
+      
+      return cardNamesArray.length > 0 
+        ? cardNamesArray.join('<br/>') 
+        : 'Trading cards';
+    }
+
+    return 'Trading cards';
+  } catch (error) {
+    console.error('Error preparing card names:', error);
+    return 'Trading cards';
+  }
+};
+
+/**
+ * Helper function to send shipment completion emails
+ * Optimized for performance and maintainability
+ */
+const sendShipmentCompletionEmails = async (
+  currentUser: any, 
+  otherUser: any, 
+  cardNames: string, 
+  trackingId: string, 
+  shipmentStatus: string = 'Pre-Transit'
+): Promise<void> => {
+  // Validate required parameters
+  if (!currentUser?.email || !otherUser?.email || !trackingId) {
+    console.warn('⚠️ Missing required data for shipment emails:', {
+      currentUserEmail: !!currentUser?.email,
+      otherUserEmail: !!otherUser?.email,
+      trackingId: !!trackingId
+    });
+    return;
+  }
+
+  try {
+    // Prepare user names once
+    const currentUserName = EmailHelperService.setName(
+      currentUser.first_name || '', 
+      currentUser.last_name || ''
+    );
+    const otherUserName = EmailHelperService.setName(
+      otherUser.first_name || '', 
+      otherUser.last_name || ''
+    );
+
+    // Prepare common email data
+    const commonData = {
+      card_names: cardNames || 'Trading cards',
+      tracking_id: trackingId,
+      shipment_status: shipmentStatus || 'Pre-Transit'
+    };
+
+    // Email to current user (shipper) - "product-shipped-by-you"
+    const mailInputsToShipper = {
+      to: currentUser.email,
+      name: currentUserName,
+      other_user_name: otherUserName,
+      ...commonData
+    };
+    
+    // Email to other user (receiver) - "product-shipped-by-other"
+    const mailInputsToReceiver = {
+      to: otherUser.email,
+      name: otherUserName,
+      other_user_name: currentUserName,
+      ...commonData
+    };
+
+    // Send both emails in parallel for better performance
+    await Promise.all([
+      EmailHelperService.executeMailSender('product-shipped-by-you', mailInputsToShipper),
+      EmailHelperService.executeMailSender('product-shipped-by-other', mailInputsToReceiver)
+    ]);
+
+    console.log('✅ Shipment completion emails sent successfully');
+
+  } catch (emailError) {
+    console.error('❌ Failed to send shipment completion emails:', emailError);
+    // Don't throw error to avoid breaking the main operation
+  }
+};
+
 // Helper function to send standardized API responses
 const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any, extra?: any) => {
   const response: any = {
@@ -469,13 +643,15 @@ export const cartOffer = async (req: Request, res: Response) => {
     let cartDetail;
 
     if (!existingCartDetail) {
-      // Add product to cart
+      // Add product to cart - previous (UTC-based) timer behavior
+      const holdExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      
       cartDetail = await CartDetail.create({
         cart_id: currentCart.id,
         user_id: userId,
         product_id: tradingCardId,
         product_amount: offerAmount,
-        hold_expires_at: new Date(Date.now() + 10 * 60 * 1000)
+        hold_expires_at: holdExpiresAt
       } as any);
 
       // Mark trading card as traded
@@ -606,19 +782,18 @@ export const getCart = async (req: Request, res: Response) => {
       ]
     });
 
-    // Transform cart data for frontend
-    const formatDateTime = (input: any) => {
+    // Transform cart data for frontend - previous (UTC-based) formatting
+    const formatDateTime = (input: any): string | null => {
       if (!input) return null;
       const dt = new Date(input);
-      if (isNaN(dt.getTime())) return null;
       const pad = (n: number) => String(n).padStart(2, '0');
-      const y = dt.getFullYear();
-      const m = pad(dt.getMonth() + 1);
-      const d = pad(dt.getDate());
-      const hh = pad(dt.getHours());
-      const mm = pad(dt.getMinutes());
-      const ss = pad(dt.getSeconds());
-      return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+      const yyyy = dt.getUTCFullYear();
+      const mm = pad(dt.getUTCMonth() + 1);
+      const dd = pad(dt.getUTCDate());
+      const hh = pad(dt.getUTCHours());
+      const mi = pad(dt.getUTCMinutes());
+      const ss = pad(dt.getUTCSeconds());
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
     };
     let cartData = null;
     if (cart && cart.id) {
@@ -631,27 +806,31 @@ export const getCart = async (req: Request, res: Response) => {
         total_amount: cart.total_amount,
         created_at: cart.created_at,
         updated_at: cart.updated_at,
-        cartDetails: (cart as any).cartDetails?.map((detail: any) => ({
-          id: detail.id,
-          cart_id: detail.cart_id,
-          hold_expires_at: formatDateTime(detail.hold_expires_at),
-          product_amount: detail.product_amount,
-          product: detail.product ? {
-            id: detail.product.id,
-            trading_card_img: detail.product.trading_card_img,
-            trading_card_slug: detail.product.trading_card_slug,
-            trading_card_asking_price: detail.product.trading_card_asking_price,
-            trading_card_offer_accept_above: detail.product.trading_card_offer_accept_above,
-            trader_id: detail.product.trader_id,
-            free_shipping: detail.product.free_shipping,
-            usa_shipping_flat_rate: detail.product.usa_shipping_flat_rate,
-            usa_add_product_flat_rate: detail.product.usa_add_product_flat_rate,
-            canada_shipping_flat_rate: detail.product.canada_shipping_flat_rate,
-            canada_add_product_flat_rate: detail.product.canada_add_product_flat_rate,
-            search_param: detail.product.search_param,
-            sport_name: detail.product.parentCategory ? detail.product.parentCategory.sport_name : null
-          } : null
-        })) || []
+        cartDetails: (cart as any).cartDetails?.map((detail: any) => {
+          const formattedTime = formatDateTime(detail.hold_expires_at);
+          
+          return {
+            id: detail.id,
+            cart_id: detail.cart_id,
+            hold_expires_at: formattedTime,
+            product_amount: detail.product_amount,
+            product: detail.product ? {
+              id: detail.product.id,
+              trading_card_img: detail.product.trading_card_img,
+              trading_card_slug: detail.product.trading_card_slug,
+              trading_card_asking_price: detail.product.trading_card_asking_price,
+              trading_card_offer_accept_above: detail.product.trading_card_offer_accept_above,
+              trader_id: detail.product.trader_id,
+              free_shipping: detail.product.free_shipping,
+              usa_shipping_flat_rate: detail.product.usa_shipping_flat_rate,
+              usa_add_product_flat_rate: detail.product.usa_add_product_flat_rate,
+              canada_shipping_flat_rate: detail.product.canada_shipping_flat_rate,
+              canada_add_product_flat_rate: detail.product.canada_add_product_flat_rate,
+              search_param: detail.product.search_param,
+              sport_name: detail.product.parentCategory ? detail.product.parentCategory.sport_name : null
+            } : null
+          };
+        }) || []
       };
     }
 
@@ -1228,77 +1407,80 @@ const sendPaymentCompletionNotifications = async (buyOffer: any) => {
   }
 };
 
-// Send payment confirmation emails for buy sell (based on Laravel __sendPaymentConfirmationEmailsForBuySell)
-const sendPaymentConfirmationEmailsForBuySell = async (id: number) => {
+/**
+ * Send payment confirmation emails for buy/sell transactions
+ * Optimized and clean implementation based on Laravel requirements
+ */
+const sendPaymentConfirmationEmailsForBuySell = async (
+  buyOffer: any, 
+  buyer: any, 
+  seller: any, 
+  cardName: string
+): Promise<void> => {
   try {
-    const buyOffer = await BuySellCard.findByPk(id);
-    
-    if (!buyOffer) {
-      console.error('Buy offer not found for email sending');
-      return;
-    }
-
-    const buyer = await User.findByPk(buyOffer.buyer);
-    const seller = await User.findByPk(buyOffer.seller);
-
-    if (!buyer || !seller) {
-      console.error('Buyer or seller not found for email sending');
-      return;
-    }
-
-    // Generate card name
-    let cardName = '';
-    if (buyOffer.main_card && buyOffer.main_card > 0) {
-      const tradingCard = await TradingCard.findByPk(buyOffer.main_card);
-      cardName = tradingCard ? (tradingCard.search_param || '') : '';
-    } else {
-      // Handle multiple products
-      const buyOfferProducts = await BuyOfferProduct.findAll({
-        where: { buy_sell_id: buyOffer.id },
-        include: [{ model: TradingCard, as: 'product' }]
+    // Validate required parameters
+    if (!buyOffer || !buyer || !seller) {
+      console.warn('⚠️ Missing required data for payment confirmation emails:', {
+        buyOffer: !!buyOffer,
+        buyer: !!buyer,
+        seller: !!seller
       });
-
-      if (buyOfferProducts && buyOfferProducts.length > 0) {
-        const cardNamesArray: string[] = [];
-        for (const item of buyOfferProducts) {
-          const itemWithProduct = item as any;
-          if (itemWithProduct.product && itemWithProduct.product.search_param) {
-            cardNamesArray.push(itemWithProduct.product.search_param || '');
-          }
-        }
-        if (cardNamesArray.length > 0) {
-          cardName = cardNamesArray.join(', ');
-        }
-      }
+      return;
     }
 
-    const proposedAmount = buyOffer.total_amount;
-    const transactionListUrl = '/bought-and-sold-products';
+    if (!buyer.email || !seller.email) {
+      console.warn('⚠️ Missing email addresses for payment confirmation emails:', {
+        buyerEmail: !!buyer.email,
+        sellerEmail: !!seller.email
+      });
+      return;
+    }
 
-    // Send email to buyer
+    // Prepare transaction data
+    const proposedAmount = buyOffer.total_amount || 0;
+    const transactionListUrl = `${process.env.FRONTEND_URL}/bought-and-sold-products`;
+
+    // Prepare user names using EmailHelperService.setName (Laravel equivalent)
+    const buyerName = EmailHelperService.setName(
+      buyer.first_name || '', 
+      buyer.last_name || ''
+    );
+    const sellerName = EmailHelperService.setName(
+      seller.first_name || '', 
+      seller.last_name || ''
+    );
+
+    // Email to buyer - "payment-confirmed-email-to-buyer"
     const buyerMailInputs = {
       to: buyer.email,
-      tradebyname: `${buyer.first_name || ''} ${buyer.last_name || ''}`.trim(),
-      tradetoname: `${seller.first_name || ''} ${seller.last_name || ''}`.trim(),
-      cardyoureceive: cardName,
+      tradebyname: buyerName,
+      tradetoname: sellerName,
+      cardyoureceive: cardName || 'Trading card',
       proposedamount: proposedAmount,
       transactionListUrl: transactionListUrl,
     };
 
-    // Send email to seller
+    // Email to seller - "payment-confirmed-email-to-seller"
     const sellerMailInputs = {
       to: seller.email,
-      tradebyname: `${buyer.first_name || ''} ${buyer.last_name || ''}`.trim(),
-      tradetoname: `${seller.first_name || ''} ${seller.last_name || ''}`.trim(),
-      cardyousend: cardName,
+      tradebyname: buyerName,
+      tradetoname: sellerName,
+      cardyousend: cardName || 'Trading card',
       proposedamount: proposedAmount,
       transactionListUrl: transactionListUrl,
     };
 
-    // Execute email sending (you can implement the actual email sending logic here)
+    // Send both emails in parallel for better performance
+    await Promise.all([
+      EmailHelperService.executeMailSender('payment-confirmed-email-to-buyer', buyerMailInputs),
+      EmailHelperService.executeMailSender('payment-confirmed-email-to-seller', sellerMailInputs)
+    ]);
 
-  } catch (error) {
-    console.error('Error sending payment confirmation emails:', error);
+    console.log('✅ Payment confirmation emails sent successfully');
+
+  } catch (emailError) {
+    console.error('❌ Failed to send payment confirmation emails:', emailError);
+    // Don't throw error to avoid breaking the main operation
   }
 };
 
@@ -1577,7 +1759,8 @@ export const completeTradeSender = async (req: Request, res: Response) => {
         }
       }
 
-      // Send completion email (simplified)
+    // Send completion email per Laravel logic
+    await sendMarkedAsCompletedEmails(userId, tradeProposal);
 
       // Set trade status
       await setTradeAndOfferStatus('marked-trade-completed-by-sender', 'trade', tradeProposal.id);
@@ -1640,7 +1823,8 @@ export const completeTradeSender = async (req: Request, res: Response) => {
         }
       }
 
-      // Send completion email (simplified)
+    // Send completion email per Laravel logic
+    await sendMarkedAsCompletedEmails(userId, tradeProposal);
 
       // Set trade status
       await setTradeAndOfferStatus('marked-trade-completed-by-receiver', 'trade', tradeProposal.id);
@@ -1888,7 +2072,21 @@ export const confirmPaymentReceived = async (req: Request, res: Response) => {
     await setTradersNotificationOnVariousActionBasis('payment-received', buyOffer.buyer!, buyOffer.seller!, buyOffer.id, 'Offer');
 
     // Send payment confirmation emails
-    await sendPaymentConfirmationEmailsForBuySell(buyOffer.id);
+    const buyer = await User.findByPk(buyOffer.buyer);
+    const seller = await User.findByPk(buyOffer.seller);
+    
+    if (buyer && seller) {
+      // Get card name for email
+      let cardName = 'Trading card';
+      if (buyOffer.main_card && buyOffer.main_card > 0) {
+        const tradingCard = await TradingCard.findByPk(buyOffer.main_card);
+        if (tradingCard && tradingCard.search_param) {
+          cardName = `1. ${tradingCard.search_param}`;
+        }
+      }
+      
+      await sendPaymentConfirmationEmailsForBuySell(buyOffer, buyer, seller, cardName);
+    }
 
     return sendApiResponse(res, 200, true, "Payment confirmation received", []);
 
@@ -2341,6 +2539,9 @@ export const proposeTrade = async (req: Request, res: Response) => {
     // Send notifications
     await sendTradeNotifications('send-proposal', userId, parseInt(trader_id_r), tradeProposal.id);
 
+    // Send initial trade emails (Laravel parity)
+    await sendNewTradeProposalEmails(tradeProposal);
+
     // Prepare response data
     const responseData = {
       trade_proposal_id: tradeProposal.id,
@@ -2504,6 +2705,193 @@ const sendTradeEmailNotifications = async (tradeProposal: any, status: string, a
   }
 };
 
+// Helper: send emails for new trade proposal (propose-trade)
+const sendNewTradeProposalEmails = async (tradeProposal: any): Promise<void> => {
+  try {
+    const userBy = await User.findByPk(tradeProposal.trade_sent_by, { attributes: ['first_name','last_name','email'] });
+    const userTo = await User.findByPk(tradeProposal.trade_sent_to, { attributes: ['first_name','last_name','email'] });
+    if (!userBy || !userTo) return;
+
+    const sentIds = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receivedIds = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+
+    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sentIds } }, attributes: ['search_param'] });
+    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receivedIds } }, attributes: ['search_param'] });
+
+    const itemsSend = sentCards.map((card, idx) => `${idx + 1}. ${card.search_param}`).join('\n');
+    const itemsReceived = receivedCards.map((card, idx) => `${idx + 1}. ${card.search_param}`).join('\n');
+
+    let proposedamount = 0;
+    if (tradeProposal.add_cash && tradeProposal.add_cash > 0) proposedamount = tradeProposal.add_cash;
+    else if (tradeProposal.ask_cash && tradeProposal.ask_cash > 0) proposedamount = tradeProposal.ask_cash;
+
+    let proposedAmountCaptionTo = '';
+    let proposedAmountCaptionBy = '';
+    if (tradeProposal.add_cash && tradeProposal.add_cash > 0) {
+      proposedAmountCaptionTo = ' (You get)';
+      proposedAmountCaptionBy = ' (You pay)';
+    } else if (tradeProposal.ask_cash && tradeProposal.ask_cash > 0) {
+      proposedAmountCaptionTo = ' (You pay)';
+      proposedAmountCaptionBy = ' (You get)';
+    }
+
+    const message = tradeProposal.message || 'N/A';
+    const reviewLink = `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`;
+
+    // new-trade-offer → receiver
+    const toReceiver = {
+      to: userTo.email,
+      tradebyname: EmailHelperService.setName(userBy.first_name || '', userBy.last_name || ''),
+      tradetoname: EmailHelperService.setName(userTo.first_name || '', userTo.last_name || ''),
+      cardyousend: itemsReceived.replace(/\n/g, '<br>'),
+      cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
+      proposedamount: `${proposedamount}${proposedAmountCaptionTo}`,
+      message,
+      reviewtradelink: reviewLink,
+      transaction_id: tradeProposal.code
+    };
+
+    // trade-offer-sent → sender
+    const toSender = {
+      to: userBy.email,
+      tradebyname: EmailHelperService.setName(userBy.first_name || '', userBy.last_name || ''),
+      tradetoname: EmailHelperService.setName(userTo.first_name || '', userTo.last_name || ''),
+      cardyousend: itemsSend.replace(/\n/g, '<br>'),
+      cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
+      proposedamount: `${proposedamount}${proposedAmountCaptionBy}`,
+      message,
+      reviewtradelink: reviewLink,
+      transaction_id: tradeProposal.code
+    };
+
+    try { await EmailHelperService.executeMailSender('new-trade-offer', toReceiver); } catch {}
+    try { await EmailHelperService.executeMailSender('trade-offer-sent', toSender); } catch {}
+  } catch (err) {
+    console.error('Error sending new trade proposal emails:', err);
+  }
+};
+
+// Helper: send emails when trade marked as completed by either party
+const sendMarkedAsCompletedEmails = async (currentUserId: number, tradeProposal: any): Promise<void> => {
+  try {
+    // Load users
+    const sentByUser = await User.findByPk(tradeProposal.trade_sent_by);
+    const sentToUser = await User.findByPk(tradeProposal.trade_sent_to);
+    if (!sentByUser || !sentToUser) return;
+
+    const leavefeedbacklink = `${process.env.FRONTEND_URL}/completed-trades/${tradeProposal.id}`;
+
+    // Case 1: mimic Laravel condition for receiver mail
+    if (currentUserId === sentByUser.id || tradeProposal.receiver_confirmation !== '1') {
+      const mailInputsReceiver = {
+        to: sentToUser.email,
+        name: EmailHelperService.setName(sentToUser.first_name || '', sentToUser.last_name || ''),
+        other_user_name: EmailHelperService.setName(sentByUser.first_name || '', sentByUser.last_name || ''),
+        leavefeedbacklink,
+        transaction_id: tradeProposal.code
+      };
+      try { await EmailHelperService.executeMailSender('trade-marked-as-completed-by-receiver', mailInputsReceiver); } catch {}
+    } 
+    // Case 2: mimic Laravel condition for sender mail
+    else if (currentUserId === sentByUser.id || tradeProposal.trade_sender_confrimation !== '1') {
+      const mailInputsSender = {
+        to: sentByUser.email,
+        name: EmailHelperService.setName(sentByUser.first_name || '', sentByUser.last_name || ''),
+        other_user_name: EmailHelperService.setName(sentToUser.first_name || '', sentToUser.last_name || ''),
+        leavefeedbacklink,
+        transaction_id: tradeProposal.code
+      };
+      try { await EmailHelperService.executeMailSender('trade-marked-as-completed-by-sender', mailInputsSender); } catch {}
+    }
+  } catch (err) {
+    console.error('Error sending marked-as-completed emails:', err);
+  }
+};
+
+// Helper: send emails for cancel/decline statuses
+const sendCancelOrDeclineEmails = async (tradeProposal: any, tradeStatus: string): Promise<void> => {
+  try {
+    // Load related users if not eager loaded
+    const sender = tradeProposal.tradeSender || await User.findByPk(tradeProposal.trade_sent_by);
+    const receiver = tradeProposal.tradeReceiver || await User.findByPk(tradeProposal.trade_sent_to);
+
+    if (!sender || !receiver) return;
+
+    // Build card lists
+    const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+
+    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sendCards } }, attributes: ['search_param'] });
+    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receiveCards } }, attributes: ['search_param'] });
+
+    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+
+    const proposedAmount = tradeProposal.add_cash || tradeProposal.ask_cash || 0;
+    const message = tradeProposal.message || tradeProposal.counter_personalized_message || 'N/A';
+
+    const reviewCancelledLink = `${process.env.FRONTEND_URL}/cancelled-trades/${tradeProposal.id}`;
+    const reviewOngoingLink = `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`;
+
+    // Common payloads
+    const toSenderBase = {
+      to: sender.email,
+      tradebyname: `${sender.first_name || ''} ${sender.last_name || ''}`.trim(),
+      tradetoname: `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim(),
+      cardyousend: itemsSend.replace(/\n/g, '<br>'),
+      cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
+      proposedamount: proposedAmount,
+      transaction_id: tradeProposal.code,
+      message: message
+    } as any;
+
+    const toReceiverBase = {
+      to: receiver.email,
+      tradebyname: `${sender.first_name || ''} ${sender.last_name || ''}`.trim(),
+      tradetoname: `${receiver.first_name || ''} ${receiver.last_name || ''}`.trim(),
+      cardyousend: itemsReceived.replace(/\n/g, '<br>'),
+      cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
+      proposedamount: proposedAmount,
+      transaction_id: tradeProposal.code,
+      message: message
+    } as any;
+
+    // Branch by status
+    if (tradeStatus === 'declined') {
+      // trade-offer-declined-sender (to sender)
+      try {
+        await EmailHelperService.executeMailSender('trade-offer-declined-sender', { ...toSenderBase, reviewtradelink: reviewCancelledLink });
+      } catch (e) { /* swallow */ }
+    } else if (tradeStatus === 'counter_declined') {
+      // counter-trade-declined-sender (to receiver), with cancelled-trades link
+      try {
+        await EmailHelperService.executeMailSender('counter-trade-declined-sender', { ...toReceiverBase, reviewtradelink: reviewCancelledLink });
+      } catch (e) { /* swallow */ }
+    } else if (tradeStatus === 'cancel') {
+      if (tradeProposal.trade_status === 'counter_offer') {
+        // counter-offer-proposal-cancel-receiver (to sender) for counter offer cancel
+        try {
+          await EmailHelperService.executeMailSender('counter-offer-proposal-cancel-receiver', { ...toSenderBase, reviewtradelink: reviewCancelledLink });
+        } catch (e) { /* swallow */ }
+      } else {
+        // trade-cancelled-by-sender-to-receiver (to receiver)
+        try {
+          await EmailHelperService.executeMailSender('trade-cancelled-by-sender-to-receiver', { ...toReceiverBase, reviewtradelink: reviewCancelledLink });
+        } catch (e) { /* swallow */ }
+        // trade-cancelled-by-sender (to sender)
+        try {
+          await EmailHelperService.executeMailSender('trade-cancelled-by-sender', { ...toSenderBase, reviewtradelink: reviewCancelledLink });
+        } catch (e) { /* swallow */ }
+      }
+    }
+
+    // Counter accepted extras and pay-to-continue are handled elsewhere in accept flow
+
+  } catch (err) {
+    console.error('Error sending cancel/decline emails:', err);
+  }
+};
+
 // Helper function to send pay-to-continue email notifications
 const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 'receiver'): Promise<void> => {
   try {
@@ -2550,7 +2938,13 @@ const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 
         ? 'pay-to-continue-email-trade-counter-sender'
         : 'pay-to-continue-email-trade-sender';
 
-      // await emailService.sendEmail(template, senderEmailData);
+      // Send email using EmailHelperService
+      try {
+        await EmailHelperService.executeMailSender(template, senderEmailData);
+        console.log('✅ Pay-to-continue email sent to sender successfully');
+      } catch (error) {
+        console.error('❌ Failed to send pay-to-continue email to sender:', error);
+      }
     } else {
       const receiverEmailData = {
         to: receiver.email,
@@ -2568,11 +2962,110 @@ const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 
         ? 'pay-to-continue-email-trade-counter-receiver'
         : 'pay-to-continue-email-trade-receiver';
 
-      // await emailService.sendEmail(template, receiverEmailData);
+      // Send email using EmailHelperService
+      try {
+        await EmailHelperService.executeMailSender(template, receiverEmailData);
+        console.log('✅ Pay-to-continue email sent to receiver successfully');
+      } catch (error) {
+        console.error('❌ Failed to send pay-to-continue email to receiver:', error);
+      }
     }
 
   } catch (error) {
     console.error('Error sending pay-to-continue email:', error);
+  }
+};
+
+// Helper: send emails for edit-trade-proposal (counter or regular)
+const sendEditTradeEmails = async (tradeProposal: any, mode: 'Counter Trade' | 'Regular'): Promise<void> => {
+  try {
+    const userBy = await User.findByPk(tradeProposal.trade_sent_by);
+    const userTo = await User.findByPk(tradeProposal.trade_sent_to);
+    if (!userBy || !userTo) return;
+
+    // Build cards list
+    const sendIds = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+    const receiveIds = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
+
+    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sendIds } }, attributes: ['search_param'] });
+    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receiveIds } }, attributes: ['search_param'] });
+
+    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+
+    let proposedamount = 0;
+    if (tradeProposal.add_cash && tradeProposal.add_cash > 0) proposedamount = tradeProposal.add_cash;
+    else if (tradeProposal.ask_cash && tradeProposal.ask_cash > 0) proposedamount = tradeProposal.ask_cash;
+
+    let proposedAmountCaptionTo = '';
+    let proposedAmountCaptionBy = '';
+    if (tradeProposal.add_cash && tradeProposal.add_cash > 0) {
+      proposedAmountCaptionTo = ' (You get)';
+      proposedAmountCaptionBy = ' (You pay)';
+    } else if (tradeProposal.ask_cash && tradeProposal.ask_cash > 0) {
+      proposedAmountCaptionTo = ' (You pay)';
+      proposedAmountCaptionBy = ' (You get)';
+    }
+
+    const message = tradeProposal.counter_personalized_message || tradeProposal.message || 'N/A';
+
+    if (mode === 'Counter Trade') {
+      // new-counter-offer (to userBy)
+      const toSender = {
+        to: userBy.email,
+        tradetoname: EmailHelperService.setName(userBy.first_name || '', userBy.last_name || ''),
+        tradebyname: EmailHelperService.setName(userTo.first_name || '', userTo.last_name || ''),
+        cardyousend: itemsReceived.replace(/\n/g, '<br>'),
+        cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
+        additionalamount: `${proposedamount}${proposedAmountCaptionBy}`,
+        message,
+        reviewcountertradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        transaction_id: tradeProposal.code
+      };
+      // counter-offer-sent (to userTo)
+      const toReceiver = {
+        to: userTo.email,
+        tradebyname: EmailHelperService.setName(userTo.first_name || '', userTo.last_name || ''),
+        tradetoname: EmailHelperService.setName(userBy.first_name || '', userBy.last_name || ''),
+        cardyousend: itemsSend.replace(/\n/g, '<br>'),
+        cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
+        proposedamount: `${proposedamount}${proposedAmountCaptionTo}`,
+        message,
+        viewcounterofferlink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        transaction_id: tradeProposal.code
+      };
+      try { await EmailHelperService.executeMailSender('new-counter-offer', toSender); } catch {}
+      try { await EmailHelperService.executeMailSender('counter-offer-sent', toReceiver); } catch {}
+    } else {
+      // trade-offer-updated-receiver (to userTo)
+      const toReceiver = {
+        to: userTo.email,
+        tradebyname: EmailHelperService.setName(userBy.first_name || '', userBy.last_name || ''),
+        tradetoname: EmailHelperService.setName(userTo.first_name || '', userTo.last_name || ''),
+        cardyousend: itemsReceived.replace(/\n/g, '<br>'),
+        cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
+        proposedamount: `${proposedamount}${proposedAmountCaptionTo}`,
+        message,
+        reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        transaction_id: tradeProposal.code
+      };
+      // trade-offer-updated-sender (to userBy)
+      const toSender = {
+        to: userBy.email,
+        tradebyname: EmailHelperService.setName(userBy.first_name || '', userBy.last_name || ''),
+        tradetoname: EmailHelperService.setName(userTo.first_name || '', userTo.last_name || ''),
+        cardyousend: itemsSend.replace(/\n/g, '<br>'),
+        cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
+        proposedamount: `${proposedamount}${proposedAmountCaptionBy}`,
+        message,
+        transaction_id: tradeProposal.code,
+        reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`
+      };
+      try { await EmailHelperService.executeMailSender('trade-offer-updated-receiver', toReceiver); } catch {}
+      try { await EmailHelperService.executeMailSender('trade-offer-updated-sender', toSender); } catch {}
+    }
+  } catch (err) {
+    console.error('Error sending edit trade emails:', err);
   }
 };
 
@@ -2679,6 +3172,9 @@ export const cancelTrade = async (req: Request, res: Response) => {
     // Determine trade status
     const tradeStatus = st || 'cancel';
     await tradeProposal.update({ trade_status: tradeStatus });
+
+    // Send condition-wise emails for cancel/decline flows (matches Laravel)
+    await sendCancelOrDeclineEmails(tradeProposal, tradeStatus);
 
     // Get total active trades for user
     const totalActiveTrades = await TradeProposal.count({
@@ -3099,6 +3595,9 @@ export const editTradeProposal = async (req: Request, res: Response) => {
         // Set trade status
         await setTradeProposalStatus(tradeProposal.id, 'counter-trade-offer');
 
+        // Send counter trade emails (Laravel parity)
+        await sendEditTradeEmails(tradeProposal, 'Counter Trade');
+
         return sendApiResponse(res, 200, true, "Counter offer proposed successfully!", [], {
           trade_proposal_id: tradeProposal.id,
           redirect_url: `/ongoing-trades/${tradeProposal.id}`
@@ -3110,7 +3609,8 @@ export const editTradeProposal = async (req: Request, res: Response) => {
           send_cards: sendcards,
           receive_cards: receivecards,
           main_card: main_card,
-          message: message || tradeProposal.message
+          message: message || tradeProposal.message,
+          is_edited: 1
         };
 
         if (addCash) {
@@ -3138,6 +3638,9 @@ export const editTradeProposal = async (req: Request, res: Response) => {
 
         // Set trade status
         await setTradeProposalStatus(tradeProposal.id, 'trade-offer-updated');
+
+        // Send regular update emails (Laravel parity)
+        await sendEditTradeEmails(tradeProposal, 'Regular');
 
         return sendApiResponse(res, 200, true, "Trade proposal updated successfully!", [], {
           trade_proposal_id: tradeProposal.id,
@@ -5466,35 +5969,16 @@ export const shippingTradeSuccess = async (req: Request, res: Response) => {
       const currentUser = await User.findByPk(userId);
 
       if (otherUser && currentUser) {
-        const mailInputs = {
-          items_shipped: cardNames.replace(/\n/g, '<br>'),
-          tracking_info: shipment.tracking_id,
-          track_shipment_link: `${process.env.FRONTEND_URL}/track-shipment/${shipment.tracking_id}`,
-          view_shipment_details_link: `${process.env.FRONTEND_URL}/shipping-logs`,
-          transaction_id: tradeProposal.code,
-          link: `${process.env.FRONTEND_URL}/ongoing-trades?id=${tradeProposal.id}`
-        };
-
-        // Email to current user
-        const { EmailHelperService } = await import("../services/emailHelper.service.js");
-        const currentUserName = EmailHelperService.setName(currentUser.first_name || '', currentUser.last_name || '');
-        const otherUserName = EmailHelperService.setName(otherUser.first_name || '', otherUser.last_name || '');
-
+        // Format card names for email (replace newlines with HTML breaks)
+        const formattedCardNames = cardNames.replace(/\n/g, '<br>');
         
-        await EmailHelperService.executeMailSender('product-shipped-by-you', {
-          to: currentUser.email,
-          name: currentUserName,
-          other_user_name: otherUserName,
-          ...mailInputs
-        });
-
-        // Email to other user
-        await EmailHelperService.executeMailSender('product-shipped-by-other', {
-          to: otherUser.email,
-          name: otherUserName,
-          other_user_name: currentUserName,
-          ...mailInputs
-        });
+        await sendShipmentCompletionEmails(
+          currentUser,
+          otherUser,
+          formattedCardNames,
+          shipment.tracking_id,
+          shipment.shipment_status || 'Pre-Transit'
+        );
       }
     }
 
@@ -7039,45 +7523,33 @@ export const shipmentCostPaymentSuccessForBuySell = async (req: Request, res: Re
 
             // Get other user for notifications
             const otherUserId = buySellCard.buyer === userId ? buySellCard.seller : buySellCard.buyer;
-            const otherUser = await User.findByPk(otherUserId);
+            const notificationUser = await User.findByPk(otherUserId);
 
-            // Prepare card names for email
-            let cardNames = '';
-            if (buySellCard.main_card && buySellCard.main_card > 0) {
-              const card = await TradingCard.findByPk(buySellCard.main_card);
-              if (card && card.search_param) {
-                cardNames = `1. ${card.search_param}`;
-              }
-            } else {
-              const buyOfferProducts = await BuyOfferProduct.findAll({
-                where: { buy_sell_id: buySellCard.id },
-                include: [
-                  {
-                    model: TradingCard,
-                    as: 'product',
-                    attributes: ['search_param']
-                  }
-                ]
-              });
-
-              if (buyOfferProducts.length > 0) {
-                const cardNamesArray = buyOfferProducts.map((item: any, index: number) => {
-                  return item.product && item.product.search_param 
-                    ? `${index + 1}. ${item.product.search_param}` 
-                    : null;
-                }).filter(Boolean);
-                cardNames = cardNamesArray.join('<br/>');
-              }
-            }
+            // Prepare card names for email (optimized)
+            const cardNames = await prepareCardNamesForEmail(buySellCard);
 
             // Send notifications
-            if (otherUser && buySellCard.seller && buySellCard.buyer) {
+            if (notificationUser && buySellCard.seller && buySellCard.buyer) {
               await setTradersNotificationOnVariousActionBasis(
                 'shipped-proposal',
                 buySellCard.seller,
                 buySellCard.buyer,
                 buySellCard.id,
                 'Offer'
+              );
+            }
+
+            // Send shipment completion emails
+            const currentUser = await User.findByPk(userId);
+            const otherUser = await User.findByPk(otherUserId);
+
+            if (currentUser && otherUser) {
+              await sendShipmentCompletionEmails(
+                currentUser,
+                otherUser,
+                cardNames,
+                data.tracking_code,
+                'Pre-Transit'
               );
             }
 

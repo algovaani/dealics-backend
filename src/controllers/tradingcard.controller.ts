@@ -442,7 +442,31 @@ export const getTradingCard = async (req: Request, res: Response) => {
       }
     }
     
-    // Transform the response to include trader_name
+    // Transform the response to preserve existing structure and add missing non-null fields
+    const cardData = tradingCard.toJSON() as any;
+    
+    // Get all non-null/non-empty fields that are not already included in the main response
+    const additionalNonNullFields: any = {};
+    Object.keys(cardData).forEach(key => {
+      const value = cardData[key];
+      // Skip if it's already included in the main response or if it's null/empty
+      const alreadyIncluded = [
+        'id', 'code', 'trading_card_status', 'category_id', 'search_param', 'trading_card_img', 
+        'trading_card_img_back', 'trading_card_slug', 'is_traded', 'created_at', 'is_demo', 
+        'trader_id', 'trading_card_asking_price', 'trading_card_estimated_value', 
+        'trading_card_recent_sell_link', 'trading_card_recent_trade_value', 'can_trade', 
+        'can_buy', 'usa_shipping_flat_rate', 'canada_shipping_flat_rate', 'trader'
+      ];
+      
+      if (!alreadyIncluded.includes(key) && 
+          value !== null && 
+          value !== undefined && 
+          value !== '' && 
+          !(value === 0 && typeof value === 'number')) {
+        additionalNonNullFields[key] = value;
+      }
+    });
+
     const transformedCard = {
       id: tradingCard.id,
       code: tradingCard.code,
@@ -476,7 +500,9 @@ export const getTradingCard = async (req: Request, res: Response) => {
       // Add eBay link search parameter
       ebayLinkSearch: tradingCard.search_param ? 
         `https://www.ebay.com/sch/i.html?_nkw=${tradingCard.search_param.replace(/\s+/g, '+')}&rt=nc&LH_Complete=1&LH_Sold=1` : 
-        null
+        null,
+      // Add all other non-null/non-empty fields from trading_cards table
+      ...additionalNonNullFields
     };
     
     return sendApiResponse(res, 200, true, "Trading card retrieved successfully", transformedCard);

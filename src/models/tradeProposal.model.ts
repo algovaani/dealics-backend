@@ -171,9 +171,13 @@ import {
     @Default(0)
     @Column(DataType.TINYINT)
     shipped_by_trade_sent_by!: number;
-  
+
     @Column(DataType.DATE)
     shipped_on_by_trade_sent_by?: Date;
+
+    @Default(0)
+    @Column(DataType.TINYINT)
+    is_edited!: number;
   
     @Default(0)
     @Column(DataType.TINYINT)

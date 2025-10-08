@@ -28,6 +28,7 @@ import { Cart } from './cart.model.js';
 import { CartDetail } from './cartDetail.model.js';
 import { BuyOfferAttempt } from './buyOfferAttempt.model.js';
 import { BuyOfferProduct } from './buyOfferProduct.model.js';
+import { PublicationYear } from './publicationYear.model.js';
 import { ProductAttribute } from './productAttribute.model.js';
 
 // Import all models here
@@ -61,7 +62,8 @@ export const models = [
   CartDetail,
   BuyOfferAttempt,
   BuyOfferProduct,
-  ProductAttribute
+  ProductAttribute,
+  PublicationYear
 ];
 
 // Function to set up all associations
@@ -520,5 +522,6 @@ export {
   Cart,
   CartDetail,
   BuyOfferAttempt,
-  BuyOfferProduct
+  BuyOfferProduct,
+  PublicationYear
 };

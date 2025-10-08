@@ -913,57 +913,10 @@ const setTradeAndOfferStatus = async (alias: string, setFor: string, triggerId: 
 };
 
 // Helper function to create notifications (Enhanced based on Laravel __setTradersNotificationOnVariousActionBasis)
-export const setTradersNotificationOnVariousActionBasis = async (act: string, sentBy: number, sentTo: number, dataSetId: number, setFor: string) => {
-  try {
-    // Get notification data based on action and setFor
-    const notificationData = getNotificationData(act, setFor);
-    
-    if (notificationData.status === true) {
-      // Create sender notification
-      if (notificationData.messages.sender && notificationData.messages.sender.trim() !== '') {
-        const senderCollection: any = {
-          notification_sent_by: sentTo,
-          notification_sent_to: sentBy,
-          message: notificationData.messages.sender,
-          created_at: new Date(),
-          updated_at: new Date()
-        };
+import { setTradersNotificationOnVariousActionBasis, setNotificationContext } from '../services/notification.service.js';
 
-        if (setFor === 'Trade') {
-          senderCollection.trade_proposal_id = dataSetId;
-        } else if (setFor === 'Offer') {
-          senderCollection.buy_sell_card_id = dataSetId;
-        }
 
-        await TradeNotification.create(senderCollection);
-      }
-
-      // Create receiver notification
-      if (notificationData.messages.receiver && notificationData.messages.receiver.trim() !== '') {
-        const receiverCollection: any = {
-      notification_sent_by: sentBy,
-      notification_sent_to: sentTo,
-          message: notificationData.messages.receiver,
-      created_at: new Date(),
-      updated_at: new Date()
-    };
-
-    if (setFor === 'Trade') {
-          receiverCollection.trade_proposal_id = dataSetId;
-    } else if (setFor === 'Offer') {
-          receiverCollection.buy_sell_card_id = dataSetId;
-        }
-
-        await TradeNotification.create(receiverCollection);
-      }
-    }
-
-  } catch (error: any) {
-    console.error('Error creating notifications:', error);
-  }
-};
-
-// Helper function to get notification data based on action and setFor
+// Fallback map if no template found (kept for safety)
 const getNotificationData = (act: string, setFor: string) => {
   const notificationMap: any = {
     // Trade notifications

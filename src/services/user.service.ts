@@ -11,6 +11,7 @@ import { Shipment } from "../models/shipment.model.js";
 import { Address } from "../models/address.model.js";
 import { CategoryShippingRate } from "../models/categoryShippingRates.model.js";
 import { BuySellCard, BuyOfferStatus, TradeProposal, TradeProposalStatus, TradeTransaction, TradeNotification, ReviewCollection, Review, Support } from "../models/index.js";
+import { setTradeProposalStatus } from '../services/tradeStatus.service.js';
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 
@@ -5451,7 +5452,6 @@ export class UserService {
       );
 
       // Set trade status using helper function (Laravel: HelperTradeAndOfferStatus::___setStatus('payment-confirmed', 'trade', $trade_proposal->id))
-      const { setTradeProposalStatus } = await import('../services/tradeStatus.service.js');
       const statusResult = await setTradeProposalStatus(tradeProposalId, 'payment-confirmed');
       
       if (!statusResult.success) {
@@ -5505,7 +5505,7 @@ export class UserService {
       const itemsReceivedList = itemsReceived.map((cardName, index) => `${index + 1}. ${cardName}`).join('\n');
 
       // Import helper functions
-      const { setTradersNotificationOnVariousActionBasis } = await import('../controllers/cart.controller.js');
+      const { setTradersNotificationOnVariousActionBasis } = await import('./notification.service.js');
       const { EmailHelperService } = await import('../services/emailHelper.service.js');
 
       // Handle notifications and emails based on user role (Laravel: if ($trade_proposal->trade_sent_to == auth()->user()->id))

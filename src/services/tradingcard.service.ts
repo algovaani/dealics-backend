@@ -1267,8 +1267,7 @@ export class TradingCardService {
       const markAsTitleArr: any = {};
       const markAsTitleColsArr: string[] = [];
       
-      console.log('DEBUG: Category fields found:', categoryFields.length);
-      console.log('DEBUG: Category fields:', JSON.stringify(categoryFields, null, 2));
+      // Category fields loaded; suppress verbose debug logging in production
 
       for (const cField of categoryFields) {
         const fieldName = cField.fields;
@@ -1280,11 +1279,11 @@ export class TradingCardService {
 
         // Handle mark as title logic - exactly like Laravel
         if (fieldName && cField.mark_as_title === true) {
-          console.log('DEBUG: Field:', fieldName, 'Is mark as title:', cField.mark_as_title);
+          // Field flagged as mark_as_title
           
           if (cField.mark_as_title === true) {
             markAsTitleColsArr.push(fieldName);
-            console.log('DEBUG: Mark as title field found:', fieldName);
+            // Track mark_as_title columns
             
             // Initialize markAsTitleArr object for this field
             markAsTitleArr[fieldName] = {};
@@ -1292,7 +1291,7 @@ export class TradingCardService {
             // Get the field value from request - exactly like Laravel
             if (requestData[fieldName] && requestData[fieldName].trim()) {
               markAsTitleArr[fieldName].value = requestData[fieldName];
-              console.log('DEBUG: Added to markAsTitleArr:', fieldName, requestData[fieldName]);
+              // Added to markAsTitleArr
             }
 
             // Get item column data for prefix and type - exactly like Laravel
@@ -1453,8 +1452,7 @@ export class TradingCardService {
       let searchParam = '';
       let tradingCardSlug = '';
       
-      console.log('DEBUG: markAsTitleArr before processing:', JSON.stringify(markAsTitleArr, null, 2));
-      console.log('DEBUG: markAsTitleColsArr:', markAsTitleColsArr);
+      // Suppress verbose debug logging
 
       if (Object.keys(markAsTitleArr).length > 0) {
         const paramAndSlug = await this.createProductSearchParametersAndSlug(
@@ -1464,10 +1462,9 @@ export class TradingCardService {
         );
         searchParam = paramAndSlug.search_param;
         tradingCardSlug = paramAndSlug.trading_card_slug;
-        console.log('DEBUG: Generated search_param:', searchParam);
-        console.log('DEBUG: Generated trading_card_slug:', tradingCardSlug);
+        // search_param and trading_card_slug generated
       } else {
-        console.log('DEBUG: No mark as title fields found, search_param will be empty');
+        // No mark as title fields found
       }
 
       // Handle image fields - exactly like Laravel

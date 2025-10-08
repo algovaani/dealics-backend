@@ -8,6 +8,7 @@ import { CreditDeductionLog } from '../models/creditDeductionLog.model.js';
 import { sendApiResponse } from '../utils/apiResponse.js';
 import { setTradeProposalStatus } from '../services/tradeStatus.service.js';
 import { setTradersNotificationOnVariousActionBasis } from './cart.controller.js';
+import { EmailHelperService } from '../services/emailHelper.service.js';
 
 // Unified Payment Processor API (Based on Laravel unifiedPaymentProcessor)
 export const payToChangeTradeStatus = async (req: Request, res: Response) => {
@@ -444,8 +445,16 @@ const sendUnifiedCounterOfferEmails = async (userTo: any, userBy: any, cardData:
     transaction_id: tradeProposal.code,
   };
 
-  // Send emails (implement email service calls here)
-  console.log('Sending counter offer emails:', { mailInputsTo, mailInputsBy });
+  // Send emails using EmailHelperService
+  try {
+    await Promise.all([
+      EmailHelperService.executeMailSender('counter-trade-offer-accepted-receiver', mailInputsTo),
+      EmailHelperService.executeMailSender('counter-trade-offer-accepted-sender', mailInputsBy)
+    ]);
+    console.log('✅ Counter offer emails sent successfully');
+  } catch (error) {
+    console.error('❌ Failed to send counter offer emails:', error);
+  }
 };
 
 // Send trade acceptance emails for unified function
@@ -476,8 +485,16 @@ const sendUnifiedTradeAcceptanceEmails = async (userTo: any, userBy: any, cardDa
     transaction_id: tradeProposal.code,
   };
 
-  // Send emails (implement email service calls here)
-  console.log('Sending trade acceptance emails:', { mailInputsTo, mailInputsBy });
+  // Send emails using EmailHelperService
+  try {
+    await Promise.all([
+      EmailHelperService.executeMailSender('trade-offer-accepted-receiver', mailInputsTo),
+      EmailHelperService.executeMailSender('trade-offer-accepted-sender', mailInputsBy)
+    ]);
+    console.log('✅ Trade acceptance emails sent successfully');
+  } catch (error) {
+    console.error('❌ Failed to send trade acceptance emails:', error);
+  }
 };
 
 
@@ -1263,51 +1280,69 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
   }
 
   if (userId === sender.id) {
-    // Email to sender
+    // Email to sender - "payment-sent-for-trade"
     const mailInputsSender = {
       to: sender.email,
-      name: `${sender.first_name} ${sender.last_name}`,
-      other_user_name: `${receiver.first_name} ${receiver.last_name}`,
+      name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
+      other_user_name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
       trade_amount: tradeAmountAmount,
       transaction_id: tradeProposal.code,
-      viewTransactionDeatilsLink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
     };
-    console.log('Payment sent email to sender:', mailInputsSender);
 
-    // Email to receiver
+    // Email to receiver - "payment-received-for-trade"
     const mailInputsReceiver = {
       to: receiver.email,
-      name: `${receiver.first_name} ${receiver.last_name}`,
-      other_user_name: `${sender.first_name} ${sender.last_name}`,
+      name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
+      other_user_name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
       trade_amount: tradeAmountAmount,
-      viewTransactionDeatilsLink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
       transaction_id: tradeProposal.code,
     };
-    console.log('Payment received email to receiver:', mailInputsReceiver);
+
+    // Send emails using EmailHelperService
+    try {
+      await Promise.all([
+        EmailHelperService.executeMailSender('payment-sent-for-trade', mailInputsSender),
+        EmailHelperService.executeMailSender('payment-received-for-trade', mailInputsReceiver)
+      ]);
+      console.log('✅ Payment success emails sent (sender paid)');
+    } catch (error) {
+      console.error('❌ Failed to send payment success emails (sender paid):', error);
+    }
   }
 
   if (userId === receiver.id) {
-    // Email to receiver
+    // Email to receiver - "payment-sent-for-trade"
     const mailInputsReceiver = {
       to: receiver.email,
-      name: `${receiver.first_name} ${receiver.last_name}`,
-      other_user_name: `${sender.first_name} ${sender.last_name}`,
+      name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
+      other_user_name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
       trade_amount: tradeAmountAmount,
       transaction_id: tradeProposal.code,
-      viewTransactionDeatilsLink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
     };
-    console.log('Payment sent email to receiver:', mailInputsReceiver);
 
-    // Email to sender
+    // Email to sender - "payment-received-for-trade"
     const mailInputsSender = {
       to: sender.email,
-      name: `${sender.first_name} ${sender.last_name}`,
-      other_user_name: `${receiver.first_name} ${receiver.last_name}`,
+      name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
+      other_user_name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
       trade_amount: tradeAmountAmount,
-      viewTransactionDeatilsLink: `${process.env.BASE_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
       transaction_id: tradeProposal.code,
     };
-    console.log('Payment received email to sender:', mailInputsSender);
+
+    // Send emails using EmailHelperService
+    try {
+      await Promise.all([
+        EmailHelperService.executeMailSender('payment-sent-for-trade', mailInputsReceiver),
+        EmailHelperService.executeMailSender('payment-received-for-trade', mailInputsSender)
+      ]);
+      console.log('✅ Payment success emails sent (receiver paid)');
+    } catch (error) {
+      console.error('❌ Failed to send payment success emails (receiver paid):', error);
+    }
   }
 
   // Send payment notifications

@@ -188,7 +188,9 @@ export class HelperService {
         'sleevegraders',
         'types',
         'Type',
-        'Types'
+        'Types',
+        'publication_years',
+        'PublicationYear'
       ];
       
       // Determine if table has a status column to filter active records

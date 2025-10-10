@@ -3336,6 +3336,12 @@ export class UserService {
         whereClause.buying_status = { [Op.ne]: '' };
       }
 
+      // Handle buy_sell_id filter
+      if (filters.buy_sell_id && filters.buy_sell_id > 0) {
+        whereClause.id = filters.buy_sell_id;
+        filterData.buy_sell_id = filters.buy_sell_id;
+      }
+
       // Handle trade_with filter (username search)
       if (filters.trade_with && filters.trade_with.trim() !== '') {
         filterData.trade_with = filters.trade_with;
@@ -3713,6 +3719,17 @@ export class UserService {
       // Handle specific ID filter
       if (filters.id && filters.id > 0) {
         whereClause.id = filters.id;
+      }
+
+      // Handle trade_id filter
+      if (filters.trade_id && filters.trade_id > 0) {
+        whereClause.id = filters.trade_id;
+      }
+
+      // Handle trade_id filter - when provided, only return that specific trade proposal
+      if (filters.trade_id && filters.trade_id > 0) {
+        whereClause.id = filters.trade_id;
+        filterData.trade_id = filters.trade_id;
       }
 
       // Handle trade_with filter (username search) - Laravel logic
@@ -5061,6 +5078,11 @@ export class UserService {
             }
           };
         }
+      }
+
+      // Handle trade_id filter (alias for trade_proposal_id)
+      if (filters.trade_id && filters.trade_id > 0) {
+        whereClause.trade_proposal_id = filters.trade_id;
       }
 
       // Handle trade_with filter (username search) - Laravel logic

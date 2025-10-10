@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { TradingCardService } from "../services/tradingcard.service.js";
-import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn } from "../models/index.js";
+import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear } from "../models/index.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
@@ -286,12 +286,16 @@ export const getTradingCards = async (req: Request, res: Response) => {
       }
     }
 
-    // Use the new method that excludes user's own cards
+    // Duplicate flag: when true, include the logged-in user's own cards as well
+    const duplicateParam = req.query.duplicate as string | undefined;
+    const includeOwnCards = duplicateParam && duplicateParam.toString().toLowerCase() === 'true';
+
+    // Use the method that normally excludes user's own cards. When duplicate=true, pass undefined to avoid exclusion.
     const result = await tradingcardService.getAllTradingCardsExceptOwn(
       page,
       perPage,
       categoryId,
-      loggedInUserId,
+      includeOwnCards ? undefined : loggedInUserId,
       graded
     );
 
@@ -394,7 +398,7 @@ export const getTradingCard = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "Trading Card not found");
     }
     
-    const { tradingCard, additionalFields, cardImages, canTradeOrOffer, interested_in } = result;
+    const { additionalFields, cardImages, canTradeOrOffer, interested_in, ...tradingCard } = result;
     
     // Get offer attempts count for authenticated user
     let offerLimitText = null;
@@ -443,7 +447,7 @@ export const getTradingCard = async (req: Request, res: Response) => {
     }
     
     // Transform the response to preserve existing structure and add missing non-null fields
-    const cardData = tradingCard.toJSON() as any;
+    const cardData = tradingCard as any;
     
     // Get all non-null/non-empty fields that are not already included in the main response
     const additionalNonNullFields: any = {};
@@ -912,25 +916,116 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
     const categoryIdNum = parseInt(categoryId);
     const userId = user.id;
 
+    // If player_id_text is provided, ensure it exists in master (players) and set player_id
+    if (requestData.player_id_text && String(requestData.player_id_text).trim()) {
+      try {
+        const [player] = await (Player as any).findOrCreate({
+          where: {
+            player_name: String(requestData.player_id_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            player_name: String(requestData.player_id_text).trim(),
+            category_id: String(categoryIdNum),
+            player_status: '1'
+          }
+        });
+        if (player && player.id) {
+          (requestData as any).player_id = player.id;
+        }
+      } catch (e) {
+        console.warn('player upsert failed (create):', e);
+      }
+    }
+
+    // If publication_year_text is provided, ensure it exists in master (publication_years) and set publication_year id
+    if (requestData.publication_year_text && String(requestData.publication_year_text).trim()) {
+      try {
+        const [pubYear] = await (PublicationYear as any).findOrCreate({
+          where: {
+            name: String(requestData.publication_year_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            name: String(requestData.publication_year_text).trim(),
+            category_id: String(categoryIdNum),
+            status: '1'
+          }
+        });
+        if (pubYear && pubYear.id) {
+          (requestData as any).publication_year = pubYear.id;
+        }
+      } catch (e) {
+        console.warn('publication_year upsert failed (create):', e);
+      }
+    }
+
+    // If release_year_text is provided, ensure it exists in master (years) and set release_year id
+    if (requestData.release_year_text && String(requestData.release_year_text).trim()) {
+      try {
+        const [relYear] = await (Year as any).findOrCreate({
+          where: {
+            name: String(requestData.release_year_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            name: String(requestData.release_year_text).trim(),
+            category_id: String(categoryIdNum),
+            status: '1'
+          }
+        });
+        if (relYear && relYear.id) {
+          (requestData as any).release_year = relYear.id;
+        }
+      } catch (e) {
+        console.warn('release_year upsert failed (years):', e);
+      }
+    }
+
     // Handle file uploads
     const uploadPath = process.cwd() + '/public/user/assets/images/trading_cards_img/';
     
     // Process main card images
     if (req.files) {
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-      
-      if (files.trading_card_img && files.trading_card_img[0]) {
-        requestData.trading_card_img = uploadOne(files.trading_card_img[0] as any, uploadPath);
+      const filesMap = req.files as { [fieldname: string]: Express.Multer.File[] } | Express.Multer.File[];
+
+      // trading_card_img & trading_card_img_back
+      if (!Array.isArray(filesMap)) {
+        if (filesMap.trading_card_img && filesMap.trading_card_img[0]) {
+          requestData.trading_card_img = uploadOne(filesMap.trading_card_img[0] as any, uploadPath);
+        }
+        if (filesMap.trading_card_img_back && filesMap.trading_card_img_back[0]) {
+          requestData.trading_card_img_back = uploadOne(filesMap.trading_card_img_back[0] as any, uploadPath);
+        }
+      } else {
+        const mainFront = (filesMap as Express.Multer.File[]).find(f => f.fieldname === 'trading_card_img');
+        const mainBack = (filesMap as Express.Multer.File[]).find(f => f.fieldname === 'trading_card_img_back');
+        if (mainFront) requestData.trading_card_img = uploadOne(mainFront as any, uploadPath);
+        if (mainBack) requestData.trading_card_img_back = uploadOne(mainBack as any, uploadPath);
       }
-      
-      if (files.trading_card_img_back && files.trading_card_img_back[0]) {
-        requestData.trading_card_img_back = uploadOne(files.trading_card_img_back[0] as any, uploadPath);
+
+      // Collect additional_images from various field naming patterns
+      const collectedAdditional: Express.Multer.File[] = [];
+      if (Array.isArray(filesMap)) {
+        for (const f of filesMap as Express.Multer.File[]) {
+          if (f.fieldname === 'additional_images' || f.fieldname === 'additional_images[]' || f.fieldname.startsWith('additional_images[')) {
+            collectedAdditional.push(f);
+          }
+        }
+      } else {
+        // Known keys
+        const keys = Object.keys(filesMap);
+        for (const key of keys) {
+          if (key === 'additional_images' || key === 'additional_images[]' || key.startsWith('additional_images[')) {
+            const arr = (filesMap as any)[key] as Express.Multer.File[];
+            if (Array.isArray(arr)) collectedAdditional.push(...arr);
+          }
+        }
       }
-      
-      // Process additional images (multiple files in one field)
-      if (files.additional_images && files.additional_images.length > 0) {
+
+      if (collectedAdditional.length > 0) {
         const additionalImagePaths: string[] = [];
-        for (const file of files.additional_images) {
+        for (const file of collectedAdditional) {
           const uploadedPath = uploadOne(file as any, uploadPath);
           if (uploadedPath && String(uploadedPath).trim()) {
             additionalImagePaths.push(uploadedPath);
@@ -951,6 +1046,72 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
       return sendApiResponse(res, 400, false, "Back image is required");
     }
 
+    // Find-or-create player if player_id_text provided
+    if (requestData.player_id_text && String(requestData.player_id_text).trim()) {
+      try {
+        const [player] = await (Player as any).findOrCreate({
+          where: {
+            player_name: String(requestData.player_id_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            player_name: String(requestData.player_id_text).trim(),
+            category_id: String(categoryIdNum),
+            player_status: '1'
+          }
+        });
+        if (player && player.id) {
+          (requestData as any).player_id = player.id;
+        }
+      } catch (e) {
+        console.warn('player upsert failed (create):', e);
+      }
+    }
+
+    // Find-or-create publication_year if publication_year_text provided
+    if (requestData.publication_year_text && String(requestData.publication_year_text).trim()) {
+      try {
+        const [pubYear] = await (PublicationYear as any).findOrCreate({
+          where: {
+            name: String(requestData.publication_year_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            name: String(requestData.publication_year_text).trim(),
+            category_id: String(categoryIdNum),
+            status: '1'
+          }
+        });
+        if (pubYear && pubYear.id) {
+          (requestData as any).publication_year = pubYear.id;
+        }
+      } catch (e) {
+        console.warn('publication_year upsert failed (create):', e);
+      }
+    }
+
+    // Find-or-create vehicle_year if vehicle_year_text provided
+    if (requestData.vehicle_year_text && String(requestData.vehicle_year_text).trim()) {
+      try {
+        const [vehYear] = await (VehicleYear as any).findOrCreate({
+          where: {
+            name: String(requestData.vehicle_year_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            name: String(requestData.vehicle_year_text).trim(),
+            category_id: String(categoryIdNum),
+            status: '1'
+          }
+        });
+        if (vehYear && vehYear.id) {
+          (requestData as any).vehicle_year = vehYear.id;
+        }
+      } catch (e) {
+        console.warn('vehicle_year upsert failed (create):', e);
+      }
+    }
+
     // Call service to save trading card
     const result = await tradingcardService.saveTradingCard(requestData, categoryIdNum, userId);
 
@@ -958,12 +1119,19 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
       return sendApiResponse(res, 400, false, result.error || "Failed to save trading card");
     }
 
+    // Get the created trading card with enhanced data (including _text fields)
+    const createdCardData = await tradingcardService.getTradingCardById(result.data.tradingCard.id, userId);
+    
+    if (!createdCardData) {
+      return sendApiResponse(res, 404, false, "Created trading card not found");
+    }
+
     return sendApiResponse(
       res, 
       201, 
       true, 
       "Trading card saved successfully", 
-      result.data
+      createdCardData
     );
 
   } catch (error: any) {
@@ -1051,32 +1219,164 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
     
     // Process main card images
     if (req.files) {
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-      
-      if (files.trading_card_img && files.trading_card_img[0]) {
-        requestData.trading_card_img = uploadOne(files.trading_card_img[0] as any, uploadPath);
-      }
-      
-      if (files.trading_card_img_back && files.trading_card_img_back[0]) {
-        requestData.trading_card_img_back = uploadOne(files.trading_card_img_back[0] as any, uploadPath);
-      }
-      
-      // Process additional card images
-      if (files.additional_images && files.additional_images.length > 0) {
-        const additionalImages: string[] = [];
-        for (const file of files.additional_images) {
-          const imagePath = uploadOne(file as any, uploadPath);
-          additionalImages.push(imagePath);
+      const filesMap = req.files as { [fieldname: string]: Express.Multer.File[] } | Express.Multer.File[];
+
+      if (!Array.isArray(filesMap)) {
+        if (filesMap.trading_card_img && filesMap.trading_card_img[0]) {
+          requestData.trading_card_img = uploadOne(filesMap.trading_card_img[0] as any, uploadPath);
         }
-        requestData.additional_images = additionalImages;
+        if (filesMap.trading_card_img_back && filesMap.trading_card_img_back[0]) {
+          requestData.trading_card_img_back = uploadOne(filesMap.trading_card_img_back[0] as any, uploadPath);
+        }
+      } else {
+        const mainFront = (filesMap as Express.Multer.File[]).find(f => f.fieldname === 'trading_card_img');
+        const mainBack = (filesMap as Express.Multer.File[]).find(f => f.fieldname === 'trading_card_img_back');
+        if (mainFront) requestData.trading_card_img = uploadOne(mainFront as any, uploadPath);
+        if (mainBack) requestData.trading_card_img_back = uploadOne(mainBack as any, uploadPath);
+      }
+
+      // Collect additional_images from various field naming patterns
+      const collectedAdditional: Express.Multer.File[] = [];
+      if (Array.isArray(filesMap)) {
+        for (const f of filesMap as Express.Multer.File[]) {
+          if (f.fieldname === 'additional_images' || f.fieldname === 'additional_images[]' || f.fieldname.startsWith('additional_images[')) {
+            collectedAdditional.push(f);
+          }
+        }
+      } else {
+        const keys = Object.keys(filesMap);
+        for (const key of keys) {
+          if (key === 'additional_images' || key === 'additional_images[]' || key.startsWith('additional_images[')) {
+            const arr = (filesMap as any)[key] as Express.Multer.File[];
+            if (Array.isArray(arr)) collectedAdditional.push(...arr);
+          }
+        }
+      }
+
+      if (collectedAdditional.length > 0) {
+        const additionalImages: string[] = [];
+        for (const file of collectedAdditional) {
+          const imagePath = uploadOne(file as any, uploadPath);
+          if (imagePath && String(imagePath).trim()) {
+            additionalImages.push(imagePath);
+          }
+        }
+        if (additionalImages.length > 0) {
+          requestData.additional_images = additionalImages;
+        }
       }
     }
 
     // Call service to update trading card
+    // If player_id_text is provided on update, ensure it exists in master (players) and set player_id
+    if (requestData.player_id_text && String(requestData.player_id_text).trim()) {
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        const [player, createdP] = await (Player as any).findOrCreate({
+          where: {
+            player_name: String(requestData.player_id_text).trim(),
+            category_id: String(effectiveCategoryId)
+          },
+          defaults: {
+            player_name: String(requestData.player_id_text).trim(),
+            category_id: String(effectiveCategoryId),
+            player_status: '1'
+          }
+        });
+        if (player && player.id) {
+          (requestData as any).player_id = player.id;
+        }
+      } catch (e) {
+        console.warn('player upsert failed (update):', e);
+      }
+    }
+
+    // If publication_year_text is provided on update, upsert into publication_years and set foreign key
+    if (requestData.publication_year_text && String(requestData.publication_year_text).trim()) {
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        const [pubYear, createdY] = await (PublicationYear as any).findOrCreate({
+          where: {
+            name: String(requestData.publication_year_text).trim(),
+            category_id: String(effectiveCategoryId)
+          },
+          defaults: {
+            name: String(requestData.publication_year_text).trim(),
+            category_id: String(effectiveCategoryId),
+            status: '1'
+          }
+        });
+        if (pubYear && pubYear.id) {
+          (requestData as any).publication_year = pubYear.id;
+        }
+      } catch (e) {
+        console.warn('publication_year upsert failed (update):', e);
+      }
+    }
+
+    // If vehicle_year_text is provided on update, upsert into vehicle_years and set foreign key
+    if (requestData.vehicle_year_text && String(requestData.vehicle_year_text).trim()) {
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        const [vehYear, createdV] = await (VehicleYear as any).findOrCreate({
+          where: {
+            name: String(requestData.vehicle_year_text).trim(),
+            category_id: String(effectiveCategoryId)
+          },
+          defaults: {
+            name: String(requestData.vehicle_year_text).trim(),
+            category_id: String(effectiveCategoryId),
+            status: '1'
+          }
+        });
+        if (vehYear && vehYear.id) {
+          (requestData as any).vehicle_year = vehYear.id;
+        }
+      } catch (e) {
+        console.warn('vehicle_year upsert failed (update):', e);
+      }
+    }
+
+    // If release_year_text is provided on update, upsert into years and set foreign key
+    if (requestData.release_year_text && String(requestData.release_year_text).trim()) {
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        console.log(`[DEBUG] Upserting release_year_text: "${requestData.release_year_text}" for category: ${effectiveCategoryId}`);
+        
+        const [relYear, created] = await (Year as any).findOrCreate({
+          where: {
+            name: String(requestData.release_year_text).trim(),
+            category_id: String(effectiveCategoryId)
+          },
+          defaults: {
+            name: String(requestData.release_year_text).trim(),
+            category_id: String(effectiveCategoryId),
+            status: '1'
+          }
+        });
+        
+        console.log(`[DEBUG] findOrCreate result - ID: ${relYear.id}, Created: ${created}, Name: ${relYear.name}`);
+        
+        if (relYear && relYear.id) {
+          (requestData as any).release_year = relYear.id;
+          console.log(`[DEBUG] Set requestData.release_year to: ${relYear.id}`);
+        }
+      } catch (e) {
+        console.warn('release_year upsert failed (update, years):', e);
+      }
+    }
+
     const result = await tradingcardService.updateTradingCard(cardIdNum, requestData, userId);
 
     if (!result.success) {
       return sendApiResponse(res, 400, false, result.error || "Failed to update trading card");
+    }
+
+    // Get the updated trading card with enhanced data (including _text fields)
+    const updatedCardData = await tradingcardService.getTradingCardById(cardIdNum, userId);
+    
+    if (!updatedCardData) {
+      return sendApiResponse(res, 404, false, "Updated trading card not found");
     }
 
     return sendApiResponse(
@@ -1084,7 +1384,7 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       200, 
       true, 
       "Trading card updated successfully", 
-      result.data
+      updatedCardData
     );
 
   } catch (error: any) {

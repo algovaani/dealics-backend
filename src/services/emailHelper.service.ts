@@ -397,11 +397,11 @@ export class EmailHelperService {
     const mailInputs = {
       to: email,
       name: this.setName(firstName, lastName),
-      addProductLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/add-product`,
-      myAddressesLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/my-addresses`,
+      addProductLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/products/add`,
+      myAddressesLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/shipping/addresses`,
       yourprofilelink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile`,
-      editProfileLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/edit-profile`,
-      payPalBusinessEmailLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/paypal-business-account`,
+      editProfileLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile`,
+      payPalBusinessEmailLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/paypal-account`,
       buyCoinsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/buy-els-coins`,
       loginLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`,
     };

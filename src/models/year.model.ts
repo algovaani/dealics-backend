@@ -5,16 +5,15 @@ import {
   DataType,
   PrimaryKey,
   AutoIncrement,
-  AllowNull,
   Default,
 } from 'sequelize-typescript';
 
 @Table({
-  tableName: 'publication_years',
+  tableName: 'years',
   timestamps: true,
   underscored: true,
 })
-export class PublicationYear extends Model<PublicationYear> {
+export class Year extends Model<Year> {
   @PrimaryKey
   @AutoIncrement
   @Column(DataType.BIGINT.UNSIGNED)
@@ -36,3 +35,5 @@ export class PublicationYear extends Model<PublicationYear> {
   @Column(DataType.DATE)
   updated_at?: Date;
 }
+
+

@@ -419,20 +419,46 @@ export class TradingCardService {
             cardData[fieldName] !== '' &&
             cardData[fieldName] !== 0 && cardData[fieldName] !== '0') {
           
-                     // Get field label from item_columns table
-           const fieldLabel = await this.getFieldLabel(fieldName);
+                     // Get field label and type from item_columns table
+           const fieldInfo = await this.getFieldInfo(fieldName);
+           const fieldLabel = fieldInfo.label;
+           const fieldType = fieldInfo.type;
            
-                       // Check if this field has a relationship (ends with _id)
-            if (fieldName.endsWith('_id')) {
+           // Check if this field has a relationship (ends with _id) or known FK fields
+           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year') {
+              
               let relatedTableName: string;
               
               if (fieldName === 'card_condition_id') {
                 relatedTableName = 'condition';
+              } else if (fieldName === 'release_year') {
+                // Use years table for release_year lookups
+                relatedTableName = 'years';
+              } else if (fieldName === 'publication_year') {
+                relatedTableName = 'publication_years';
+              } else if (fieldName === 'vehicle_year') {
+                relatedTableName = 'vehicle_years';
               } else {
                 relatedTableName = fieldName.replace('_id', '');
               }
               
-              const relatedValue = await this.getRelatedValue(relatedTableName, cardData[fieldName]);
+              let relatedValue = await this.getRelatedValue(relatedTableName, cardData[fieldName]);
+
+              // Fallback: if release_year not found in years (legacy data), try release_years
+              if (fieldName === 'release_year' && (relatedValue === null || relatedValue === undefined)) {
+                const fallbackValue = await this.getRelatedValue('release_years', cardData[fieldName]);
+                if (fallbackValue !== null && fallbackValue !== undefined) {
+                  relatedValue = fallbackValue;
+                }
+              }
+
+              // Ensure publication_year maps to publication_years
+              if (fieldName === 'publication_year' && relatedTableName !== 'publication_years') {
+                const pubValue = await this.getRelatedValue('publication_years', cardData[fieldName]);
+                if (pubValue !== null && pubValue !== undefined) {
+                  relatedValue = pubValue;
+                }
+              }
               
               additionalFields.push({
                 field_name: fieldName,
@@ -441,6 +467,22 @@ export class TradingCardService {
                 related_field_name: relatedTableName,
                 related_field_value: relatedValue
               });
+              
+              // Only add _text field if the field type is "autocomplete"
+              // Special-cases: ensure release_year, publication_year, vehicle_year always expose _text when related value exists
+              if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year') && relatedValue !== null && relatedValue !== undefined) {
+                additionalFields.push({
+                  field_name: `${fieldName}_text`,
+                  field_value: relatedValue,
+                  field_label: `${fieldLabel || fieldName}_text`
+                });
+                // Also inject directly to main data copy to guarantee presence
+                try {
+                  (cardData as any)[`${fieldName}_text`] = relatedValue;
+                } catch {}
+              } else {
+               
+              }
             } else {
               additionalFields.push({
                 field_name: fieldName,
@@ -474,8 +516,36 @@ export class TradingCardService {
       interested_in = !!interestedRecord;
     }
 
+    // Create a copy of tradingCard data and add _text fields for autocomplete fields
+    const cardData = { ...tradingCard.toJSON() };
+    
+    // Add _text fields for autocomplete fields directly to the main object
+    for (const field of additionalFields) {
+      if (field.field_name.endsWith('_text') && field.field_value) {
+        (cardData as any)[field.field_name] = field.field_value;
+      }
+    }
+
+    // Final guard: ensure vehicle_year_text and publication_year_text are present when FKs exist
+    try {
+      if ((cardData as any).vehicle_year && !(cardData as any).vehicle_year_text) {
+        const vehText = await this.getRelatedValue('vehicle_years', (cardData as any).vehicle_year);
+        if (vehText) {
+          (cardData as any).vehicle_year_text = vehText;
+        }
+      }
+    } catch {}
+    try {
+      if ((cardData as any).publication_year && !(cardData as any).publication_year_text) {
+        const pubText = await this.getRelatedValue('publication_years', (cardData as any).publication_year);
+        if (pubText) {
+          (cardData as any).publication_year_text = pubText;
+        }
+      }
+    } catch {}
+
     return {
-      tradingCard,
+      ...cardData,
       additionalFields: additionalFields,
       cardImages: cardImages,
       canTradeOrOffer: canTradeOrOffer,
@@ -508,11 +578,11 @@ export class TradingCardService {
     }
   }
 
-  // Helper method to get field label from item_columns table
-  private async getFieldLabel(fieldName: string): Promise<string | null> {
+  // Helper method to get field label and type from item_columns table
+  private async getFieldInfo(fieldName: string): Promise<{label: string | null, type: string | null}> {
     try {
       const query = `
-        SELECT label
+        SELECT label, type
         FROM item_columns
         WHERE name = :fieldName
         LIMIT 1
@@ -523,10 +593,16 @@ export class TradingCardService {
         type: QueryTypes.SELECT
       });
 
-      return result.length > 0 && result[0] ? (result[0] as any).label : null;
+      if (result.length > 0 && result[0]) {
+        return {
+          label: (result[0] as any).label || null,
+          type: (result[0] as any).type || null
+        };
+      }
+      return { label: null, type: null };
     } catch (error) {
-      console.error(`Error getting field label for ${fieldName}:`, error);
-      return null;
+      console.error(`Error getting field info for ${fieldName}:`, error);
+      return { label: null, type: null };
     }
   }
 
@@ -534,11 +610,21 @@ export class TradingCardService {
   private async getRelatedValue(tableName: string, id: number): Promise<any> {
     try {
       // Define common table relationships and their display fields
-      const tableConfigs: { [key: string]: { table: string; displayField: string; idField?: string } } = {
+      const tableConfigs: { [key: string]: { table: string; displayField: string | string[]; idField?: string } } = {
         'player': { table: 'players', displayField: 'player_name', idField: 'id' },
         'team': { table: 'teams', displayField: 'team_name', idField: 'id' },
         'brand': { table: 'brands', displayField: 'brand_name', idField: 'id' },
-        'year': { table: 'years', displayField: 'year_name', idField: 'id' },
+        'year': { table: 'years', displayField: 'name', idField: 'id' },
+        // Map release_year aliases to years
+        'release_year': { table: 'years', displayField: 'name', idField: 'id' },
+        'release_years': { table: 'years', displayField: 'name', idField: 'id' },
+        // publication_year maps to publication_years (try multiple potential columns just in case)
+        'publication_year': { table: 'publication_years', displayField: ['name'], idField: 'id' },
+        'publication_years': { table: 'publication_years', displayField: ['name'], idField: 'id' },
+        // vehicle_year maps to vehicle_years, try multiple potential column names
+        'vehicle_year': { table: 'vehicle_years', displayField: ['name', 'vehicle_year', 'year'], idField: 'id' },
+        // also accept key 'vehicle_years' from callers
+        'vehicle_years': { table: 'vehicle_years', displayField: ['name', 'vehicle_year', 'year'], idField: 'id' },
         'condition': { table: 'card_conditions', displayField: 'card_condition_name', idField: 'id' },
         'grade': { table: 'grades', displayField: 'grade_name', idField: 'id' },
         'sport': { table: 'sports', displayField: 'sport_name', idField: 'id' },
@@ -552,19 +638,26 @@ export class TradingCardService {
         return null;
       }
 
-      const query = `
-        SELECT ${config.displayField} as display_value
-        FROM ${config.table}
-        WHERE ${config.idField || 'id'} = :id
-        LIMIT 1
-      `;
-
-      const result = await sequelize.query(query, {
-        replacements: { id },
-        type: QueryTypes.SELECT
-      });
-
-      return result.length > 0 && result[0] ? (result[0] as any).display_value : null;
+      const displayFields = Array.isArray(config.displayField) ? config.displayField : [config.displayField];
+      for (const df of displayFields) {
+        try {
+          const query = `
+            SELECT ${df} as display_value
+            FROM ${config.table}
+            WHERE ${config.idField || 'id'} = :id
+            LIMIT 1
+          `;
+          const result = await sequelize.query(query, {
+            replacements: { id },
+            type: QueryTypes.SELECT
+          });
+          const val = result.length > 0 && result[0] ? (result[0] as any).display_value : null;
+          if (val !== null && val !== undefined && String(val).trim() !== '') {
+            return val;
+          }
+        } catch {}
+      }
+      return null;
     } catch (error) {
       console.error(`Error getting related value for ${tableName} with id ${id}:`, error);
       return null;
@@ -1289,7 +1382,7 @@ export class TradingCardService {
             markAsTitleArr[fieldName] = {};
             
             // Get the field value from request - exactly like Laravel
-            if (requestData[fieldName] && requestData[fieldName].trim()) {
+            if (typeof requestData[fieldName] === 'string' && requestData[fieldName].trim()) {
               markAsTitleArr[fieldName].value = requestData[fieldName];
               // Added to markAsTitleArr
             }
@@ -1303,7 +1396,7 @@ export class TradingCardService {
                 // Handle select/autocomplete fields - exactly like Laravel
                 if (cField.item_column.type === 'select' || cField.item_column.type === 'autocomplete') {
                   const textFieldName = `${fieldName}_text`;
-                  if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+                  if (typeof requestData[textFieldName] === 'string' && requestData[textFieldName].trim()) {
                     markAsTitleArr[fieldName].value = requestData[textFieldName];
                   } else {
                     markAsTitleArr[fieldName].rel_model_fun = cField.item_column.rel_model_fun;
@@ -1318,7 +1411,7 @@ export class TradingCardService {
         if (fieldName && cField.item_column) {
           if (cField.item_column.type === 'select') {
             const textFieldName = `${fieldName}_text`;
-            if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+            if (typeof requestData[textFieldName] === 'string' && requestData[textFieldName].trim()) {
               const masterId = await HelperService.saveMasterByMeta(
                 requestData[textFieldName],
                 cField.item_column.rel_master_table,
@@ -1357,7 +1450,7 @@ export class TradingCardService {
 
           if (cField.item_column.type === 'autocomplete') {
             const textFieldName = `${fieldName}_text`;
-            if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+            if (typeof requestData[textFieldName] === 'string' && requestData[textFieldName].trim()) {
               const masterId = await HelperService.saveMasterByMeta(
                 requestData[textFieldName],
                 cField.item_column.rel_master_table,
@@ -1426,6 +1519,11 @@ export class TradingCardService {
             } catch {}
           }
         }
+      }
+
+      // Ensure core master FK fields are captured even if not present in category fields
+      if (requestData.release_year !== undefined && requestData.release_year !== null) {
+        saveData.release_year = requestData.release_year;
       }
 
       // Create trading card first - exactly like Laravel
@@ -1705,28 +1803,28 @@ export class TradingCardService {
       const searchParts: string[] = [];
       
       // Add series_set
-      if (requestData.series_set && requestData.series_set.trim()) {
+      if (typeof requestData.series_set === 'string' && requestData.series_set.trim()) {
         const seriesSet = requestData.series_set.trim();
         slugParts.push(seriesSet.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
         searchParts.push(seriesSet);
       }
       
       // Add issue_number
-      if (requestData.issue_number && requestData.issue_number.trim()) {
+      if (typeof requestData.issue_number === 'string' && requestData.issue_number.trim()) {
         const issueNumber = requestData.issue_number.trim();
         slugParts.push(issueNumber);
         searchParts.push(`#${issueNumber}`);
       }
       
       // Add story_title
-      if (requestData.story_title && requestData.story_title.trim()) {
+      if (typeof requestData.story_title === 'string' && requestData.story_title.trim()) {
         const storyTitle = requestData.story_title.trim();
         slugParts.push(storyTitle.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
         searchParts.push(storyTitle);
       }
       
       // Add variant
-      if (requestData.variant && requestData.variant.trim()) {
+      if (typeof requestData.variant === 'string' && requestData.variant.trim()) {
         const variant = requestData.variant.trim();
         slugParts.push(variant.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-'));
         searchParts.push(variant);
@@ -1736,6 +1834,13 @@ export class TradingCardService {
       if (slugParts.length > 0) {
         saveData.trading_card_slug = slugParts.join('-');
         saveData.search_param = searchParts.join(' ');
+      }
+
+      // Ensure core master FK fields on update
+      if (requestData.release_year !== undefined && requestData.release_year !== null) {
+        saveData.release_year = requestData.release_year;
+        console.log(`[DEBUG SERVICE] Set saveData.release_year to: ${requestData.release_year}`);
+        console.log(`[DEBUG SERVICE] requestData.release_year value:`, requestData.release_year);
       }
 
       // Get category fields with priority
@@ -1774,7 +1879,17 @@ export class TradingCardService {
         
         if (fieldName && requestData[fieldName] !== undefined) {
           // Handle all field types - assign the value directly like in save method
-          saveData[fieldName] = requestData[fieldName];
+          // BUT: Don't override release_year if it was already set correctly by the controller
+          if (fieldName === 'release_year' && saveData.release_year !== undefined) {
+            console.log(`[DEBUG SERVICE] Category field processing - SKIPPING release_year override, keeping: ${saveData.release_year}`);
+          } else {
+            saveData[fieldName] = requestData[fieldName];
+            
+            // Debug for release_year field
+            if (fieldName === 'release_year') {
+              console.log(`[DEBUG SERVICE] Category field processing - Setting release_year to: ${requestData[fieldName]}`);
+            }
+          }
           
           // Special debug for set_name
           if (fieldName === 'set_name') {
@@ -1787,7 +1902,7 @@ export class TradingCardService {
         if (cField.mark_as_title === true && fieldName) {
           markAsTitleColsArr.push(fieldName);
           
-          if (requestData[fieldName] && requestData[fieldName].trim()) {
+          if (typeof requestData[fieldName] === 'string' && requestData[fieldName].trim()) {
             markAsTitleArr[fieldName] = {
               value: requestData[fieldName]
             };
@@ -1795,7 +1910,7 @@ export class TradingCardService {
 
           // Handle select/autocomplete fields for title
           const textFieldName = `${fieldName}_text`;
-          if (requestData[textFieldName] && requestData[textFieldName].trim()) {
+          if (typeof requestData[textFieldName] === 'string' && requestData[textFieldName].trim()) {
             markAsTitleArr[fieldName] = {
               value: requestData[textFieldName]
             };
@@ -1805,21 +1920,15 @@ export class TradingCardService {
         // Handle select/autocomplete fields with master data
         if (fieldName) {
           const textFieldName = `${fieldName}_text`;
-          if (requestData[textFieldName] && requestData[textFieldName].trim()) {
-            // Get item column data to check field type
-            const itemColumnData = await HelperService.getMasterDatas('item_columns', categoryId);
-            const itemColumn = itemColumnData.find((item: any) => item.name === fieldName);
-            
-            if (itemColumn && (itemColumn.type === 'select' || itemColumn.type === 'autocomplete')) {
-              const masterId = await HelperService.saveMasterDataAndReturnMasterId(
-                requestData[textFieldName],
-                fieldName,
-                categoryId
-              );
-              
-              if (masterId > 0) {
-                saveData[fieldName] = masterId;
-              }
+          if (typeof requestData[textFieldName] === 'string' && requestData[textFieldName].trim()) {
+            // Unconditionally attempt to upsert/find in master using item_columns mapping
+            const masterId = await HelperService.saveMasterDataAndReturnMasterId(
+              String(requestData[textFieldName]).trim(),
+              fieldName,
+              categoryId
+            );
+            if (masterId > 0) {
+              saveData[fieldName] = masterId;
             }
           }
         }
@@ -1894,6 +2003,16 @@ export class TradingCardService {
           await CardImage.create(cardImageData);
         }
       }
+
+      // MAIN UPDATE OPERATION - This was missing!
+      console.log(`[DEBUG SERVICE] About to update trading card with saveData:`, saveData);
+      console.log(`[DEBUG SERVICE] saveData.release_year:`, saveData.release_year);
+      await TradingCard.update(saveData, { where: { id: cardId } });
+      console.log(`[DEBUG SERVICE] Trading card updated successfully`);
+
+      // Verify what was actually saved
+      const verifyCard = await TradingCard.findByPk(cardId);
+      console.log(`[DEBUG SERVICE] After update - release_year:`, verifyCard?.release_year);
 
       // Get updated trading card
       const updatedCard = await TradingCard.findByPk(cardId);

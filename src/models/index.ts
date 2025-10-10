@@ -29,8 +29,15 @@ import { CartDetail } from './cartDetail.model.js';
 import { BuyOfferAttempt } from './buyOfferAttempt.model.js';
 import { BuyOfferProduct } from './buyOfferProduct.model.js';
 import { PublicationYear } from './publicationYear.model.js';
+import { Player } from './player.model.js';
 import { ProductAttribute } from './productAttribute.model.js';
 import { NotificationTemplate } from './notificationTemplate.model.js';
+import { ReleaseYear } from './releaseYear.model.js';
+import { Year } from './year.model.js';
+import { YearOfIssue } from './yearOfIssue.model.js';
+import { VehicleYear } from './vehicleYear.model.js';
+import { YearOfManufacture } from './yearOfManufacture.model.js';
+import { Dictionary } from './dictionary.model.js';
 
 // Import all models here
 export const models = [
@@ -65,7 +72,14 @@ export const models = [
   BuyOfferProduct,
   ProductAttribute,
   NotificationTemplate,
-  PublicationYear
+  PublicationYear,
+  Player,
+  ReleaseYear,
+  Year,
+  YearOfIssue,
+  VehicleYear,
+  YearOfManufacture
+  ,Dictionary
 ];
 
 // Function to set up all associations
@@ -526,5 +540,12 @@ export {
   CartDetail,
   BuyOfferAttempt,
   BuyOfferProduct,
-  PublicationYear
+  PublicationYear,
+  Player,
+  ReleaseYear,
+  Year,
+  YearOfIssue,
+  VehicleYear,
+  YearOfManufacture
+  ,Dictionary
 };

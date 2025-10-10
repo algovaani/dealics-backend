@@ -9,6 +9,42 @@ import { decodeJWTToken } from "../utils/jwt.js";
 import { BuySellCard } from "../models/buySellCard.model.js";
 import { ReviewCollection } from "../models/reviewCollection.model.js";
 import { QueryTypes } from "sequelize";
+import { Op } from 'sequelize';
+import { Dictionary } from "../models/dictionary.model.js";
+// POST /api/common/check-word-quality
+export const checkWordQuality = async (req: Request, res: Response) => {
+  try {
+    const wordInput = (req.body?.word ?? '').toString();
+    if (!wordInput || !wordInput.trim()) {
+      return sendApiResponse(res, 400, false, "'word' is required in body", []);
+    }
+
+    const lowered = wordInput.toLowerCase();
+    const words = Array.from(new Set(lowered.split(/\s+/).filter(Boolean)));
+
+    if (words.length === 0) {
+      return sendApiResponse(res, 200, true, "OK", { status: true });
+    }
+
+    const data = await Dictionary.findAll({
+      where: {
+        // Cast to any to satisfy Sequelize TS typing for Op.in with string[]
+        name: { [Op.in]: words as any },
+        status: '0'
+      } as any,
+      attributes: ['name']
+    });
+
+    if (data && data.length > 0) {
+      const inAppropriateWords = data.map((d: any) => d.name);
+      return sendApiResponse(res, 200, false, "Inappropriate words found", { inAppropriateWords });
+    }
+
+    return sendApiResponse(res, 200, true, "OK", []);
+  } catch (error: any) {
+    return sendApiResponse(res, 500, false, error.message || 'Internal server error', []);
+  }
+};
 
 // Extend Request interface to include user property
 declare global {
@@ -1443,7 +1479,8 @@ export const getBoughtAndSoldProducts = async (req: Request, res: Response) => {
       status_id: req.query.status_id ? parseInt(String(req.query.status_id)) : undefined,
       from_date: req.query.from_date as string,
       to_date: req.query.to_date as string,
-      id: req.params.id ? parseInt(req.params.id) : undefined
+      id: req.params.id ? parseInt(req.params.id) : undefined,
+      buy_sell_id: req.query.buy_sell_id ? parseInt(String(req.query.buy_sell_id)) : undefined
     };
 
     const page = req.query.page ? parseInt(String(req.query.page)) : 1;
@@ -1496,7 +1533,8 @@ export const getOngoingTrades = async (req: Request, res: Response) => {
       status_id: req.query.status_id ? parseInt(String(req.query.status_id)) : undefined,
       from_date: req.query.from_date as string,
       to_date: req.query.to_date as string,
-      id: req.params.id ? parseInt(req.params.id) : undefined
+      id: req.params.id ? parseInt(req.params.id) : undefined,
+      trade_id: req.query.trade_id ? parseInt(String(req.query.trade_id)) : undefined
     };
 
     const page = req.query.page ? parseInt(String(req.query.page)) : 1;
@@ -1592,7 +1630,8 @@ export const getCompletedTrades = async (req: Request, res: Response) => {
       code: req.query.code as string,
       trade_type: req.query.trade_type as string,
       from_date: req.query.from_date as string,
-      to_date: req.query.to_date as string
+      to_date: req.query.to_date as string,
+      trade_id: req.query.trade_id ? parseInt(String(req.query.trade_id)) : undefined
     };
 
     // Extract pagination parameters
@@ -1649,7 +1688,8 @@ export const getCancelledTrades = async (req: Request, res: Response) => {
       code: req.query.code as string,
       trade_type: req.query.trade_type as string,
       from_date: req.query.from_date as string,
-      to_date: req.query.to_date as string
+      to_date: req.query.to_date as string,
+      trade_id: req.query.trade_id ? parseInt(String(req.query.trade_id)) : undefined
     };
 
     // Extract pagination parameters

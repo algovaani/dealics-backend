@@ -5591,6 +5591,14 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
     }
 
     // Get interested user's trading cards (closet) with category and condition
+    // Determine which proposal IDs to force-include per closet based on current user's role
+    const forceIncludeUserIds = (userId === tradeProposal.trade_sent_by)
+      ? (tradeProposal.send_cards || '')
+      : (tradeProposal.receive_cards || '');
+    const forceIncludeInterestedIds = (userId === tradeProposal.trade_sent_by)
+      ? (tradeProposal.receive_cards || '')
+      : (tradeProposal.send_cards || '');
+
     const interestedClosetsQuery = `
       SELECT 
         tc.id,
@@ -5608,14 +5616,20 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
       FROM trading_cards tc
       LEFT JOIN categories c ON tc.category_id = c.id
       WHERE tc.trader_id = ? 
-        AND tc.trading_card_status = '1' 
-        AND tc.can_trade = '1' 
-        AND tc.mark_as_deleted IS NULL
+        AND (
+          (
+            tc.trading_card_status = '1' 
+            AND tc.can_trade = '1' 
+            AND tc.is_traded = '0' 
+            AND tc.mark_as_deleted IS NULL
+          )
+          OR FIND_IN_SET(tc.id, ?) > 0
+        )
       ORDER BY tc.updated_at DESC
     `;
 
     const interestedClosets = await sequelize.query(interestedClosetsQuery, {
-      replacements: [tradeProposal.receive_cards || '', interestedUserId],
+      replacements: [forceIncludeInterestedIds, interestedUserId, forceIncludeInterestedIds],
       type: QueryTypes.SELECT
     });
 
@@ -5637,14 +5651,20 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
       FROM trading_cards tc
       LEFT JOIN categories c ON tc.category_id = c.id
       WHERE tc.trader_id = ? 
-        AND tc.can_trade = '1' 
-        AND tc.trading_card_status = '1' 
-        AND tc.mark_as_deleted IS NULL
+        AND (
+          (
+            tc.can_trade = '1' 
+            AND tc.trading_card_status = '1' 
+            AND tc.is_traded = '0' 
+            AND tc.mark_as_deleted IS NULL
+          )
+          OR FIND_IN_SET(tc.id, ?) > 0
+        )
       ORDER BY tc.updated_at DESC
     `;
 
     const userClosets = await sequelize.query(userClosetsQuery, {
-      replacements: [tradeProposal.send_cards || '', userId],
+      replacements: [forceIncludeUserIds, userId, forceIncludeUserIds],
       type: QueryTypes.SELECT
     });
 
@@ -5707,8 +5727,8 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
         main_card: tradeProposal.main_card,
         send_cards: tradeProposal.send_cards,
         receive_cards: tradeProposal.receive_cards,
-        add_cash: tradeProposal.add_cash || 0,
-        ask_cash: tradeProposal.ask_cash || 0,
+        add_cash: (tradeProposal.add_cash && Number(tradeProposal.add_cash) !== 0) ? tradeProposal.add_cash : '',
+        ask_cash: (tradeProposal.ask_cash && Number(tradeProposal.ask_cash) !== 0) ? tradeProposal.ask_cash : '',
         message: tradeProposal.message,
         trade_status: tradeProposal.trade_status,
         trade_sent_by: tradeProposal.trade_sent_by,

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment, changePassword, buyCardCollectionReview } from "../controllers/user.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment, changePassword, buyCardCollectionReview, checkWordQuality } from "../controllers/user.controller.js";
 import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
 import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
@@ -8,6 +8,8 @@ import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
 const router = Router();
+// Common: dictionary word quality check
+router.post("/common/check-word-quality", checkWordQuality);
 
 // Authenticated user profile API (requires token)
 router.get("/my-profile", userAuth, getMyProfile);

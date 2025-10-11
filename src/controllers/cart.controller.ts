@@ -3282,14 +3282,26 @@ export const cancelTrade = async (req: Request, res: Response) => {
       receiverStatus
     );
 
-    // Send Laravel-style cancellation notification
-    await setTradersNotificationOnVariousActionBasis(
-      'cancel',
-      tradeProposal.trade_sent_by!,
-      tradeProposal.trade_sent_to!,
-      tradeProposal.id,
-      'Trade'
-    );
+    // Send Laravel-style conditional notification based on trade status
+    if (tradeStatus === 'declined' || tradeStatus === 'counter_declined') {
+      // Send decline notification
+      await setTradersNotificationOnVariousActionBasis(
+        'trade-cancel-decline',
+        tradeProposal.trade_sent_by!,
+        tradeProposal.trade_sent_to!,
+        tradeProposal.id,
+        'Trade'
+      );
+    } else if (tradeStatus === 'cancel') {
+      // Send cancel notification
+      await setTradersNotificationOnVariousActionBasis(
+        'cancel',
+        tradeProposal.trade_sent_by!,
+        tradeProposal.trade_sent_to!,
+        tradeProposal.id,
+        'Trade'
+      );
+    }
 
     return sendApiResponse(res, 200, true, `Trade successfully ${returnMessage}`, [], {
       total: totalActiveTrades

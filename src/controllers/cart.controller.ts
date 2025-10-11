@@ -145,7 +145,10 @@ const sendShipmentCompletionEmails = async (
     // Prepare common email data
     const commonData = {
       card_names: cardNames || 'Trading cards',
+      items_shipped: cardNames || 'Trading cards', // For product-shipped-by-other template
       tracking_id: trackingId,
+      tracking_info: trackingId, // For email template
+      transaction_id: trackingId, // For product-shipped-by-other template
       shipment_status: shipmentStatus || 'Pre-Transit'
     };
 
@@ -694,6 +697,71 @@ export const cartOffer = async (req: Request, res: Response) => {
       status: 'Success',
       deduction_from: 'Seller'
     } as any);
+
+    // Send emails to buyer and seller
+    try {
+      // Get buyer details
+      const buyer = await User.findByPk(userId);
+      if (buyer && seller) {
+        // Generate card name for email
+        const cardName = tradingCard.title || `Trading Card #${tradingCard.id}`;
+        
+        // Calculate amounts
+        const itemAmount = offerAmount;
+        const shippingFee = 0; // Default shipping fee, can be updated based on business logic
+        const totalAmount = itemAmount + shippingFee;
+        
+        // Generate transaction ID (using cart detail ID or trading card code)
+        const transactionId = cartDetail?.id?.toString() || tradingCard.code || `TXN-${Date.now()}`;
+        
+        // Generate transaction list URL
+        const transactionListUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/transactions`;
+        
+        // Send email to buyer (purchase successful)
+        await EmailHelperService.sendPurchaseSuccessfulEmail(
+          buyer.email || '',
+          buyer.first_name || '',
+          buyer.last_name || '',
+          cardName,
+          itemAmount,
+          shippingFee,
+          totalAmount,
+          transactionId,
+          EmailHelperService.setName(seller.first_name || '', seller.last_name || ''),
+          transactionListUrl
+        );
+        
+        // Send email to seller (card sold)
+        await EmailHelperService.sendCardSoldEmail(
+          seller.email || '',
+          seller.first_name || '',
+          seller.last_name || '',
+          EmailHelperService.setName(buyer.first_name || '', buyer.last_name || ''),
+          cardName,
+          itemAmount,
+          shippingFee,
+          totalAmount,
+          transactionId,
+          transactionListUrl
+        );
+        
+        console.log('✅ Offer emails sent successfully to buyer and seller');
+      }
+
+      // Send Laravel-style payment completed notification
+      if (cartDetail?.id) {
+        await setTradersNotificationOnVariousActionBasis(
+          'payment-completed',
+          userId, // buyer
+          seller.id, // seller
+          cartDetail.id, // buy_offer->id
+          'Offer'
+        );
+      }
+    } catch (emailError: any) {
+      console.error('❌ Failed to send offer emails:', emailError);
+      // Don't fail the request if email sending fails
+    }
 
     return sendApiResponse(res, 200, true, "Successful offer, item added to cart.", [], {
       remaining_coins: seller.cxp_coins! - 1
@@ -2815,6 +2883,15 @@ const sendCancelOrDeclineEmails = async (tradeProposal: any, tradeStatus: string
       try {
         await EmailHelperService.executeMailSender('trade-offer-declined-sender', { ...toSenderBase, reviewtradelink: reviewCancelledLink });
       } catch (e) { /* swallow */ }
+
+      // Send Laravel-style notification for decline proposal
+      await setTradersNotificationOnVariousActionBasis(
+        'decline-proposal',
+        tradeProposal.trade_sent_to,
+        tradeProposal.trade_sent_by,
+        tradeProposal.id,
+        'Trade'
+      );
     } else if (tradeStatus === 'counter_declined') {
       // counter-trade-declined-sender (to receiver), with cancelled-trades link
       try {
@@ -2989,6 +3066,15 @@ const sendEditTradeEmails = async (tradeProposal: any, mode: 'Counter Trade' | '
       };
       try { await EmailHelperService.executeMailSender('new-counter-offer', toSender); } catch {}
       try { await EmailHelperService.executeMailSender('counter-offer-sent', toReceiver); } catch {}
+
+      // Send Laravel-style notification for counter offer received
+      await setTradersNotificationOnVariousActionBasis(
+        'counter-offer-proposal-receive',
+        userTo.id,
+        userBy.id,
+        tradeProposal.id,
+        'Trade'
+      );
     } else {
       // trade-offer-updated-receiver (to userTo)
       const toReceiver = {
@@ -3016,6 +3102,15 @@ const sendEditTradeEmails = async (tradeProposal: any, mode: 'Counter Trade' | '
       };
       try { await EmailHelperService.executeMailSender('trade-offer-updated-receiver', toReceiver); } catch {}
       try { await EmailHelperService.executeMailSender('trade-offer-updated-sender', toSender); } catch {}
+
+      // Send Laravel-style notification for edit proposal
+      await setTradersNotificationOnVariousActionBasis(
+        'edit-proposal',
+        userTo.id,
+        userBy.id,
+        tradeProposal.id,
+        'Trade'
+      );
     }
   } catch (err) {
     console.error('Error sending edit trade emails:', err);
@@ -3185,6 +3280,15 @@ export const cancelTrade = async (req: Request, res: Response) => {
       receiverAlias,
       senderStatus,
       receiverStatus
+    );
+
+    // Send Laravel-style cancellation notification
+    await setTradersNotificationOnVariousActionBasis(
+      'cancel',
+      tradeProposal.trade_sent_by!,
+      tradeProposal.trade_sent_to!,
+      tradeProposal.id,
+      'Trade'
     );
 
     return sendApiResponse(res, 200, true, `Trade successfully ${returnMessage}`, [], {
@@ -3854,6 +3958,17 @@ export const acceptTrade = async (req: Request, res: Response) => {
         'Trade'
       );
 
+      // Send Laravel-style notification for counter offer acceptance
+      if (status === 'counter_accepted') {
+        await setTradersNotificationOnVariousActionBasis(
+          'counter-offer-proposal-accept',
+          tradeProposal.trade_sent_by!,
+          tradeProposal.trade_sent_to!,
+          tradeProposal.id,
+          'Trade'
+        );
+      }
+
       // Update card statuses
       const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
       const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
@@ -3915,6 +4030,15 @@ export const acceptTrade = async (req: Request, res: Response) => {
       await tradeProposal.update({ [columnname]: status });
       await setTradeProposalStatus(tradeProposal.id, 'trade-cancelled');
 
+      // Send Laravel-style notification for counter offer cancel
+      await setTradersNotificationOnVariousActionBasis(
+        'counter-offer-proposal-cancel',
+        tradeProposal.trade_sent_to!,
+        tradeProposal.trade_sent_by!,
+        tradeProposal.id,
+        'Trade'
+      );
+
       // Reset card statuses
       const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map(id => parseInt(id.trim())) : [];
       const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map(id => parseInt(id.trim())) : [];
@@ -3963,6 +4087,15 @@ export const acceptTrade = async (req: Request, res: Response) => {
         'Trade'
       );
 
+      // Send Laravel-style cancellation notification
+      await setTradersNotificationOnVariousActionBasis(
+        'cancel',
+        tradeProposal.trade_sent_by!,
+        tradeProposal.trade_sent_to!,
+        tradeProposal.id,
+        'Trade'
+      );
+
       return sendApiResponse(res, 200, true, "Trade cancelled successfully as per your request.", [], {
         trade_proposal_id: tradeProposal.id,
         redirect_url: '/cancelled-trades'
@@ -3984,6 +4117,15 @@ export const acceptTrade = async (req: Request, res: Response) => {
 
       // Send notifications
       await sendTradeNotifications(
+        'counter-declined',
+        tradeProposal.trade_sent_by!,
+        tradeProposal.trade_sent_to!,
+        tradeProposal.id,
+        'Trade'
+      );
+
+      // Send Laravel-style counter declined notification
+      await setTradersNotificationOnVariousActionBasis(
         'counter-declined',
         tradeProposal.trade_sent_by!,
         tradeProposal.trade_sent_to!,
@@ -5619,9 +5761,9 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
         AND (
           (
             tc.trading_card_status = '1' 
-            AND tc.can_trade = '1' 
+        AND tc.can_trade = '1' 
             AND tc.is_traded = '0' 
-            AND tc.mark_as_deleted IS NULL
+        AND tc.mark_as_deleted IS NULL
           )
           OR FIND_IN_SET(tc.id, ?) > 0
         )
@@ -5654,9 +5796,9 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
         AND (
           (
             tc.can_trade = '1' 
-            AND tc.trading_card_status = '1' 
+        AND tc.trading_card_status = '1' 
             AND tc.is_traded = '0' 
-            AND tc.mark_as_deleted IS NULL
+        AND tc.mark_as_deleted IS NULL
           )
           OR FIND_IN_SET(tc.id, ?) > 0
         )
@@ -7749,7 +7891,19 @@ const sendShipmentConfirmationEmailsForBuySell = async (buySellId: number) => {
       leavefeedbacklink: transactionListUrl
     };
 
-    // Note: Email sending would be implemented based on your email service
+    // Send emails
+    try {
+      const { EmailHelperService } = await import('../services/emailHelper.service.js');
+      
+      await Promise.all([
+        EmailHelperService.executeMailSender('shipment-confirmed-email-to-seller', sellerMailInputs),
+        EmailHelperService.executeMailSender('share-your-feedback-buysell', buyerMailInputs)
+      ]);
+      
+      console.log('✅ Shipment confirmation emails sent successfully');
+    } catch (emailError: any) {
+      console.error('❌ Failed to send shipment confirmation emails:', emailError);
+    }
 
   } catch (error: any) {
     console.error('Error sending shipment confirmation emails:', error);

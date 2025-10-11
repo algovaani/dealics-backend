@@ -127,6 +127,100 @@ export class TradingCardService {
   }
 
   // Get all TradingCard with pagination and category_name
+    // Get user's own products (for myproduct source) - only check if not deleted
+  async getUserOwnProducts(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
+    try {
+      // Validate and sanitize input parameters
+      const validPage = isNaN(page) || page < 1 ? 1 : page;
+      const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
+      const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
+      const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+      
+      const offset = (validPage - 1) * validPerPage;
+      
+      // Simple where clause - only check if not deleted and belongs to user
+      let whereClause = `WHERE tc.mark_as_deleted IS NULL AND tc.trader_id = ${validLoggedInUserId}`;
+      
+      if (validCategoryId) {
+        whereClause += ` AND tc.category_id = ${validCategoryId}`;
+      }
+      
+      // Use the same detailed query structure as getAllTradingCardsExceptOwn
+      const interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${validLoggedInUserId}`;
+      
+      const rawQuery = `
+        SELECT 
+          tc.id,
+          tc.category_id,
+          tc.trading_card_img,
+          tc.trading_card_img_back,
+          tc.trading_card_slug,
+          tc.trading_card_recent_trade_value,
+          tc.trading_card_asking_price,
+          tc.trading_card_estimated_value,
+          tc.search_param,
+          c.sport_name,
+          c.sport_icon,
+          tc.trader_id,
+          u.username as trader_name,
+          tc.creator_id,
+          tc.is_traded,
+          tc.can_trade,
+          tc.can_buy,
+          tc.trading_card_status,
+          tc.graded,
+          CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
+          CASE 
+            WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+            WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+            WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+            WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+            WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+            ELSE 'Not Available'
+          END as trade_card_status,
+          CASE 
+            WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
+            WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
+            WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
+            WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
+            ELSE NULL
+          END as card_condition
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN users u ON tc.trader_id = u.id
+        LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
+        ${interestedJoin}
+        ${whereClause}
+        ORDER BY tc.created_at DESC
+        LIMIT ${validPerPage} OFFSET ${offset}
+      `;
+      
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        ${whereClause}
+      `;
+      
+      const [tradingCards, countResult] = await Promise.all([
+        sequelize.query(rawQuery, { type: QueryTypes.SELECT }),
+        sequelize.query(countQuery, { type: QueryTypes.SELECT })
+      ]);
+      
+      const totalCount = (countResult[0] as any).total;
+      const totalPages = Math.ceil(totalCount / validPerPage);
+      
+      return {
+        success: true,
+        data: tradingCards as any[],
+        count: totalCount
+      };
+    } catch (error) {
+      console.error('Error in getUserOwnProducts:', error);
+      throw error;
+    }
+  }
+
     async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number, graded?: string) {
     // Validate and sanitize input parameters
     const validPage = isNaN(page) || page < 1 ? 1 : page;
@@ -641,16 +735,16 @@ export class TradingCardService {
       const displayFields = Array.isArray(config.displayField) ? config.displayField : [config.displayField];
       for (const df of displayFields) {
         try {
-          const query = `
+      const query = `
             SELECT ${df} as display_value
-            FROM ${config.table}
-            WHERE ${config.idField || 'id'} = :id
-            LIMIT 1
-          `;
-          const result = await sequelize.query(query, {
-            replacements: { id },
-            type: QueryTypes.SELECT
-          });
+        FROM ${config.table}
+        WHERE ${config.idField || 'id'} = :id
+        LIMIT 1
+      `;
+      const result = await sequelize.query(query, {
+        replacements: { id },
+        type: QueryTypes.SELECT
+      });
           const val = result.length > 0 && result[0] ? (result[0] as any).display_value : null;
           if (val !== null && val !== undefined && String(val).trim() !== '') {
             return val;
@@ -1883,7 +1977,7 @@ export class TradingCardService {
           if (fieldName === 'release_year' && saveData.release_year !== undefined) {
             console.log(`[DEBUG SERVICE] Category field processing - SKIPPING release_year override, keeping: ${saveData.release_year}`);
           } else {
-            saveData[fieldName] = requestData[fieldName];
+          saveData[fieldName] = requestData[fieldName];
             
             // Debug for release_year field
             if (fieldName === 'release_year') {
@@ -1922,13 +2016,13 @@ export class TradingCardService {
           const textFieldName = `${fieldName}_text`;
           if (typeof requestData[textFieldName] === 'string' && requestData[textFieldName].trim()) {
             // Unconditionally attempt to upsert/find in master using item_columns mapping
-            const masterId = await HelperService.saveMasterDataAndReturnMasterId(
+              const masterId = await HelperService.saveMasterDataAndReturnMasterId(
               String(requestData[textFieldName]).trim(),
-              fieldName,
-              categoryId
-            );
-            if (masterId > 0) {
-              saveData[fieldName] = masterId;
+                fieldName,
+                categoryId
+              );
+              if (masterId > 0) {
+                saveData[fieldName] = masterId;
             }
           }
         }
@@ -2278,6 +2372,14 @@ export class TradingCardService {
       const offset = (page - 1) * perPage;
       const limit = perPage;
 
+      // Split search text into individual words and create LIKE conditions for each word
+      const searchWords = searchText.trim().split(/\s+/).filter(word => word.length > 0);
+      const likeConditions = searchWords.map((_, index) => `tc.search_param LIKE :searchWord${index}`).join(' OR ');
+      const searchReplacements: any = {};
+      searchWords.forEach((word, index) => {
+        searchReplacements[`searchWord${index}`] = `%${word}%`;
+      });
+
       // Get total count
       const countQuery = `
         SELECT COUNT(*) as total
@@ -2289,13 +2391,11 @@ export class TradingCardService {
         AND tc.is_demo = '0'
         AND c.sport_status = '1'
         AND (tc.can_trade = 1 OR tc.can_buy = 1)
-        AND tc.search_param LIKE :searchText
+        AND (${likeConditions})
       `;
 
       const countResult = await sequelize.query(countQuery, {
-        replacements: { 
-          searchText: `%${searchText}%`
-        },
+        replacements: searchReplacements,
         type: QueryTypes.SELECT
       });
       const totalCount = (countResult[0] as any).total;
@@ -2340,14 +2440,14 @@ export class TradingCardService {
         AND tc.is_demo = '0'
         AND c.sport_status = '1'
         AND (tc.can_trade = 1 OR tc.can_buy = 1)
-        AND tc.search_param LIKE :searchText
+        AND (${likeConditions})
         ORDER BY tc.created_at DESC
         LIMIT :limit OFFSET :offset
       `;
 
       const result = await sequelize.query(query, {
         replacements: { 
-          searchText: `%${searchText}%`,
+          ...searchReplacements,
           limit,
           offset
         },

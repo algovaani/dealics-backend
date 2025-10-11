@@ -185,16 +185,9 @@ const validateUnifiedCards = async (tradeProposal: any, res: Response) => {
   const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',') : [];
   const allCards = [...sendCards, ...receiveCards];
 
-  console.log(`📋 Cards to validate:`, { sendCards, receiveCards, allCards });
 
   for (const cardId of allCards) {
     const tradeCard = await TradingCard.findByPk(cardId.trim());
-    console.log(`🔍 Checking card ${cardId}:`, {
-      id: tradeCard?.id,
-      search_param: tradeCard?.search_param,
-      is_traded: tradeCard?.is_traded,
-      trader_id: tradeCard?.trader_id
-    });
     
     // Commented out is_traded check as requested
     // if (tradeCard && tradeCard.is_traded === '1') {
@@ -214,7 +207,6 @@ const validateUnifiedCards = async (tradeProposal: any, res: Response) => {
     // }
   }
 
-  console.log(`✅ All cards validated successfully`);
   return true;
 };
 
@@ -280,26 +272,11 @@ const updateUnifiedTradeStatus = async (tradeProposal: any, paymentType: string,
   }
 
   // Set trade status based on cash requirements
-  console.log(`🔍 Checking cash requirements:`, {
-    add_cash: tradeProposal.add_cash,
-    ask_cash: tradeProposal.ask_cash,
-    trade_amount_paid_on: tradeProposal.trade_amount_paid_on,
-    paymentType: paymentType
-  });
 
   if (tradeProposal.add_cash > 0 && !tradeProposal.trade_amount_paid_on) {
     const status = paymentType === 'counter_offer' ? 'counter-offer-accepted-sender-pay' : 'trade-offer-accepted-sender-pay';
-    console.log(`🔄 Setting trade status to ${status} for trade proposal:`, tradeProposal.id);
-    console.log(`🔍 Trade proposal details before status update:`, {
-      id: tradeProposal.id,
-      trade_proposal_status_id: tradeProposal.trade_proposal_status_id,
-      add_cash: tradeProposal.add_cash,
-      ask_cash: tradeProposal.ask_cash,
-      trade_amount_paid_on: tradeProposal.trade_amount_paid_on
-    });
-    
+       
     const statusResult = await setTradeProposalStatus(tradeProposal.id, status);
-    console.log(`📊 Status update result for ${status}:`, statusResult);
     
     if (!statusResult.success) {
       console.error(`❌ Failed to update trade status to ${status}:`, statusResult.error);
@@ -308,17 +285,8 @@ const updateUnifiedTradeStatus = async (tradeProposal: any, paymentType: string,
     }
   } else if (tradeProposal.ask_cash > 0 && !tradeProposal.trade_amount_paid_on) {
     const status = paymentType === 'counter_offer' ? 'counter-offer-accepted-receiver-pay' : 'trade-offer-accepted-receiver-pay';
-    console.log(`🔄 Setting trade status to ${status} for trade proposal:`, tradeProposal.id);
-    console.log(`🔍 Trade proposal details before status update:`, {
-      id: tradeProposal.id,
-      trade_proposal_status_id: tradeProposal.trade_proposal_status_id,
-      add_cash: tradeProposal.add_cash,
-      ask_cash: tradeProposal.ask_cash,
-      trade_amount_paid_on: tradeProposal.trade_amount_paid_on
-    });
     
     const statusResult = await setTradeProposalStatus(tradeProposal.id, status);
-    console.log(`📊 Status update result for ${status}:`, statusResult);
     
     if (!statusResult.success) {
       console.error(`❌ Failed to update trade status to ${status}:`, statusResult.error);
@@ -326,11 +294,7 @@ const updateUnifiedTradeStatus = async (tradeProposal: any, paymentType: string,
       console.log(`✅ Trade status updated successfully to ${status}`);
     }
   } else {
-    console.log(`⚠️ No status update needed. Conditions not met:`, {
-      add_cash_condition: tradeProposal.add_cash > 0,
-      ask_cash_condition: tradeProposal.ask_cash > 0,
-      payment_not_paid: !tradeProposal.trade_amount_paid_on
-    });
+
   }
 };
 
@@ -455,6 +419,27 @@ const sendUnifiedCounterOfferEmails = async (userTo: any, userBy: any, cardData:
   } catch (error) {
     console.error('❌ Failed to send counter offer emails:', error);
   }
+
+  // Send Laravel-style pay-to-continue notifications based on cash requirements
+  if (tradeProposal.add_cash > 0 && !tradeProposal.trade_amount_paid_on) {
+    // add_cash > 0: sender pays, receiver gets notification
+    await setTradersNotificationOnVariousActionBasis(
+      'pay-to-continue-counter-trade',
+      tradeProposal.trade_sent_by,
+      tradeProposal.trade_sent_to,
+      tradeProposal.id,
+      'Trade'
+    );
+  } else if (tradeProposal.ask_cash > 0 && !tradeProposal.trade_amount_paid_on) {
+    // ask_cash > 0: receiver pays, sender gets notification
+    await setTradersNotificationOnVariousActionBasis(
+      'pay-to-continue-counter-trade',
+      tradeProposal.trade_sent_to,
+      tradeProposal.trade_sent_by,
+      tradeProposal.id,
+      'Trade'
+    );
+  }
 };
 
 // Send trade acceptance emails for unified function
@@ -495,13 +480,57 @@ const sendUnifiedTradeAcceptanceEmails = async (userTo: any, userBy: any, cardDa
   } catch (error) {
     console.error('❌ Failed to send trade acceptance emails:', error);
   }
+
+  // Send Laravel-style pay-to-continue notifications based on cash requirements
+  if (tradeProposal.add_cash > 0 && !tradeProposal.trade_amount_paid_on) {
+    // add_cash > 0: sender pays, receiver gets notification
+    await setTradersNotificationOnVariousActionBasis(
+      'pay-to-continue-trade',
+      tradeProposal.trade_sent_by,
+      tradeProposal.trade_sent_to,
+      tradeProposal.id,
+      'Trade'
+    );
+  } else if (tradeProposal.ask_cash > 0 && !tradeProposal.trade_amount_paid_on) {
+    // ask_cash > 0: receiver pays, sender gets notification
+    await setTradersNotificationOnVariousActionBasis(
+      'pay-to-continue-trade',
+      tradeProposal.trade_sent_to,
+      tradeProposal.trade_sent_by,
+      tradeProposal.id,
+      'Trade'
+    );
+  }
 };
 
 
 // Send accept and payment notifications
 const sendAcceptAndPaymentNotifications = async (tradeProposal: any, userId: number): Promise<void> => {
-  // Implement notification logic here
-  console.log('Sending accept and payment notifications for trade:', tradeProposal.id);
+  try {
+    const sentBy = userId;
+    const sentTo = tradeProposal.trade_sent_by === userId ? tradeProposal.trade_sent_to : tradeProposal.trade_sent_by;
+
+    // Notifications for simple trade acceptance
+    await setTradersNotificationOnVariousActionBasis(
+      'accept-trade-and-initiate-payment',
+      sentBy,
+      sentTo,
+      tradeProposal.id,
+      'Trade'
+    );
+
+    await setTradersNotificationOnVariousActionBasis(
+      'pay-to-continue',
+      sentBy,
+      sentTo,
+      tradeProposal.id,
+      'Trade'
+    );
+
+    console.log('Simple trade accept and payment notifications sent successfully');
+  } catch (error: any) {
+    console.error('Error sending simple trade accept notifications:', error);
+  }
 };
 
 // Deduct coins helper function
@@ -731,16 +760,18 @@ const generatePayPalPaymentData = async (refId: number, itemName: string, itemAm
 // Helper function to send missing PayPal notification
 const sendMissingPayPalNotification = async (userId: number, tradeProposal: any) => {
   try {
-    const sentTo = tradeProposal.trade_sent_by === userId 
-      ? tradeProposal.trade_sent_to 
-      : tradeProposal.trade_sent_by;
-
-    await TradeNotification.create({
-      notification_sent_by: userId,
-      notification_sent_to: sentTo,
-      trade_proposal_id: tradeProposal.id,
-      message: "PayPal business email address is not available. Please update your PayPal business email to continue with the trade."
-    } as any);
+    // Send Laravel-style paypal-business-details-not-available notification
+    // Based on Laravel: $sent_by = auth()->user()->id; $sent_to = ($tp_status->trade_sent_by == $sent_by) ? $tp_status->trade_sent_to : $tp_status->trade_sent_by;
+    const sentBy = userId;
+    const sentTo = (tradeProposal.trade_sent_by === sentBy) ? tradeProposal.trade_sent_to : tradeProposal.trade_sent_by;
+    
+    await setTradersNotificationOnVariousActionBasis(
+      'paypal-business-details-not-available',
+      sentBy,
+      sentTo,
+      tradeProposal.id,
+      'Trade'
+    );
 
   } catch (error: any) {
     console.error('Error sending missing PayPal notification:', error);
@@ -772,25 +803,24 @@ const sendCounterAcceptAndPaymentNotifications = async (tradeProposal: any, user
     const sentBy = userId;
     const sentTo = tradeProposal.trade_sent_by === userId ? tradeProposal.trade_sent_to : tradeProposal.trade_sent_by;
 
-    // Alias 1: accept-trade-and-initiate-payment (for non-counter accept)
+    // Notifications for counter offer acceptance only
     await setTradersNotificationOnVariousActionBasis(
-      'accept-trade-and-initiate-payment',
+      'accept-trade-counter-and-initiate-payment',
       sentBy,
       sentTo,
       tradeProposal.id,
       'Trade'
     );
 
-    // Alias 2: pay-to-continue (generic)
     await setTradersNotificationOnVariousActionBasis(
-      'pay-to-continue',
+      'pay-to-continue-counter-trade',
       sentBy,
       sentTo,
       tradeProposal.id,
       'Trade'
     );
 
-    console.log('Counter accept and payment notifications sent successfully (via templates)');
+    console.log('Counter accept and payment notifications sent successfully');
   } catch (error: any) {
     console.error('Error sending counter accept notifications:', error);
   }
@@ -994,6 +1024,7 @@ export const payToChangeTradeStatusCounterOffer = async (req: Request, res: Resp
         });
       }
 
+      
       // Set trade proposal status based on cash requirements
       if ((tradeProposal.add_cash || 0) > 0 && !tradeProposal.trade_amount_paid_on) {
         await setTradeProposalStatus(tradeProposal.id, 'counter-offer-accepted-sender-pay');
@@ -1391,25 +1422,24 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
   }
 
   // Send payment notifications
-  await sendPaymentNotifications(tradeProposal);
+  await sendPaymentNotifications(tradeProposal, userId);
 };
 
 // Send payment notifications helper
-const sendPaymentNotifications = async (tradeProposal: any) => {
+const sendPaymentNotifications = async (tradeProposal: any, userId: number) => {
   try {
-    await TradeNotification.create({
-      notification_sent_by: tradeProposal.trade_sent_by,
-      notification_sent_to: tradeProposal.trade_sent_to,
-      trade_proposal_id: tradeProposal.id,
-      message: "Payment has been completed successfully for the trade."
-    } as any);
-
-    await TradeNotification.create({
-      notification_sent_by: tradeProposal.trade_sent_to,
-      notification_sent_to: tradeProposal.trade_sent_by,
-      trade_proposal_id: tradeProposal.id,
-      message: "Payment has been completed successfully for the trade."
-    } as any);
+    // Send Laravel-style payment-made-for-trade notification
+    // Based on Laravel: $sent_by = auth()->user()->id; $sent_to = ($tp_status->trade_sent_by == $sent_by) ? $tp_status->trade_sent_to : $tp_status->trade_sent_by;
+    const sentBy = userId;
+    const sentTo = (tradeProposal.trade_sent_by === sentBy) ? tradeProposal.trade_sent_to : tradeProposal.trade_sent_by;
+    
+    await setTradersNotificationOnVariousActionBasis(
+      'payment-made-for-trade',
+      sentBy,
+      sentTo,
+      tradeProposal.id,
+      'Trade'
+    );
 
     console.log('Payment notifications sent successfully');
   } catch (error: any) {

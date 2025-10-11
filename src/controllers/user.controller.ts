@@ -11,6 +11,7 @@ import { ReviewCollection } from "../models/reviewCollection.model.js";
 import { QueryTypes } from "sequelize";
 import { Op } from 'sequelize';
 import { Dictionary } from "../models/dictionary.model.js";
+const { EmailHelperService } = await import('../services/emailHelper.service.js');
 // POST /api/common/check-word-quality
 export const checkWordQuality = async (req: Request, res: Response) => {
   try {
@@ -737,6 +738,8 @@ export const getPayPalTransactions = async (req: Request, res: Response) => {
 // PUT /api/users/profile - Update user profile (email and username not editable)
 export const updateUserProfile = async (req: Request, res: Response) => {
   try {
+    // Import EmailHelperService at the top   
+    
     // Get user ID from authenticated token
     const userId = req.user?.id || req.user?.user_id || req.user?.sub;
     
@@ -879,6 +882,21 @@ export const updateUserProfile = async (req: Request, res: Response) => {
 
       if (!updatedProfileData) {
         return sendApiResponse(res, 404, false, "Updated profile not found", []);
+      }
+
+      // Send profile updated email
+      try {
+        if (updatedProfileData.user.email) {
+          await EmailHelperService.sendProfileUpdatedEmail(
+            updatedProfileData.user.email,
+            updatedProfileData.user.first_name || '',
+            updatedProfileData.user.last_name || ''
+          );
+          console.log('✅ Profile updated email sent successfully');
+        }
+      } catch (emailError: any) {
+        console.error('❌ Failed to send profile updated email:', emailError);
+        // Don't fail the request if email sending fails
       }
 
       // Transform the response to include only required user details
@@ -2070,6 +2088,22 @@ export const changePassword = async (req: Request, res: Response) => {
       { password: hashed, recover_password_token: '' },
       { where: { id: userId } }
     );
+
+    // Send password changed email
+    try {
+      if (user.email) {
+        await EmailHelperService.sendPasswordChangedEmail(
+          user.email,
+          user.first_name || '',
+          user.last_name || '',
+          user.username || ''
+        );
+        console.log('✅ Password changed email sent successfully');
+      }
+    } catch (emailError: any) {
+      console.error('❌ Failed to send password changed email:', emailError);
+      // Don't fail the request if email sending fails
+    }
 
     return sendApiResponse(res, 200, true, "Password changed successfully", []);
   } catch (error: any) {

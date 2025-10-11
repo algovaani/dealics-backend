@@ -39,9 +39,7 @@ const sendPasswordResetSuccessEmail = async (user: any): Promise<void> => {
     };
 
     // Send email using EmailHelperService
-    await EmailHelperService.executeMailSender('password-reset-successfully', mailInputs);
-
-    console.log('✅ Password reset success email sent successfully');
+    await EmailHelperService.executeMailSender('password-reset -successfully', mailInputs);
 
   } catch (emailError) {
     console.error('❌ Failed to send password reset success email:', emailError);

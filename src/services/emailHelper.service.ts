@@ -483,6 +483,93 @@ export class EmailHelperService {
   }
 
   /**
+   * Send profile updated email
+   */
+  public static async sendProfileUpdatedEmail(email: string, firstName: string, lastName: string): Promise<boolean> {
+    const mailInputs = {
+      to: email,
+      name: this.setName(firstName, lastName),
+      yourprofilelink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile`,
+    };
+
+    return await this.executeMailSender('profile-updated', mailInputs);
+  }
+
+  /**
+   * Send password changed email
+   */
+  public static async sendPasswordChangedEmail(email: string, firstName: string, lastName: string, username: string): Promise<boolean> {
+    const mailInputs = {
+      to: email,
+      name: this.setName(firstName, lastName),
+      username: username,
+      yourprofilelink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile`,
+    };
+
+    return await this.executeMailSender('password-changed', mailInputs);
+  }
+
+  /**
+   * Send purchase successful email to buyer
+   */
+  public static async sendPurchaseSuccessfulEmail(
+    email: string, 
+    firstName: string, 
+    lastName: string, 
+    cardName: string, 
+    itemAmount: number, 
+    shippingFee: number, 
+    totalAmount: number, 
+    transactionId: string, 
+    otherUserName: string, 
+    viewPurchaseDetailsLink: string
+  ): Promise<boolean> {
+    const mailInputs = {
+      to: email,
+      name: this.setName(firstName, lastName),
+      cardname: cardName,
+      item_amount: itemAmount,
+      shipping_fee: shippingFee,
+      amount: totalAmount,
+      transaction_id: transactionId,
+      other_user_name: otherUserName,
+      view_purchase_details_link: viewPurchaseDetailsLink,
+    };
+
+    return await this.executeMailSender('purchase-successful', mailInputs);
+  }
+
+  /**
+   * Send card sold email to seller
+   */
+  public static async sendCardSoldEmail(
+    email: string, 
+    firstName: string, 
+    lastName: string, 
+    buyerName: string, 
+    cardName: string, 
+    itemAmount: number, 
+    shippingFee: number, 
+    totalAmount: number, 
+    transactionId: string, 
+    viewSaleDetailsLink: string
+  ): Promise<boolean> {
+    const mailInputs = {
+      to: email,
+      name: this.setName(firstName, lastName),
+      buyer_name: buyerName,
+      cardname: cardName,
+      item_amount: itemAmount,
+      shipping_fee: shippingFee,
+      amount: totalAmount,
+      transaction_id: transactionId,
+      view_sale_details_link: viewSaleDetailsLink,
+    };
+
+    return await this.executeMailSender('your-card-has-been-sold', mailInputs);
+  }
+
+  /**
    * Send custom email with any template
    */
   public static async sendCustomEmail(templateAlias: string, emailData: any): Promise<boolean> {

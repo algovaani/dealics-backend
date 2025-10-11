@@ -2041,6 +2041,22 @@ export const buyCardCollectionReview = async (req: Request, res: Response) => {
       await User.update({ ratings: String(finalRating) }, { where: { id: sellerId }, transaction: tx });
 
       await tx.commit();
+
+      // Send Laravel-style review-added notification
+      try {
+        const { setTradersNotificationOnVariousActionBasis } = await import('../services/notification.service.js');
+        await setTradersNotificationOnVariousActionBasis(
+          'review-added',
+          card.buyer!,
+          card.seller!,
+          card.id,
+          'Offer'
+        );
+      } catch (notificationError: any) {
+        console.error('❌ Failed to send review-added notification:', notificationError);
+        // Don't fail the request if notification fails
+      }
+
       return sendApiResponse(res, 200, true, 'Review submitted successfully', { id: card.id, rating: normalizedRating });
     } catch (err: any) {
       await tx.rollback();

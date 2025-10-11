@@ -133,7 +133,93 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
       }
     }
 
-    // Use the original method for user's own cards
+    // If source=myproduct, return ONLY the logged-in user's products
+    const sourceParam = (req.query.source as string | undefined)?.toString().toLowerCase();
+    if (sourceParam === 'myproduct') {
+      if (!authenticatedUserId) {
+        return sendApiResponse(res, 401, false, "Authorization token required", []);
+      }
+      const myResult = await tradingcardService.getUserOwnProducts(
+        page,
+        perPage,
+        categoryId,
+        authenticatedUserId
+      );
+      const tradingCards = (myResult.data || []).map((card: any) => {
+        // Same transformation as the original method
+        let canTradeOrOffer = true;
+        
+        // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
+        if (authenticatedUserId && card.trader_id === authenticatedUserId) {
+          canTradeOrOffer = false;
+        }
+        
+        // If card is already traded, user can't trade
+        if (card.is_traded === '1') {
+          canTradeOrOffer = false;
+        }
+        
+        // If can_buy and can_trade are both 0, user can't trade or make offers
+        if (card.can_buy === 0 && card.can_trade === 0) {
+          canTradeOrOffer = false;
+        }
+
+        const baseResponse = {
+          id: card.id,
+          category_id: card.category_id,
+          trading_card_img: card.trading_card_img,
+          trading_card_img_back: card.trading_card_img_back,
+          trading_card_slug: card.trading_card_slug,
+          trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+          trading_card_asking_price: card.trading_card_asking_price,
+          trade_value: card.trading_card_estimated_value,
+          search_param: card.search_param || null,
+          sport_name: card.sport_name,
+          sport_icon: card.sport_icon,
+          trader_id: card.trader_id,
+          trader_name: card.trader_name,
+          creator_id: card.creator_id,
+          is_traded: card.is_traded,
+          can_trade: card.can_trade,
+          can_buy: card.can_buy,
+          trading_card_status: card.trading_card_status,
+          interested_in: card.interested_in || false,
+          trade_card_status: card.trade_card_status,
+          card_condition: card.card_condition || null,
+          canTradeOrOffer: canTradeOrOffer,
+          trader: {
+            first_name: card.first_name || null,
+            last_name: card.last_name || null,
+            username: card.trader_name || null,
+            profile_image: card.profile_image || null,
+            verified_status: card.verified_status || null,
+            rating: card.rating || null,
+            total_reviews: card.total_reviews || null,
+            location: card.location || null,
+            country: card.country || null,
+            state: card.state || null,
+            city: card.city || null,
+            zip_code: card.zip_code || null,
+            phone_number: card.phone_number || null,
+            email: card.email || null,
+            created_at: card.user_created_at || null,
+            updated_at: card.user_updated_at || null
+          }
+        };
+
+        return baseResponse;
+      });
+      return sendApiResponse(res, 200, true, "Trading cards retrieved successfully", tradingCards, {
+        current_page: page,
+        per_page: perPage,
+        total: myResult.count || 0,
+        total_pages: Math.ceil((myResult.count || 0) / perPage),
+        has_next_page: page < Math.ceil((myResult.count || 0) / perPage),
+        has_prev_page: page > 1
+      });
+    }
+
+    // Default: original method for user's own cards (existing behavior)
     const result = await tradingcardService.getAllTradingCards(
       page,
       perPage,
@@ -1258,11 +1344,11 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
         for (const file of collectedAdditional) {
           const imagePath = uploadOne(file as any, uploadPath);
           if (imagePath && String(imagePath).trim()) {
-            additionalImages.push(imagePath);
-          }
+          additionalImages.push(imagePath);
+        }
         }
         if (additionalImages.length > 0) {
-          requestData.additional_images = additionalImages;
+        requestData.additional_images = additionalImages;
         }
       }
     }

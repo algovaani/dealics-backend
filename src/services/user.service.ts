@@ -5564,8 +5564,9 @@ export class UserService {
       } else if (tradeData.trade_sent_by === userId) {
         // User is sender - send notifications and emails
         const act = 'payment-received';
-        const sentBy = tradeData.trade_sent_by;
-        const sentTo = tradeData.trade_sent_to;
+        // Laravel pattern: $sent_by = $trade_proposal->trade_sent_to; $sent_to = $trade_proposal->trade_sent_by;
+        const sentBy = tradeData.trade_sent_to;
+        const sentTo = tradeData.trade_sent_by;
         
         // Send notification (Laravel: Helper::__setTradersNotificationOnVariousActionBasis($act, $sent_by, $sent_to, $trade_proposal->id, 'Trade'))
         if (sentBy && sentTo) {

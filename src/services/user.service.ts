@@ -5551,7 +5551,7 @@ export class UserService {
             cardyousend: itemsSendList.replace(/\n/g, '<br>'),
             cardyoureceive: itemsReceivedList.replace(/\n/g, '<br>'),
             proposedamount: tradeAmountAmount,
-            viewTransactionDeatilsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/ongoing-trades/${tradeProposalId}`,
+            viewTransactionDeatilsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/deals/ongoing?trade_id=${tradeProposalId}`,
             transaction_id: tradeData.code
           };
           
@@ -5582,7 +5582,7 @@ export class UserService {
             cardyousend: itemsReceivedList.replace(/\n/g, '<br>'),
             cardyoureceive: itemsSendList.replace(/\n/g, '<br>'),
             proposedamount: tradeAmountAmount,
-            viewTransactionDeatilsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/ongoing-trades/${tradeProposalId}`,
+            viewTransactionDeatilsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/deals/ongoing?trade_id=${tradeProposalId}`,
             transaction_id: tradeData.code
           };
           

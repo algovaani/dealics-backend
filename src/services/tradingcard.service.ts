@@ -57,6 +57,7 @@ export class TradingCardService {
           tc.trading_card_slug,
           tc.trading_card_recent_trade_value,
           tc.trading_card_asking_price,
+          tc.trading_card_estimated_value,
           tc.search_param,
           c.sport_name,
           c.sport_icon,
@@ -357,6 +358,7 @@ export class TradingCardService {
         tc.trading_card_slug,
         tc.trading_card_recent_trade_value,
         tc.trading_card_asking_price,
+        tc.trading_card_estimated_value,
         tc.search_param,
         c.sport_name,
         c.sport_icon,
@@ -1025,6 +1027,7 @@ export class TradingCardService {
         tc.trading_card_slug,
         tc.trading_card_recent_trade_value,
         tc.trading_card_asking_price,
+        tc.trading_card_estimated_value,
         tc.search_param,
         c.sport_name,
         c.sport_icon,
@@ -1877,6 +1880,10 @@ export class TradingCardService {
     requestData: any,
     userId: number
   ): Promise<{ success: boolean; data?: any; error?: string }> {
+    
+    console.log(`[DEBUG SERVICE UPDATE] Starting updateTradingCard for cardId: ${cardId}`);
+    console.log(`[DEBUG SERVICE UPDATE] requestData.additional_images:`, requestData.additional_images);
+    console.log(`[DEBUG SERVICE UPDATE] Full requestData:`, JSON.stringify(requestData, null, 2));
     try {
       // Find the existing trading card
       const existingCard = await TradingCard.findByPk(cardId);
@@ -2028,11 +2035,15 @@ export class TradingCardService {
         }
       }
 
-      // Handle file uploads - only update if files are provided
-      if (requestData.trading_card_img !== undefined) {
+      // Handle file uploads - only update if valid files are provided (not null/empty)
+      if (requestData.trading_card_img !== undefined && 
+          requestData.trading_card_img !== null && 
+          String(requestData.trading_card_img).trim() !== '') {
         saveData.trading_card_img = requestData.trading_card_img;
       }
-      if (requestData.trading_card_img_back !== undefined) {
+      if (requestData.trading_card_img_back !== undefined && 
+          requestData.trading_card_img_back !== null && 
+          String(requestData.trading_card_img_back).trim() !== '') {
         saveData.trading_card_img_back = requestData.trading_card_img_back;
       }
 
@@ -2075,26 +2086,104 @@ export class TradingCardService {
         // For now, we'll skip this part
       }
 
-      // Handle additional images - only update if provided
-      if (requestData.additional_images && Array.isArray(requestData.additional_images)) {
-        // Delete existing card images for this trading card
-        await CardImage.destroy({ where: { mainCardId: cardId } });
+      // Handle additional images - always process if provided, or preserve existing if not provided
+      let finalImages: string[] = [];
+      
+      // Get existing images from database
+      console.log(`[DEBUG SERVICE] About to query existing CardImage for mainCardId: ${cardId}`);
+      
+      // First, let's check if we can access the CardImage model
+      try {
+        const testQuery = await CardImage.findAll({ limit: 1 });
+        console.log(`[DEBUG SERVICE] CardImage model is accessible, test query returned ${testQuery.length} records`);
+      } catch (modelError) {
+        console.error(`[DEBUG SERVICE] Error accessing CardImage model:`, modelError);
+      }
+      
+      const existingCardImage = await CardImage.findOne({ where: { mainCardId: cardId } });
+      console.log(`[DEBUG SERVICE] Existing CardImage query result:`, existingCardImage ? existingCardImage.toJSON() : 'null');
+      const existingImages: string[] = [];
+      
+      if (existingCardImage) {
+        if (existingCardImage.cardImage1) existingImages.push(existingCardImage.cardImage1);
+        if (existingCardImage.cardImage2) existingImages.push(existingCardImage.cardImage2);
+        if (existingCardImage.cardImage3) existingImages.push(existingCardImage.cardImage3);
+        if (existingCardImage.cardImage4) existingImages.push(existingCardImage.cardImage4);
+      }
+      
+      console.log(`[DEBUG SERVICE] Existing images:`, existingImages);
+      console.log(`[DEBUG SERVICE] Request additional_images:`, requestData.additional_images);
+      
+      // If new additional_images are provided, use them (replace existing)
+      if (requestData.additional_images && Array.isArray(requestData.additional_images) && requestData.additional_images.length > 0) {
+        // Filter out any empty/null image paths
+        const validImages = requestData.additional_images
+          .filter((imagePath: any) => 
+            imagePath && 
+            typeof imagePath === 'string' && 
+            imagePath.trim() !== ''
+          );
         
-        // Create new card image records
-        for (let i = 0; i < requestData.additional_images.length; i++) {
-          const imagePath = requestData.additional_images[i];
-          const cardImageData: any = {
-            mainCardId: cardId,
-            traderId: userId
-          };
+        // Check if more than 4 images are provided
+        if (validImages.length > 4) {
+          console.log(`[DEBUG SERVICE] Error: ${validImages.length} images provided, maximum 4 allowed`);
+          return { success: false, error: `Maximum 4 additional images allowed. You provided ${validImages.length} images.` };
+        }
+        
+        finalImages = validImages;
+        console.log(`[DEBUG SERVICE] Using new images:`, finalImages);
+      } else {
+        // If no new images provided, preserve existing images
+        finalImages = existingImages;
+        console.log(`[DEBUG SERVICE] Preserving existing images:`, finalImages);
+      }
+      
+      // Update card images in database
+      if (finalImages.length > 0) {
+        // Delete existing card images for this trading card
+        try {
+          const deletedCount = await CardImage.destroy({ where: { mainCardId: cardId } });
+          console.log(`[DEBUG SERVICE] Deleted ${deletedCount} existing card image records`);
+        } catch (deleteError) {
+          console.error(`[DEBUG SERVICE] Error deleting existing card images:`, deleteError);
+          throw deleteError;
+        }
+        
+        // Create new card image record with all images in one record
+        const cardImageData: any = {
+          mainCardId: cardId,
+          traderId: userId
+        };
+        
+        // Set the appropriate card image fields (card_image_1, card_image_2, etc.)
+        if (finalImages[0]) cardImageData.cardImage1 = finalImages[0];
+        if (finalImages[1]) cardImageData.cardImage2 = finalImages[1];
+        if (finalImages[2]) cardImageData.cardImage3 = finalImages[2];
+        if (finalImages[3]) cardImageData.cardImage4 = finalImages[3];
+        
+        try {
+          const createdCardImage = await CardImage.create(cardImageData);
+          console.log(`[DEBUG SERVICE] Successfully created card image record:`, createdCardImage.toJSON());
           
-          // Set the appropriate card image field
-          if (i === 0) cardImageData.cardImage1 = imagePath;
-          else if (i === 1) cardImageData.cardImage2 = imagePath;
-          else if (i === 2) cardImageData.cardImage3 = imagePath;
-          else if (i === 3) cardImageData.cardImage4 = imagePath;
-          
-          await CardImage.create(cardImageData);
+          // Verify the record was actually saved by querying it back
+          const verifyCardImage = await CardImage.findOne({ where: { mainCardId: cardId } });
+          if (verifyCardImage) {
+            console.log(`[DEBUG SERVICE] Verification successful - record exists in database:`, verifyCardImage.toJSON());
+          } else {
+            console.error(`[DEBUG SERVICE] Verification failed - record not found in database after create`);
+          }
+        } catch (createError) {
+          console.error(`[DEBUG SERVICE] Error creating card image record:`, createError);
+          throw createError;
+        }
+      } else if (existingCardImage) {
+        // If no images at all, delete existing record
+        try {
+          const deletedCount = await CardImage.destroy({ where: { mainCardId: cardId } });
+          console.log(`[DEBUG SERVICE] Deleted ${deletedCount} existing card image record (no images)`);
+        } catch (deleteError) {
+          console.error(`[DEBUG SERVICE] Error deleting existing card image record:`, deleteError);
+          throw deleteError;
         }
       }
 
@@ -2285,6 +2374,7 @@ export class TradingCardService {
           tc.trading_card_slug,
           tc.trading_card_recent_trade_value,
           tc.trading_card_asking_price,
+          tc.trading_card_estimated_value,
           tc.search_param,
           tc.is_traded,
           tc.trader_id,
@@ -2409,6 +2499,7 @@ export class TradingCardService {
           tc.trading_card_slug,
           tc.trading_card_recent_trade_value,
           tc.trading_card_asking_price,
+          tc.trading_card_estimated_value,
           tc.search_param,
           tc.is_traded,
           tc.trader_id,
@@ -2550,6 +2641,7 @@ export class TradingCardService {
           tc.trading_card_slug,
           tc.trading_card_recent_trade_value,
           tc.trading_card_asking_price,
+          tc.trading_card_estimated_value,
           tc.search_param,
           c.sport_name,
         c.sport_icon,

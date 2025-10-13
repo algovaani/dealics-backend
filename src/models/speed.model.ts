@@ -12,12 +12,12 @@ import {
 } from 'sequelize-typescript';
 
 @Table({
-  tableName: 'convention_events',
+  tableName: 'speeds',
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at'
 })
-export class ConventionEvent extends Model<ConventionEvent> {
+export class Speed extends Model<Speed> {
   @PrimaryKey
   @AutoIncrement
   @Column({ type: DataType.BIGINT.UNSIGNED })
@@ -43,4 +43,5 @@ export class ConventionEvent extends Model<ConventionEvent> {
   @Column({ type: DataType.DATE, field: 'updated_at' })
   updatedAt!: Date;
 }
-  
+
+

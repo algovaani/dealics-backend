@@ -715,7 +715,7 @@ export const cartOffer = async (req: Request, res: Response) => {
         const transactionId = cartDetail?.id?.toString() || tradingCard.code || `TXN-${Date.now()}`;
         
         // Generate transaction list URL
-        const transactionListUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/transactions`;
+        const transactionListUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/coin-purchase-history`;
         
         // Send email to buyer (purchase successful)
         await EmailHelperService.sendPurchaseSuccessfulEmail(
@@ -1459,7 +1459,7 @@ const sendPaymentConfirmationEmailsForBuySell = async (
 
     // Prepare transaction data
     const proposedAmount = buyOffer.total_amount || 0;
-    const transactionListUrl = `${process.env.FRONTEND_URL}/bought-and-sold-products`;
+    const transactionListUrl = `${process.env.FRONTEND_URL}/profile/deals/bought-sold`;
 
     // Prepare user names using EmailHelperService.setName (Laravel equivalent)
     const buyerName = EmailHelperService.setName(
@@ -2033,7 +2033,7 @@ const sendTradeCompletionEmails = async (tradeProposal: any): Promise<void> => {
       return;
     }
 
-    const transactionListUrl = `${process.env.FRONTEND_URL}/completed-trades?id=${tradeProposal.id}`;
+    const transactionListUrl = `${process.env.FRONTEND_URL}/profile/deals/complete?id=${tradeProposal.id}`;
     const senderName = `${senderUser.first_name || ''} ${senderUser.last_name || ''}`.trim() || senderUser.username;
     const receiverName = `${receiverUser.first_name || ''} ${receiverUser.last_name || ''}`.trim() || receiverUser.username;
 
@@ -2683,7 +2683,7 @@ const sendTradeEmailNotifications = async (tradeProposal: any, status: string, a
       cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
       proposedamount: `${proposedAmount}${proposedAmountCaptionTo}`,
       message: message,
-      reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      reviewtradelink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
       transaction_id: tradeProposal.code
     };
 
@@ -2696,7 +2696,7 @@ const sendTradeEmailNotifications = async (tradeProposal: any, status: string, a
       cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
       proposedamount: `${proposedAmount}${proposedAmountCaptionBy}`,
       message: message,
-      reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      reviewtradelink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
       transaction_id: tradeProposal.code
     };
 
@@ -2757,7 +2757,7 @@ const sendNewTradeProposalEmails = async (tradeProposal: any): Promise<void> => 
     }
 
     const message = tradeProposal.message || 'N/A';
-    const reviewLink = `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`;
+    const reviewLink = `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`;
 
     // new-trade-offer → receiver
     const toReceiver = {
@@ -2800,7 +2800,7 @@ const sendMarkedAsCompletedEmails = async (currentUserId: number, tradeProposal:
     const sentToUser = await User.findByPk(tradeProposal.trade_sent_to);
     if (!sentByUser || !sentToUser) return;
 
-    const leavefeedbacklink = `${process.env.FRONTEND_URL}/completed-trades/${tradeProposal.id}`;
+    const leavefeedbacklink = `${process.env.FRONTEND_URL}/profile/deals/complete?trade_id=${tradeProposal.id}`;
 
     // Case 1: mimic Laravel condition for receiver mail
     if (currentUserId === sentByUser.id || tradeProposal.receiver_confirmation !== '1') {
@@ -2851,8 +2851,8 @@ const sendCancelOrDeclineEmails = async (tradeProposal: any, tradeStatus: string
     const proposedAmount = tradeProposal.add_cash || tradeProposal.ask_cash || 0;
     const message = tradeProposal.message || tradeProposal.counter_personalized_message || 'N/A';
 
-    const reviewCancelledLink = `${process.env.FRONTEND_URL}/cancelled-trades/${tradeProposal.id}`;
-    const reviewOngoingLink = `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`;
+    const reviewCancelledLink = `${process.env.FRONTEND_URL}/profile/deals/cancelled?trade_id=${tradeProposal.id}`;
+    const reviewOngoingLink = `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`;
 
     // Common payloads
     const toSenderBase = {
@@ -2960,7 +2960,7 @@ const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 
         cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
         proposedamount: proposedAmount,
         message: message,
-        reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        reviewtradelink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
         transaction_id: tradeProposal.code
       };
 
@@ -2984,7 +2984,7 @@ const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 
         cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
         proposedamount: proposedAmount,
         message: message,
-        reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        reviewtradelink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
         transaction_id: tradeProposal.code
       };
 
@@ -3049,7 +3049,7 @@ const sendEditTradeEmails = async (tradeProposal: any, mode: 'Counter Trade' | '
         cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
         additionalamount: `${proposedamount}${proposedAmountCaptionBy}`,
         message,
-        reviewcountertradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        reviewcountertradelink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
         transaction_id: tradeProposal.code
       };
       // counter-offer-sent (to userTo)
@@ -3061,7 +3061,7 @@ const sendEditTradeEmails = async (tradeProposal: any, mode: 'Counter Trade' | '
         cardyoureceive: itemsReceived.replace(/\n/g, '<br>'),
         proposedamount: `${proposedamount}${proposedAmountCaptionTo}`,
         message,
-        viewcounterofferlink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        viewcounterofferlink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
         transaction_id: tradeProposal.code
       };
       try { await EmailHelperService.executeMailSender('new-counter-offer', toSender); } catch {}
@@ -3085,7 +3085,7 @@ const sendEditTradeEmails = async (tradeProposal: any, mode: 'Counter Trade' | '
         cardyoureceive: itemsSend.replace(/\n/g, '<br>'),
         proposedamount: `${proposedamount}${proposedAmountCaptionTo}`,
         message,
-        reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+        reviewtradelink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
         transaction_id: tradeProposal.code
       };
       // trade-offer-updated-sender (to userBy)
@@ -3098,7 +3098,7 @@ const sendEditTradeEmails = async (tradeProposal: any, mode: 'Counter Trade' | '
         proposedamount: `${proposedamount}${proposedAmountCaptionBy}`,
         message,
         transaction_id: tradeProposal.code,
-        reviewtradelink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`
+        reviewtradelink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`
       };
       try { await EmailHelperService.executeMailSender('trade-offer-updated-receiver', toReceiver); } catch {}
       try { await EmailHelperService.executeMailSender('trade-offer-updated-sender', toSender); } catch {}
@@ -6124,7 +6124,7 @@ export const shippingTradeSuccess = async (req: Request, res: Response) => {
       tracking_id: shipment.tracking_id,
       shipment_status: shipment.shipment_status,
       trade_code: tradeProposal.code,
-      redirect_url: `${process.env.FRONTEND_URL}/ongoing-trades?id=${tradeProposal.id}`
+      redirect_url: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`
     };
 
     return sendApiResponse(res, 200, true, "Shipment Successfully Completed", responseData);
@@ -7881,7 +7881,7 @@ const sendShipmentConfirmationEmailsForBuySell = async (buySellId: number) => {
       }
     }
 
-    const transactionListUrl = `${process.env.FRONTEND_URL}/bought-and-sold-products?id=${buySellId}`;
+    const transactionListUrl = `${process.env.FRONTEND_URL}/profile/deals/bought-sold?buy_sell_id=${buySellId}`;
 
     // Email to seller
     const sellerMailInputs = {

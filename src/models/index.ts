@@ -38,6 +38,26 @@ import { YearOfIssue } from './yearOfIssue.model.js';
 import { VehicleYear } from './vehicleYear.model.js';
 import { YearOfManufacture } from './yearOfManufacture.model.js';
 import { Dictionary } from './dictionary.model.js';
+import { Brand } from './brand.model.js';
+import { Package } from './package.model.js';
+import { ConventionEvent } from './conventionEvent.model.js';
+import { Country } from './country.model.js';
+import { CoinName } from './coinName.model.js';
+import { Denomination } from './denomination.model.js';
+import { Circulated } from './circulated.model.js';
+import { Publisher } from './publisher.model.js';
+import { ItemType } from './itemType.model.js';
+import { Genre } from './genre.model.js';
+import { Feature } from './feature.model.js';
+import { SuperheroTeam } from './superheroTeam.model.js';
+import { StorageCapacity } from './storageCapacities.model.js';
+import { ConsoleModel } from './consoleModel.model.js';
+import { RegionCode } from './regionCode.model.js';
+import { Edition } from './edition.model.js';
+import { PlatformConsole } from './platformConsoles.model.js';
+import { Speed } from './speed.model.js';
+import { Type } from './type.model.js';
+import { RecordSize } from './recordSize.model.js';
 
 // Import all models here
 export const models = [
@@ -80,6 +100,26 @@ export const models = [
   VehicleYear,
   YearOfManufacture
   ,Dictionary
+  ,Publisher
+  ,Brand
+  ,Package
+  ,ConventionEvent
+  ,Country
+  ,CoinName
+  ,Denomination
+  ,Circulated
+  ,ItemType
+  ,Genre
+  ,Feature
+  ,SuperheroTeam
+  ,StorageCapacity
+  ,ConsoleModel
+  ,RegionCode
+  ,Edition
+  ,PlatformConsole
+  ,Speed
+  ,Type
+  ,RecordSize
 ];
 
 // Function to set up all associations
@@ -548,4 +588,24 @@ export {
   VehicleYear,
   YearOfManufacture
   ,Dictionary
+  ,Publisher
+  ,Brand
+  ,Package
+  ,ConventionEvent
+  ,Country
+  ,CoinName
+  ,Denomination
+  ,Circulated
+  ,ItemType
+  ,Genre
+  ,Feature
+  ,SuperheroTeam
+  ,StorageCapacity
+  ,ConsoleModel
+  ,RegionCode
+  ,Edition
+  ,PlatformConsole
+  ,Speed
+  ,Type
+  ,RecordSize
 };

@@ -402,7 +402,7 @@ export class EmailHelperService {
       yourprofilelink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile`,
       editProfileLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile`,
       payPalBusinessEmailLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/paypal-account`,
-      buyCoinsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/buy-els-coins`,
+      buyCoinsLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/coin-purchase-history`,
       loginLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`,
     };
 

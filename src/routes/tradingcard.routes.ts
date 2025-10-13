@@ -10,6 +10,7 @@ import {
   interestedInCard,
   getPublicProfileTradingCards,
   getPopularTradingCards,
+  getLatestTradingCards,
   mainSearch,
   getSimilarTradingCards,
   deleteTradingCard,
@@ -20,7 +21,8 @@ import { userAuth } from "../middlewares/auth.middleware.js";
 const router = Router();
 
 router.get("/", getTradingCards);
-router.get("/popularTradingCards", getPopularTradingCards);
+// Keep same API path but serve latest 8
+router.get("/popularTradingCards", getLatestTradingCards);
 router.get("/similar-trading-cards", getSimilarTradingCards);
 router.get("/by-category/:categoryName", getTradingCardsByCategoryName);
 router.get("/public-profile", getPublicProfileTradingCards);

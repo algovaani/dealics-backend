@@ -1319,7 +1319,7 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
       other_user_name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
       trade_amount: tradeAmountAmount,
       transaction_id: tradeProposal.code,
-      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
     };
 
     // Email to receiver - "payment-received-for-trade"
@@ -1328,7 +1328,7 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
       name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
       other_user_name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
       trade_amount: tradeAmountAmount,
-      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
       transaction_id: tradeProposal.code,
     };
 
@@ -1358,7 +1358,7 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
       name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
       other_user_name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
       trade_amount: tradeAmountAmount,
-      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
       transaction_id: tradeProposal.code,
     };
     const mailInputsReceiver = {
@@ -1367,7 +1367,7 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
       other_user_name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
       trade_amount: tradeAmountAmount,
       transaction_id: tradeProposal.code,
-      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
     };
     try {
       await Promise.all([
@@ -1396,7 +1396,7 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
       other_user_name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
       trade_amount: tradeAmountAmount,
       transaction_id: tradeProposal.code,
-      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
     };
 
     // Email to sender - "payment-received-for-trade"
@@ -1405,7 +1405,7 @@ const sendUnifiedPaymentSuccessEmails = async (tradeProposal: any, tradeAmountAm
       name: EmailHelperService.setName(sender.first_name || '', sender.last_name || ''),
       other_user_name: EmailHelperService.setName(receiver.first_name || '', receiver.last_name || ''),
       trade_amount: tradeAmountAmount,
-      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/ongoing-trades/${tradeProposal.id}`,
+      viewTransactionDeatilsLink: `${process.env.FRONTEND_URL}/profile/deals/ongoing?trade_id=${tradeProposal.id}`,
       transaction_id: tradeProposal.code,
     };
 

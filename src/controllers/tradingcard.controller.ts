@@ -558,7 +558,9 @@ export const getTradingCard = async (req: Request, res: Response) => {
       }
     });
 
-    // Exclude specific field_names from additionalFields in response
+    // Conditionally exclude some fields only when detail=true is passed
+    const detailFlag = (req.query as any)?.productDetail ?? (req.query as any)?.detail;
+    const isDetail = ['true', '1', 'yes'].includes(String(detailFlag || '').toLowerCase());
     const fieldsToExclude = [
       'publication_year_text',
       'trading_card_offer_accept_above',
@@ -584,7 +586,7 @@ export const getTradingCard = async (req: Request, res: Response) => {
       'free_shipping'
     ];
     const filteredAdditionalFields = Array.isArray(additionalFields)
-      ? additionalFields.filter((f: any) => !fieldsToExclude.includes(f?.field_name))
+      ? (isDetail ? additionalFields.filter((f: any) => !fieldsToExclude.includes(f?.field_name)) : [...additionalFields])
       : additionalFields;
 
     // Enrich master-backed fields in additionalFields (issue_number -> year_of_issues)

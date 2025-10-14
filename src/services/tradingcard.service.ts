@@ -2353,6 +2353,8 @@ export class TradingCardService {
           tc.trading_card_asking_price,
           tc.trading_card_estimated_value,
           tc.search_param,
+          tc.can_trade,
+          tc.can_buy,
           tc.is_traded,
           tc.trader_id,
           u.username as trader_name,
@@ -2482,6 +2484,8 @@ export class TradingCardService {
           tc.trader_id,
           u.username as trader_name,
           c.sport_name,
+          tc.can_trade,
+          tc.can_buy,
         c.sport_icon,
           CASE 
             WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name

@@ -422,6 +422,8 @@ export const getTradingCards = async (req: Request, res: Response) => {
         trader_name: card.trader_name || null,
         card_condition: card.card_condition || null,
         graded: card.graded || '0',
+        can_trade: card.can_trade,
+        can_buy: card.can_buy,
         canTradeOrOffer: canTradeOrOffer
       };
 
@@ -583,7 +585,8 @@ export const getTradingCard = async (req: Request, res: Response) => {
       'professional_grader_id',
       'grade_rating_id',
       'canada_add_product_flat_rate',
-      'free_shipping'
+      'free_shipping',
+      'title'
     ];
     const filteredAdditionalFields = Array.isArray(additionalFields)
       ? (isDetail ? additionalFields.filter((f: any) => !fieldsToExclude.includes(f?.field_name)) : [...additionalFields])
@@ -901,6 +904,16 @@ export const getTradingCard = async (req: Request, res: Response) => {
         const rookieField = filteredAdditionalFields.find((f: any) => f?.field_name === 'is_rookie_card');
         if (rookieField && (rookieField.field_value === '1' || rookieField.field_value === 1)) {
           rookieField.related_field_value = 'Yes';
+        }
+
+        // Map enum 1/0 for is_variant: 1 -> Yes, else -> 0
+        const isVariantField = filteredAdditionalFields.find((f: any) => f?.field_name === 'is_variant');
+        if (isVariantField) {
+          if (isVariantField.field_value === '1' || isVariantField.field_value === 1) {
+            isVariantField.related_field_value = 'Yes';
+          } else {
+            isVariantField.related_field_value = '0';
+          }
         }
       } catch (e) {
         console.warn('issue_number enrichment failed:', e);
@@ -2160,7 +2173,7 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
         canTradeOrOffer = false;
       }
 
-             const baseResponse = {
+            const baseResponse = {
          id: card.id,
          category_id: card.category_id,
          trader_id: card.trader_id,
@@ -2175,6 +2188,8 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
         sport_icon: card.sport_icon || null,
          card_condition: card.card_condition || null,
          trade_card_status: card.trade_card_status || null,
+              can_trade: card.can_trade,
+              can_buy: card.can_buy,
          canTradeOrOffer: canTradeOrOffer
        };
 
@@ -2255,6 +2270,8 @@ export const getPopularTradingCards = async (req: Request, res: Response) => {
         trader_id: card.trader_id,
         trader_name: card.trader_name,
         trade_card_status: card.trade_card_status,
+        can_trade: card.can_trade,
+        can_buy: card.can_buy,
         interested_in: interestedIds.size > 0 ? interestedIds.has(card.id) : false,
         card_condition: card.card_condition
       }));
@@ -2297,6 +2314,8 @@ export const getLatestTradingCards = async (req: Request, res: Response) => {
         tc.search_param,
         c.sport_name,
         c.sport_icon,
+        tc.can_trade,
+        tc.can_buy,
         tc.is_traded,
         tc.trader_id,
         u.username as trader_name,
@@ -2357,6 +2376,8 @@ export const getLatestTradingCards = async (req: Request, res: Response) => {
         search_param: card.search_param,
         sport_name: card.sport_name,
         sport_icon: card.sport_icon,
+        can_trade: card.can_trade,
+        can_buy: card.can_buy,
         is_traded: card.is_traded,
         trader_id: card.trader_id,
         trader_name: card.trader_name,
@@ -2452,6 +2473,27 @@ export const mainSearch = async (req: Request, res: Response) => {
 
     if (result.success && result.data) {
       // Transform the response to include only necessary fields
+      // Determine interested_in only if user is logged in
+      let interestedIds = new Set<number>();
+      try {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+          const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+          if (userId) {
+            const cardIds = result.data.cards.map((c: any) => c.id);
+            if (cardIds.length > 0) {
+              const rows = await sequelize.query(
+                `SELECT trading_card_id FROM interested_in WHERE user_id = :userId AND trading_card_id IN (:ids)`,
+                { replacements: { userId, ids: cardIds }, type: QueryTypes.SELECT }
+              );
+              interestedIds = new Set((rows as any[]).map(r => Number((r as any).trading_card_id)));
+            }
+          }
+        }
+      } catch {}
+
       const response = result.data.cards.map((card: any) => ({
         id: card.id,
         trading_card_img: card.trading_card_img,
@@ -2461,14 +2503,16 @@ export const mainSearch = async (req: Request, res: Response) => {
         trading_card_asking_price: card.trading_card_asking_price,
         search_param: card.search_param,
         sport_name: card.sport_name,
+        can_trade: (card as any).can_trade ?? 0,
+        can_buy: (card as any).can_buy ?? 0,
         is_traded: card.is_traded,
         trader_id: card.trader_id,
         trader_name: card.trader_name,
         trade_card_status: card.trade_card_status,
-        interested_in: true,
+        interested_in: interestedIds.size > 0 ? interestedIds.has(card.id) : false,
         card_condition: card.card_condition
       }));
-
+// console.log("response==============",response);
       return sendApiResponse(res, 200, true, "Search completed successfully", response, result.data.pagination);
     } else {
       return sendApiResponse(res, 400, false, result.error?.message || "Failed to perform search", []);
@@ -2568,6 +2612,8 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
           sport_icon: card.sport_icon || null,
           card_condition: card.card_condition || null,
           trade_card_status: card.trade_card_status || null,
+          can_trade: card.can_trade,
+          can_buy: card.can_buy,
           canTradeOrOffer: canTradeOrOffer
         };
 

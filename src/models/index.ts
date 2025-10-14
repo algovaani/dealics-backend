@@ -58,6 +58,7 @@ import { PlatformConsole } from './platformConsoles.model.js';
 import { Speed } from './speed.model.js';
 import { Type } from './type.model.js';
 import { RecordSize } from './recordSize.model.js';
+import { MintMark } from './mintMarks.model.js';
 
 // Import all models here
 export const models = [
@@ -120,6 +121,7 @@ export const models = [
   ,Speed
   ,Type
   ,RecordSize
+  ,MintMark
 ];
 
 // Function to set up all associations
@@ -608,4 +610,5 @@ export {
   ,Speed
   ,Type
   ,RecordSize
+  ,MintMark
 };

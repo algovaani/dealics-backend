@@ -339,7 +339,11 @@ import {
     @AllowNull
     @Column(DataType.STRING(30))
     mint_mark?: string;
-  
+
+    @AllowNull
+    @Column(DataType.INTEGER)
+    mint_mark_slt?: number;
+
     @AllowNull
     @Column(DataType.STRING(30))
     denomination?: string;

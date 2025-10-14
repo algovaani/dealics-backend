@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { TradingCardService } from "../services/tradingcard.service.js";
-import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize } from "../models/index.js";
+import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark } from "../models/index.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
@@ -665,6 +665,17 @@ export const getTradingCard = async (req: Request, res: Response) => {
             coinNameField.field_label = coinNameField.field_label || 'Coin Name';
             coinNameField.related_field_name = 'coin_names';
             coinNameField.related_field_value = coinRow.name;
+          }
+        }
+
+        // mint_mark_slt -> mint_marks
+        const mintMarkField = filteredAdditionalFields.find((f: any) => f?.field_name === 'mint_mark_slt' && f.field_value);
+        if (mintMarkField && !isNaN(Number(mintMarkField.field_value))) {
+          const mmRow = await MintMark.findByPk(Number(mintMarkField.field_value));
+          if (mmRow) {
+            mintMarkField.field_label = mintMarkField.field_label || 'Mint Mark';
+            mintMarkField.related_field_name = 'mint_marks';
+            mintMarkField.related_field_value = mmRow.name;
           }
         }
 
@@ -1416,6 +1427,19 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
       }
     }
 
+    // Handle field mapping for specific fields
+    // Map mint_mark_slt to mint_mark
+    if (requestData.mint_mark_slt !== undefined) {
+      requestData.mint_mark = requestData.mint_mark_slt;
+    }
+
+    // Map year_date_of_issue_text to year_of_issue
+    if (requestData.year_date_of_issue_text !== undefined) {
+      requestData.year_of_issue = requestData.year_date_of_issue_text;
+    }
+
+    // how_many_controllers field is already correctly named, no mapping needed
+
     // Handle file uploads
     const uploadPath = process.cwd() + '/public/user/assets/images/trading_cards_img/';
     
@@ -1675,6 +1699,19 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
     if (tradingCard.trader_id !== userId) {
       return sendApiResponse(res, 403, false, "You don't have permission to update this card");
     }
+
+    // Handle field mapping for specific fields
+    // Map mint_mark_slt to mint_mark
+    if (requestData.mint_mark_slt !== undefined) {
+      requestData.mint_mark = requestData.mint_mark_slt;
+    }
+
+    // Map year_date_of_issue_text to year_of_issue
+    if (requestData.year_date_of_issue_text !== undefined) {
+      requestData.year_of_issue = requestData.year_date_of_issue_text;
+    }
+
+    // how_many_controllers field is already correctly named, no mapping needed
 
     // Handle file uploads
     const uploadPath = process.cwd() + '/public/user/assets/images/trading_cards_img/';

@@ -1881,9 +1881,7 @@ export class TradingCardService {
     userId: number
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     
-    console.log(`[DEBUG SERVICE UPDATE] Starting updateTradingCard for cardId: ${cardId}`);
-    console.log(`[DEBUG SERVICE UPDATE] requestData.additional_images:`, requestData.additional_images);
-    console.log(`[DEBUG SERVICE UPDATE] Full requestData:`, JSON.stringify(requestData, null, 2));
+    
     try {
       // Find the existing trading card
       const existingCard = await TradingCard.findByPk(cardId);
@@ -1940,8 +1938,7 @@ export class TradingCardService {
       // Ensure core master FK fields on update
       if (requestData.release_year !== undefined && requestData.release_year !== null) {
         saveData.release_year = requestData.release_year;
-        console.log(`[DEBUG SERVICE] Set saveData.release_year to: ${requestData.release_year}`);
-        console.log(`[DEBUG SERVICE] requestData.release_year value:`, requestData.release_year);
+        
       }
 
       // Get category fields with priority
@@ -1982,13 +1979,13 @@ export class TradingCardService {
           // Handle all field types - assign the value directly like in save method
           // BUT: Don't override release_year if it was already set correctly by the controller
           if (fieldName === 'release_year' && saveData.release_year !== undefined) {
-            console.log(`[DEBUG SERVICE] Category field processing - SKIPPING release_year override, keeping: ${saveData.release_year}`);
+            
           } else {
           saveData[fieldName] = requestData[fieldName];
             
             // Debug for release_year field
             if (fieldName === 'release_year') {
-              console.log(`[DEBUG SERVICE] Category field processing - Setting release_year to: ${requestData[fieldName]}`);
+              
             }
           }
           
@@ -2090,18 +2087,18 @@ export class TradingCardService {
       let finalImages: string[] = [];
       
       // Get existing images from database
-      console.log(`[DEBUG SERVICE] About to query existing CardImage for mainCardId: ${cardId}`);
+      
       
       // First, let's check if we can access the CardImage model
       try {
         const testQuery = await CardImage.findAll({ limit: 1 });
-        console.log(`[DEBUG SERVICE] CardImage model is accessible, test query returned ${testQuery.length} records`);
+        
       } catch (modelError) {
         console.error(`[DEBUG SERVICE] Error accessing CardImage model:`, modelError);
       }
       
       const existingCardImage = await CardImage.findOne({ where: { mainCardId: cardId } });
-      console.log(`[DEBUG SERVICE] Existing CardImage query result:`, existingCardImage ? existingCardImage.toJSON() : 'null');
+      
       const existingImages: string[] = [];
       
       if (existingCardImage) {
@@ -2111,8 +2108,6 @@ export class TradingCardService {
         if (existingCardImage.cardImage4) existingImages.push(existingCardImage.cardImage4);
       }
       
-      console.log(`[DEBUG SERVICE] Existing images:`, existingImages);
-      console.log(`[DEBUG SERVICE] Request additional_images:`, requestData.additional_images);
       
       // If new additional_images are provided, use them (replace existing)
       if (requestData.additional_images && Array.isArray(requestData.additional_images) && requestData.additional_images.length > 0) {
@@ -2126,16 +2121,13 @@ export class TradingCardService {
         
         // Check if more than 4 images are provided
         if (validImages.length > 4) {
-          console.log(`[DEBUG SERVICE] Error: ${validImages.length} images provided, maximum 4 allowed`);
           return { success: false, error: `Maximum 4 additional images allowed. You provided ${validImages.length} images.` };
         }
         
         finalImages = validImages;
-        console.log(`[DEBUG SERVICE] Using new images:`, finalImages);
       } else {
         // If no new images provided, preserve existing images
         finalImages = existingImages;
-        console.log(`[DEBUG SERVICE] Preserving existing images:`, finalImages);
       }
       
       // Update card images in database
@@ -2143,9 +2135,7 @@ export class TradingCardService {
         // Delete existing card images for this trading card
         try {
           const deletedCount = await CardImage.destroy({ where: { mainCardId: cardId } });
-          console.log(`[DEBUG SERVICE] Deleted ${deletedCount} existing card image records`);
         } catch (deleteError) {
-          console.error(`[DEBUG SERVICE] Error deleting existing card images:`, deleteError);
           throw deleteError;
         }
         
@@ -2162,40 +2152,27 @@ export class TradingCardService {
         if (finalImages[3]) cardImageData.cardImage4 = finalImages[3];
         
         try {
-          const createdCardImage = await CardImage.create(cardImageData);
-          console.log(`[DEBUG SERVICE] Successfully created card image record:`, createdCardImage.toJSON());
-          
+          const createdCardImage = await CardImage.create(cardImageData);          
           // Verify the record was actually saved by querying it back
           const verifyCardImage = await CardImage.findOne({ where: { mainCardId: cardId } });
-          if (verifyCardImage) {
-            console.log(`[DEBUG SERVICE] Verification successful - record exists in database:`, verifyCardImage.toJSON());
-          } else {
-            console.error(`[DEBUG SERVICE] Verification failed - record not found in database after create`);
-          }
+
         } catch (createError) {
-          console.error(`[DEBUG SERVICE] Error creating card image record:`, createError);
           throw createError;
         }
       } else if (existingCardImage) {
         // If no images at all, delete existing record
         try {
           const deletedCount = await CardImage.destroy({ where: { mainCardId: cardId } });
-          console.log(`[DEBUG SERVICE] Deleted ${deletedCount} existing card image record (no images)`);
         } catch (deleteError) {
-          console.error(`[DEBUG SERVICE] Error deleting existing card image record:`, deleteError);
           throw deleteError;
         }
       }
 
       // MAIN UPDATE OPERATION - This was missing!
-      console.log(`[DEBUG SERVICE] About to update trading card with saveData:`, saveData);
-      console.log(`[DEBUG SERVICE] saveData.release_year:`, saveData.release_year);
       await TradingCard.update(saveData, { where: { id: cardId } });
-      console.log(`[DEBUG SERVICE] Trading card updated successfully`);
 
       // Verify what was actually saved
       const verifyCard = await TradingCard.findByPk(cardId);
-      console.log(`[DEBUG SERVICE] After update - release_year:`, verifyCard?.release_year);
 
       // Get updated trading card
       const updatedCard = await TradingCard.findByPk(cardId);

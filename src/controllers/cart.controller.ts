@@ -940,7 +940,7 @@ const generateCodeForTradeAndMakeOfferRequest = () => {
   const seconds = String(now.getSeconds()).padStart(2, '0');
   const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
   
-  return `ESW-${year}${month}${day}${randomNum}${hours}${minutes}${seconds}`;
+  return `dealix-${year}${month}${day}${randomNum}${hours}${minutes}${seconds}`;
 };
 
 // Helper function to set trade and offer status
@@ -2389,7 +2389,7 @@ const generateTradeCode = (): string => {
   const seconds = String(now.getSeconds()).padStart(2, '0');
   const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
   
-  return `ESW-${year}${month}${day}${random}${hours}${minutes}${seconds}`;
+  return `dealix-${year}${month}${day}${random}${hours}${minutes}${seconds}`;
 };
 
 

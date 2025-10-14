@@ -336,15 +336,15 @@ const sendUnifiedTradeEmails = async (tradeProposal: any) => {
 const prepareUnifiedCardData = async (sendCards: string[], receiveCards: string[]) => {
   const sentCards = await TradingCard.findAll({
     where: { id: { [Op.in]: sendCards.map(id => parseInt(id.trim())) } },
-    attributes: ['search_param']
+    attributes: ['search_param','title']
   });
   const receivedCards = await TradingCard.findAll({
     where: { id: { [Op.in]: receiveCards.map(id => parseInt(id.trim())) } },
-    attributes: ['search_param']
+    attributes: ['search_param','title']
   });
 
-  const sentCardNames = sentCards.map(card => card.search_param).filter(Boolean);
-  const receivedCardNames = receivedCards.map(card => card.search_param).filter(Boolean);
+  const sentCardNames = sentCards.map(card => card.title).filter(Boolean);
+  const receivedCardNames = receivedCards.map(card => card.title).filter(Boolean);
 
   let itemsSend = '';
   sentCardNames.forEach((cardName, index) => {
@@ -927,10 +927,10 @@ const getCardNames = async (cardIds: number[]): Promise<string[]> => {
     
     const cards = await TradingCard.findAll({
       where: { id: cardIds },
-      attributes: ['search_param']
+      attributes: ['search_param','title']
     });
     
-    return cards.map(card => card.search_param || 'Unknown Card');
+    return cards.map(card => card.title || 'Unknown Card');
   } catch (error: any) {
     console.error('Error getting card names:', error);
     return [];

@@ -255,12 +255,13 @@ export const socialRegister = async (req: Request, res: Response) => {
       await user.update({ username: `${baseName}${user.id}` } as any);
       isNewUser = true;
     } else {
+      // Existing user: do NOT overwrite profile_picture from social payload
       await user.update({
         first_name: user.first_name || givenFirst || cleanEmail.split('@')[0],
         last_name: user.last_name || givenLast || null,
         phone_number: contactNumber ?? user.phone_number ?? null,
         country_code: countryCode ?? user.country_code ?? null,
-        profile_picture: profile_picture ?? user.profile_picture ?? null,
+        // profile_picture unchanged intentionally
         gmail_login: provider === 'google' ? true : user.gmail_login,
         is_email_verified: "1",
         email_verified_at: new Date(),

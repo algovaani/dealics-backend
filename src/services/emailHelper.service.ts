@@ -151,13 +151,12 @@ export class EmailHelperService {
       }
     });
 
-    // Replace custom variables from mailInputs
+    // Replace custom variables from mailInputs (safely handle null/undefined)
     Object.keys(this.mailInputs).forEach(key => {
       const placeholder = `{{${key}}}`;
-      const value = this.mailInputs[key];
-      if (value !== undefined) {
-        processedContent = processedContent.replace(new RegExp(placeholder, 'g'), value.toString());
-      }
+      const raw = this.mailInputs[key];
+      const safeValue = (raw === undefined || raw === null) ? '' : String(raw);
+      processedContent = processedContent.replace(new RegExp(placeholder, 'g'), safeValue);
     });
 
     return processedContent;

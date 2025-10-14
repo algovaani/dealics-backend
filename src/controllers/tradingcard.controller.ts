@@ -174,6 +174,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
           trading_card_asking_price: card.trading_card_asking_price,
           trade_value: card.trading_card_estimated_value,
           search_param: card.search_param || null,
+          title: card.title,
           sport_name: card.sport_name,
           sport_icon: card.sport_icon,
           trader_id: card.trader_id,
@@ -250,6 +251,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
       const baseResponse = {
         id: card.id,
         category_id: card.category_id,
+        title: card.title ?? card.trading_card_slug,
         trading_card_img: card.trading_card_img,
         trading_card_img_back: card.trading_card_img_back,
         trading_card_slug: card.trading_card_slug,
@@ -415,6 +417,7 @@ export const getTradingCards = async (req: Request, res: Response) => {
         trading_card_asking_price: card.trading_card_asking_price,
         trading_card_estimated_value: card.trading_card_estimated_value,
         search_param: card.search_param || null,
+        title: card.title,
         sport_name: card.sport_name || null,
         sport_icon: card.sport_icon || null,
         trade_card_status: card.trade_card_status || null,
@@ -935,6 +938,7 @@ export const getTradingCard = async (req: Request, res: Response) => {
       trading_card_status: tradingCard.trading_card_status,
       category_id: tradingCard.category_id,
       search_param: tradingCard.search_param,
+      title: tradingCard.title,
       trading_card_slug: tradingCard.trading_card_slug,
       is_traded: tradingCard.is_traded,
       created_at: tradingCard.createdAt,
@@ -1155,6 +1159,7 @@ export const getDeletedTradingCards = async (req: Request, res: Response) => {
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
         search_param: card.search_param || null,
+        title: card.title,
         sport_name: card.sport_name || null,
         sport_icon: card.sport_icon || null,
         trade_card_status: card.trade_card_status || null,
@@ -2176,6 +2181,7 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
             const baseResponse = {
          id: card.id,
          category_id: card.category_id,
+              title: (card as any).title ?? card.trading_card_slug,
          trader_id: card.trader_id,
          creator_id: card.creator_id,
          trading_card_img: card.trading_card_img,
@@ -2183,7 +2189,7 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
          trading_card_slug: card.trading_card_slug,
          trading_card_recent_trade_value: card.trading_card_recent_trade_value,
          trading_card_asking_price: card.trading_card_asking_price,
-         search_param: card.search_param || null,
+         search_param: card.search_param  || null,
          sport_name: card.sport_name || null,
         sport_icon: card.sport_icon || null,
          card_condition: card.card_condition || null,
@@ -2260,7 +2266,7 @@ export const getPopularTradingCards = async (req: Request, res: Response) => {
         id: card.id,
         trading_card_img: card.trading_card_img,
         trading_card_img_back: card.trading_card_img_back,
-        title: card.trading_card_slug,
+        title: card.title,
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
         search_param: card.search_param,
@@ -2294,6 +2300,20 @@ export const getLatestTradingCards = async (req: Request, res: Response) => {
     const page = 1;
     const perPage = 8;
     
+    // If JWT present, exclude own cards
+    let excludeUserIdCondition = '';
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        const userId = decoded.user_id || decoded.sub || decoded.id || decoded.userId;
+        if (userId && !isNaN(Number(userId))) {
+          excludeUserIdCondition = `\n        AND tc.trader_id != ${Number(userId)}\n    `;
+        }
+      }
+    } catch {}
+
     // Build latest cards query (same base conditions as public listings)
     const whereClause = `
       WHERE tc.mark_as_deleted IS NULL
@@ -2301,17 +2321,19 @@ export const getLatestTradingCards = async (req: Request, res: Response) => {
         AND tc.is_demo = 0
         AND tc.is_traded != 1
         AND tc.trading_card_status = '1'
+        ${excludeUserIdCondition}
     `;
     
     const dataQuery = `
       SELECT 
         tc.id,
+        tc.title,
         tc.trading_card_img,
         tc.trading_card_img_back,
         tc.trading_card_slug,
         tc.trading_card_recent_trade_value,
         tc.trading_card_asking_price,
-        tc.search_param,
+        tc.search_param, 
         c.sport_name,
         c.sport_icon,
         tc.can_trade,
@@ -2368,9 +2390,9 @@ export const getLatestTradingCards = async (req: Request, res: Response) => {
 
       const response = (rows as any[]).map((card: any) => ({
         id: card.id,
+        title: card.title ?? card.trading_card_slug,
         trading_card_img: card.trading_card_img,
         trading_card_img_back: card.trading_card_img_back,
-        title: card.trading_card_slug,
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
         search_param: card.search_param,
@@ -2498,7 +2520,7 @@ export const mainSearch = async (req: Request, res: Response) => {
         id: card.id,
         trading_card_img: card.trading_card_img,
         trading_card_img_back: card.trading_card_img_back,
-        title: card.trading_card_slug,
+        title: card.title,
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
         search_param: card.search_param,
@@ -2602,6 +2624,7 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
         const baseResponse = {
           id: card.id,
           category_id: card.category_id,
+          title: card.title ?? card.trading_card_slug,
           trading_card_img: card.trading_card_img,
           trading_card_img_back: card.trading_card_img_back,
           trading_card_slug: card.trading_card_slug,

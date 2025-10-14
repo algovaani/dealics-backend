@@ -17,8 +17,10 @@ import {
   toggleTradingCardDeleteStatus
 } from "../controllers/tradingcard.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
+import { noCache } from "../middlewares/noCache.middleware.js";
 
 const router = Router();
+router.use(noCache);
 
 router.get("/", getTradingCards);
 // Keep same API path but serve latest 8

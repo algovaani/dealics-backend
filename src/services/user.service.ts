@@ -3420,7 +3420,7 @@ export class UserService {
         {
           model: TradingCard,
           as: 'tradingCard',
-          attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'search_param', 'category_id'],
+          attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'search_param', 'category_id', 'title'],
           required: false
         },
         {
@@ -3557,6 +3557,7 @@ export class UserService {
             trading_card_slug: cardData.tradingCard.trading_card_slug,
             trading_card_asking_price: cardData.tradingCard.trading_card_asking_price,
             search_param: cardData.tradingCard.search_param,
+            title: cardData.tradingCard.title || null,
             category_name: category_name
           } : null,
           payment_detail: {
@@ -3818,7 +3819,7 @@ export class UserService {
         {
           model: TradingCard,
           as: 'mainTradingCard',
-          attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price'],
+          attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'title', 'search_param'],
           required: false
         },
         {
@@ -3938,7 +3939,9 @@ export class UserService {
             id: tradeData.mainTradingCard.id,
             trading_card_img: tradeData.mainTradingCard.trading_card_img,
             trading_card_slug: tradeData.mainTradingCard.trading_card_slug,
-            trading_card_asking_price: tradeData.mainTradingCard.trading_card_asking_price
+            trading_card_asking_price: tradeData.mainTradingCard.trading_card_asking_price,
+            title: tradeData.mainTradingCard.title || null,
+            search_param: tradeData.mainTradingCard.search_param || null
           } : null,
           tradeProposalStatus: tradeData.tradeProposalStatus ? {
             id: tradeData.tradeProposalStatus.id,
@@ -4974,6 +4977,7 @@ export class UserService {
             'trading_card_status',
             'code',
             'search_param',
+            'title',
             'category_id'
           ]
         : [
@@ -4986,6 +4990,7 @@ export class UserService {
           'trading_card_status',
           'code',
           'search_param',
+          'title',
           'category_id'
           ];
 
@@ -5016,6 +5021,7 @@ export class UserService {
           status: card.trading_card_status,
           code: card.code,
           search_param: card.search_param,
+          title: (card as any).title || null,
           category_id: card.category_id,
           category_name: category_name
         };

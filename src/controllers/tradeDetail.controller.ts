@@ -74,7 +74,7 @@ export const getTradeDetail = async (req: Request, res: Response) => {
     // Get trading cards details
     const receivedProducts = await TradingCard.findAll({
       where: { id: { [Op.in]: receiveCards } },
-      attributes: ['id', 'category_id', 'search_param', 'trading_card_estimated_value'],
+      attributes: ['id', 'category_id', 'search_param','title','trading_card_estimated_value'],
       include: [
         {
           model: Category,
@@ -86,7 +86,7 @@ export const getTradeDetail = async (req: Request, res: Response) => {
 
     const sendProducts = await TradingCard.findAll({
       where: { id: { [Op.in]: sendCards } },
-      attributes: ['id', 'category_id', 'search_param', 'trading_card_estimated_value'],
+      attributes: ['id', 'category_id', 'search_param','title','trading_card_estimated_value'],
       include: [
         {
           model: Category,
@@ -241,12 +241,14 @@ export const getTradeDetail = async (req: Request, res: Response) => {
       your_products: receivedProducts.map(product => ({
         id: product.id,
         search_param: product.search_param,
+        title: product.title,
         estimated_value: product.trading_card_estimated_value,
         category: product.parentCategory?.sport_name
       })),
       their_products: sendProducts.map(product => ({
         id: product.id,
         search_param: product.search_param,
+        title: product.title,
         estimated_value: product.trading_card_estimated_value,
         category: product.parentCategory?.sport_name
       })),

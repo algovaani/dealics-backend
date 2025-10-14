@@ -13,9 +13,11 @@ import {
   getDeletedTradingCards
 } from "../../controllers/tradingcard.controller.js";
 import { userAuth } from "../../middlewares/auth.middleware.js";
+import { noCache } from "../../middlewares/noCache.middleware.js";
 import { upload } from "../../utils/fileUpload.js";
 
 const router = Router();
+router.use(noCache);
 
 
 router.use(userAuth);

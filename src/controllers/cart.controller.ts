@@ -798,7 +798,7 @@ export const getCart = async (req: Request, res: Response) => {
             attributes: ['id', 'sport_name']
           }],
           attributes: [
-            'id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 
+            'id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'title', 
             'trading_card_offer_accept_above', 'trader_id', 'free_shipping',
             'usa_shipping_flat_rate', 'usa_add_product_flat_rate', 
             'canada_shipping_flat_rate', 'canada_add_product_flat_rate', 'search_param'
@@ -895,6 +895,7 @@ export const getCart = async (req: Request, res: Response) => {
               canada_shipping_flat_rate: detail.product.canada_shipping_flat_rate,
               canada_add_product_flat_rate: detail.product.canada_add_product_flat_rate,
               search_param: detail.product.search_param,
+              title: detail.product.title,
               sport_name: detail.product.parentCategory ? detail.product.parentCategory.sport_name : null
             } : null
           };
@@ -982,6 +983,7 @@ const setTradeAndOfferStatus = async (alias: string, setFor: string, triggerId: 
 
 // Helper function to create notifications (Enhanced based on Laravel __setTradersNotificationOnVariousActionBasis)
 import { setTradersNotificationOnVariousActionBasis, setNotificationContext } from '../services/notification.service.js';
+import { time } from "console";
 
 
 // Fallback map if no template found (kept for safety)
@@ -2101,8 +2103,8 @@ export const confirmPaymentReceived = async (req: Request, res: Response) => {
       let cardName = 'Trading card';
       if (buyOffer.main_card && buyOffer.main_card > 0) {
         const tradingCard = await TradingCard.findByPk(buyOffer.main_card);
-        if (tradingCard && tradingCard.search_param) {
-          cardName = `1. ${tradingCard.search_param}`;
+        if (tradingCard && tradingCard.title) {
+          cardName = `1. ${tradingCard.title}`;
         }
       }
       
@@ -2257,6 +2259,7 @@ export const tradeProposal = async (req: Request, res: Response) => {
         'id',
         'trader_id',
         'search_param',
+        'title',
         'trading_card_img',
         'category_id',
         'trading_card_estimated_value'
@@ -2288,6 +2291,7 @@ export const tradeProposal = async (req: Request, res: Response) => {
         'id',
         'trader_id',
         'search_param',
+        'title',
         'trading_card_img',
         'category_id',
         'trading_card_estimated_value'
@@ -2353,6 +2357,7 @@ export const tradeProposal = async (req: Request, res: Response) => {
         id: card.id,
         trader_id: card.trader_id,
         search_param: card.search_param,
+        title: card.title,
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
@@ -2362,6 +2367,7 @@ export const tradeProposal = async (req: Request, res: Response) => {
         id: card.id,
         trader_id: card.trader_id,
         search_param: card.search_param,
+        title: card.title,
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
@@ -2439,11 +2445,11 @@ export const proposeTrade = async (req: Request, res: Response) => {
         is_traded: '1',
         mark_as_deleted: null
       },
-      attributes: ['id', 'search_param']
+      attributes: ['id', 'title']
     });
 
     if (tradedCards.length > 0) {
-      const tradedProducts = tradedCards.map(card => card.search_param).join(', ');
+      const tradedProducts = tradedCards.map(card => card.title).join(', ');
       return sendApiResponse(res, 400, false, `You can not continue this trade. Below products are already in trade or buy/sell: ${tradedProducts}`, []);
     }
 
@@ -2648,16 +2654,16 @@ const sendTradeEmailNotifications = async (tradeProposal: any, status: string, a
 
     const sentCards = await TradingCard.findAll({
       where: { id: { [Op.in]: sendCards } },
-      attributes: ['search_param']
+      attributes: ['title']
     });
 
     const receivedCards = await TradingCard.findAll({
       where: { id: { [Op.in]: receiveCards } },
-      attributes: ['search_param']
+      attributes: ['title']
     });
 
-    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
-    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.title}`).join('\n');
+    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.title}`).join('\n');
 
     const proposedAmount = tradeProposal.add_cash || tradeProposal.ask_cash || 0;
     const message = tradeProposal.message || 'N/A';
@@ -2736,11 +2742,11 @@ const sendNewTradeProposalEmails = async (tradeProposal: any): Promise<void> => 
     const sentIds = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
     const receivedIds = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
 
-    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sentIds } }, attributes: ['search_param'] });
-    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receivedIds } }, attributes: ['search_param'] });
+    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sentIds } }, attributes: ['title'] });
+    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receivedIds } }, attributes: ['title'] });
 
-    const itemsSend = sentCards.map((card, idx) => `${idx + 1}. ${card.search_param}`).join('\n');
-    const itemsReceived = receivedCards.map((card, idx) => `${idx + 1}. ${card.search_param}`).join('\n');
+    const itemsSend = sentCards.map((card, idx) => `${idx + 1}. ${card.title}`).join('\n');
+    const itemsReceived = receivedCards.map((card, idx) => `${idx + 1}. ${card.title}`).join('\n');
 
     let proposedamount = 0;
     if (tradeProposal.add_cash && tradeProposal.add_cash > 0) proposedamount = tradeProposal.add_cash;
@@ -2842,11 +2848,11 @@ const sendCancelOrDeclineEmails = async (tradeProposal: any, tradeStatus: string
     const sendCards = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
     const receiveCards = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
 
-    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sendCards } }, attributes: ['search_param'] });
-    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receiveCards } }, attributes: ['search_param'] });
+    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sendCards } }, attributes: ['title'] });
+    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receiveCards } }, attributes: ['title'] });
 
-    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
-    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.title}`).join('\n');
+    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.title}`).join('\n');
 
     const proposedAmount = tradeProposal.add_cash || tradeProposal.ask_cash || 0;
     const message = tradeProposal.message || tradeProposal.counter_personalized_message || 'N/A';
@@ -2936,16 +2942,16 @@ const sendPayToContinueEmail = async (tradeProposal: any, payerType: 'sender' | 
 
     const sentCards = await TradingCard.findAll({
       where: { id: { [Op.in]: sendCards } },
-      attributes: ['search_param']
+      attributes: ['search_param','title']
     });
 
     const receivedCards = await TradingCard.findAll({
       where: { id: { [Op.in]: receiveCards } },
-      attributes: ['search_param']
+      attributes: ['search_param','title']
     });
 
-    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
-    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.title}`).join('\n');
+    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.title}`).join('\n');
 
     const proposedAmount = tradeProposal.add_cash || tradeProposal.ask_cash || 0;
     const message = tradeProposal.message || tradeProposal.counter_personalized_message || 'N/A';
@@ -3017,11 +3023,11 @@ const sendEditTradeEmails = async (tradeProposal: any, mode: 'Counter Trade' | '
     const sendIds = tradeProposal.send_cards ? tradeProposal.send_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
     const receiveIds = tradeProposal.receive_cards ? tradeProposal.receive_cards.split(',').map((id: string) => parseInt(id.trim())) : [];
 
-    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sendIds } }, attributes: ['search_param'] });
-    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receiveIds } }, attributes: ['search_param'] });
+    const sentCards = await TradingCard.findAll({ where: { id: { [Op.in]: sendIds } }, attributes: ['search_param','title'] });
+    const receivedCards = await TradingCard.findAll({ where: { id: { [Op.in]: receiveIds } }, attributes: ['search_param','title'] });
 
-    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
-    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.search_param}`).join('\n');
+    const itemsSend = sentCards.map((card, index) => `${index + 1}. ${card.title}`).join('\n');
+    const itemsReceived = receivedCards.map((card, index) => `${index + 1}. ${card.title}`).join('\n');
 
     let proposedamount = 0;
     if (tradeProposal.add_cash && tradeProposal.add_cash > 0) proposedamount = tradeProposal.add_cash;
@@ -3391,7 +3397,7 @@ export const editTradeProposalDetail = async (req: Request, res: Response) => {
     const userClosets = await TradingCard.findAll({
       where: userClosetsWhere,
       attributes: [
-        'id', 'code', 'trader_id', 'search_param', 'trading_card_img', 
+        'id', 'code', 'trader_id', 'search_param', 'title','trading_card_img', 
         'category_id', 'trading_card_estimated_value'
       ],
       include: [{
@@ -3423,7 +3429,7 @@ export const editTradeProposalDetail = async (req: Request, res: Response) => {
     const interestedClosets = await TradingCard.findAll({
       where: interestedClosetsWhere,
       attributes: [
-        'id', 'code', 'trader_id', 'search_param', 'trading_card_img', 
+        'id', 'code', 'trader_id', 'search_param','title','trading_card_img', 
         'category_id', 'trading_card_estimated_value'
       ],
       include: [{
@@ -3498,6 +3504,7 @@ export const editTradeProposalDetail = async (req: Request, res: Response) => {
         code: card.code,
         trader_id: card.trader_id,
         search_param: card.search_param,
+        title: card.title,
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
@@ -3509,6 +3516,7 @@ export const editTradeProposalDetail = async (req: Request, res: Response) => {
         code: card.code,
         trader_id: card.trader_id,
         search_param: card.search_param,
+        title: card.title,
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
@@ -3775,7 +3783,7 @@ export const reviewTradeProposal = async (req: Request, res: Response) => {
         mark_as_deleted: null
       },
       attributes: [
-        'id', 'code', 'trader_id', 'search_param', 'trading_card_img', 
+        'id', 'code', 'trader_id', 'search_param','title', 'trading_card_img', 
         'category_id', 'trading_card_estimated_value'
       ],
       include: [{
@@ -3794,7 +3802,7 @@ export const reviewTradeProposal = async (req: Request, res: Response) => {
         mark_as_deleted: null
       },
       attributes: [
-        'id', 'code', 'trader_id', 'search_param', 'trading_card_img', 
+        'id', 'code', 'trader_id', 'search_param','title', 'trading_card_img', 
         'category_id', 'trading_card_estimated_value'
       ],
       include: [{
@@ -3869,6 +3877,7 @@ export const reviewTradeProposal = async (req: Request, res: Response) => {
         code: card.code,
         trader_id: card.trader_id,
         search_param: card.search_param,
+        title: card.title,
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
@@ -3879,6 +3888,7 @@ export const reviewTradeProposal = async (req: Request, res: Response) => {
         code: card.code,
         trader_id: card.trader_id,
         search_param: card.search_param,
+        title: card.title,
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
@@ -4228,7 +4238,7 @@ export const getShippingAddress = async (req: Request, res: Response) => {
       sendTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: receiveCards } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param','title', 'trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4241,7 +4251,7 @@ export const getShippingAddress = async (req: Request, res: Response) => {
       receiveTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: sendCards } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param','title', 'trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4255,7 +4265,7 @@ export const getShippingAddress = async (req: Request, res: Response) => {
       sendTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: sendCards } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param','title','trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4268,7 +4278,7 @@ export const getShippingAddress = async (req: Request, res: Response) => {
       receiveTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: receiveCards } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param','title','trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4358,7 +4368,8 @@ export const getShippingAddress = async (req: Request, res: Response) => {
       trading_card_img: card.trading_card_img,
       category_id: card.category_id,
       trading_card_estimated_value: card.trading_card_estimated_value,
-      cardname: card.search_param,
+      cardname: card.title,
+      title: card.title,
       category_name: (card as any).parentCategory?.sport_name || ''
     }));
 
@@ -4367,10 +4378,11 @@ export const getShippingAddress = async (req: Request, res: Response) => {
       code: card.code,
       trader_id: card.trader_id,
       search_param: card.search_param,
+      title: card.title,
       trading_card_img: card.trading_card_img,
       category_id: card.category_id,
       trading_card_estimated_value: card.trading_card_estimated_value,
-      cardname: card.search_param,
+      cardname: card.title,
       category_name: (card as any).parentCategory?.sport_name || ''
     }));
 
@@ -4528,7 +4540,7 @@ export const getShippingParcel = async (req: Request, res: Response) => {
       },
       order: [['id', 'DESC']],
       attributes: [
-        'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+        'id', 'code', 'trader_id', 'search_param', 'title', 'trading_card_img',
         'category_id', 'trading_card_estimated_value'
       ],
       include: [{
@@ -4550,7 +4562,7 @@ export const getShippingParcel = async (req: Request, res: Response) => {
       sendTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: receiveCardsArray } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param', 'title', 'trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4563,7 +4575,7 @@ export const getShippingParcel = async (req: Request, res: Response) => {
       receiveTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: sendCardsArray } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param', 'title','trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4577,7 +4589,7 @@ export const getShippingParcel = async (req: Request, res: Response) => {
       sendTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: sendCardsArray } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param', 'title', 'trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4590,7 +4602,7 @@ export const getShippingParcel = async (req: Request, res: Response) => {
       receiveTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: receiveCardsArray } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param', 'title', 'trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4607,6 +4619,7 @@ export const getShippingParcel = async (req: Request, res: Response) => {
       code: card.code,
       trader_id: card.trader_id,
       search_param: card.search_param,
+      title: card.title,
       trading_card_img: card.trading_card_img,
       category_id: card.category_id,
       trading_card_estimated_value: card.trading_card_estimated_value,
@@ -4622,7 +4635,8 @@ export const getShippingParcel = async (req: Request, res: Response) => {
       trading_card_img: card.trading_card_img,
       category_id: card.category_id,
       trading_card_estimated_value: card.trading_card_estimated_value,
-      cardname: card.search_param,
+      cardname: card.title,
+      title: card.title,
       category_name: (card as any).parentCategory?.sport_name || ''
     }));
 
@@ -4631,10 +4645,11 @@ export const getShippingParcel = async (req: Request, res: Response) => {
       code: card.code,
       trader_id: card.trader_id,
       search_param: card.search_param,
+      title: card.title,
       trading_card_img: card.trading_card_img,
       category_id: card.category_id,
       trading_card_estimated_value: card.trading_card_estimated_value,
-      cardname: card.search_param,
+      cardname: card.title,
       category_name: (card as any).parentCategory?.sport_name || ''
     }));
 
@@ -4910,7 +4925,7 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
       sendTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: receiveCards } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param','title', 'trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4923,7 +4938,7 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
       receiveTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: sendCards } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param','title', 'trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4944,7 +4959,7 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
       sendTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: sendCards } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param','title','trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4957,7 +4972,7 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
       receiveTradeCards = await TradingCard.findAll({
         where: { id: { [Op.in]: receiveCards } },
         attributes: [
-          'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+          'id', 'code', 'trader_id', 'search_param','title','trading_card_img',
           'category_id', 'trading_card_estimated_value'
         ],
         include: [{
@@ -4998,7 +5013,7 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
       },
       order: [['id', 'DESC']],
       attributes: [
-        'id', 'code', 'trader_id', 'search_param', 'trading_card_img',
+        'id', 'code', 'trader_id', 'search_param','title', 'trading_card_img',
         'category_id', 'trading_card_estimated_value'
       ],
       include: [{
@@ -5017,7 +5032,8 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
       trading_card_img: card.trading_card_img,
       category_id: card.category_id,
       trading_card_estimated_value: card.trading_card_estimated_value,
-      cardname: card.search_param,
+      cardname: card.title,
+      title: card.title,
       category_name: (card as any).parentCategory?.sport_name || ''
     }));
 
@@ -5029,7 +5045,8 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
       trading_card_img: card.trading_card_img,
       category_id: card.category_id,
       trading_card_estimated_value: card.trading_card_estimated_value,
-      cardname: card.search_param,
+      cardname: card.title,
+      title: card.title,
       category_name: (card as any).parentCategory?.sport_name || ''
     }));
 
@@ -5038,10 +5055,11 @@ export const getShippingCarrier = async (req: Request, res: Response) => {
       code: card.code,
       trader_id: card.trader_id,
       search_param: card.search_param,
+      title: card.title,
       trading_card_img: card.trading_card_img,
       category_id: card.category_id,
       trading_card_estimated_value: card.trading_card_estimated_value,
-      cardname: card.search_param,
+      cardname: card.title,
       category_name: (card as any).parentCategory?.sport_name || ''
     }));
 
@@ -5207,7 +5225,7 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
 
     // Build package details from trade cards being sent by the current user
     
-    let packageDetails = [] as string[];
+    let packageDetails: string[][] = [];
 
     try {
       // Fetch trade proposal to determine which cards the current user is sending
@@ -5230,11 +5248,22 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
         if (sendingCardIds.length > 0) {
           const sendingCards = await TradingCard.findAll({
             where: { id: { [Op.in]: sendingCardIds } },
-            attributes: ['id', 'search_param']
+            attributes: ['id', 'search_param','title','category_id']
           });
-          packageDetails = sendingCards
-            .map(card => (card.search_param || '').trim())
-            .filter(name => name.length > 0);
+          // join categories for names
+          const categoryIds = (sendingCards.map(c => c.category_id)
+            .filter((id: any): id is number => typeof id === 'number'));
+          const categories = await Category.findAll({ where: { id: { [Op.in]: categoryIds as number[] } }, attributes: ['id','sport_name'] });
+          const catMap: Record<number, string> = {} as any;
+          categories.forEach(cat => { (catMap as any)[cat.id] = cat.sport_name; });
+
+          // Build detailed package details with only title and category_name
+          packageDetails = (sendingCards as any[])
+            .map(card => [
+              card.category_id ? (catMap as any)[card.category_id] || '' : '',
+              String(card.title || '').trim()
+            ])
+            .filter(item => item[1] && item[1].length > 0);
         }
       }
     } catch (pkgErr) {
@@ -5248,14 +5277,17 @@ export const getShippingCheckout = async (req: Request, res: Response) => {
         for (const field of possibleFields) {
           const val = postageLabel[field];
           if (typeof val === 'string' && val.trim() !== '') {
-            packageDetails = val.split(' | ').filter((item: string) => item.trim() !== '');
+            packageDetails = val
+              .split(' | ')
+              .map((item: string) => ['', item ? item.trim() : ''])
+              .filter((item: string[]) => Array.isArray(item) && typeof item[1] === 'string' && item[1].length > 0);
             break;
           }
         }
       }
       
       if (packageDetails.length === 0) {
-        packageDetails = ['Package contents not specified'];
+        packageDetails = [['', 'Package contents not specified']];
       }
     }
 
@@ -5759,6 +5791,7 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
         tc.code,
         tc.trader_id,
         tc.search_param,
+        tc.title,
         tc.trading_card_img,
         tc.category_id,
         tc.trading_card_estimated_value,
@@ -5794,6 +5827,7 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
         tc.code,
         tc.trader_id,
         tc.search_param,
+        tc.title,
         tc.trading_card_img,
         tc.category_id,
         tc.trading_card_estimated_value,
@@ -5905,6 +5939,7 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
         code: card.code,
         trader_id: card.trader_id,
         search_param: card.search_param,
+        title: card.title,
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
@@ -5915,7 +5950,8 @@ export const getTradeCounterDetail = async (req: Request, res: Response) => {
         id: card.id,
         code: card.code,
         trader_id: card.trader_id,
-        search_param: card.search_param,
+        search_param: card.search_param,  
+        title: card.title,
         trading_card_img: card.trading_card_img,
         category_id: card.category_id,
         trading_card_estimated_value: card.trading_card_estimated_value,
@@ -6078,12 +6114,12 @@ export const shippingTradeSuccess = async (req: Request, res: Response) => {
 
     const cards = await TradingCard.findAll({
       where: { id: cardIds },
-      attributes: ['search_param']
+      attributes: ['title']
     });
 
     const cardNames = cards
-      .filter(card => card.search_param)
-      .map((card, index) => `${index + 1}. ${card.search_param}`)
+      .filter(card => card.title)
+      .map((card, index) => `${index + 1}. ${card.title}`)
       .join('\n');
 
     // Send emails if tracking ID exists
@@ -6185,7 +6221,7 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
             {
               model: TradingCard,
               as: 'product',
-              attributes: ['id', 'search_param', 'trading_card_img', 'category_id'],
+              attributes: ['id', 'search_param','title', 'trading_card_img', 'category_id'],
               include: [
                 {
                   model: Category,
@@ -6199,7 +6235,7 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
         {
           model: TradingCard,
           as: 'tradingCard',
-          attributes: ['id', 'search_param', 'trading_card_img', 'category_id'],
+          attributes: ['id', 'search_param','title', 'trading_card_img', 'category_id'],
           include: [
             {
               model: Category,
@@ -6234,7 +6270,7 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
       where: {
         id: { [Op.in]: mainCardIds }
       },
-      attributes: ['id', 'category_id', 'search_param', 'trading_card_img'],
+      attributes: ['id', 'category_id', 'search_param','title','trading_card_img'],
       include: [
         {
           model: Category,
@@ -6296,7 +6332,8 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
       sendTradeCards: sendTradeCards.map((card: any) => ({
         id: card.id,
         category_id: card.category_id,
-        search_param: card.search_param,
+        search_param: card.search_param,    
+        title: card.title,
         trading_card_img: card.trading_card_img,
         categoryname: card.parentCategory ? {
           id: card.parentCategory.id,
@@ -6315,7 +6352,8 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
           id: product.id,
           product: product.product ? {
             id: product.product.id,
-            search_param: product.product.search_param,
+            search_param: product.product.search_param, 
+            title: product.product.title,
             trading_card_img: product.product.trading_card_img,
             categoryname: product.product.parentCategory ? {
               id: product.product.parentCategory.id,
@@ -6327,6 +6365,7 @@ export const getShippingAddressDetails = async (req: Request, res: Response) => 
         tradingcard: buySellCardData.tradingCard ? {
           id: buySellCardData.tradingCard.id,
           search_param: buySellCardData.tradingCard.search_param,
+          title: buySellCardData.tradingCard.title,
           trading_card_img: buySellCardData.tradingCard.trading_card_img,
           categoryname: buySellCardData.tradingCard.parentCategory ? {
             id: buySellCardData.tradingCard.parentCategory.id,
@@ -6501,7 +6540,7 @@ export const getShippingParcelBuysell = async (req: Request, res: Response) => {
             {
               model: TradingCard,
               as: 'product',
-              attributes: ['id', 'search_param', 'trading_card_img', 'category_id']
+              attributes: ['id', 'search_param','title','trading_card_img', 'category_id']
             }
           ]
         }
@@ -6551,7 +6590,7 @@ export const getShippingParcelBuysell = async (req: Request, res: Response) => {
       where: {
         id: buySellCard.main_card
       },
-      attributes: ['id', 'category_id', 'search_param', 'trading_card_img']
+      attributes: ['id', 'category_id', 'search_param','title','trading_card_img']
     });
 
     // Get trading cards that are being shipped (only cards from this specific buy/sell transaction)
@@ -6559,7 +6598,7 @@ export const getShippingParcelBuysell = async (req: Request, res: Response) => {
       where: {
         id: { [Op.in]: mainCardIds }
       },
-      attributes: ['id', 'category_id', 'search_param', 'trading_card_img'],
+      attributes: ['id', 'category_id', 'search_param','title','trading_card_img'],
       order: [['id', 'DESC']]
     });
 
@@ -6600,9 +6639,10 @@ export const getShippingParcelBuysell = async (req: Request, res: Response) => {
       tradingcards: tradingcards.map((card: any) => ({
         id: card.id,
         category_id: card.category_id,
-        search_param: card.search_param,
+        search_param: card.search_param,  
+        title: card.title,
         trading_card_img: card.trading_card_img,
-        cardname: card.search_param, // Blade uses cardname
+        cardname: card.title, // Blade uses cardname
         product_copy_url: `#`, // Default URL
         categoryname: categoryMap[card.category_id] ? {
           id: categoryMap[card.category_id].id,
@@ -6612,9 +6652,10 @@ export const getShippingParcelBuysell = async (req: Request, res: Response) => {
       sendTradeCards: sendTradeCards.map((card: any) => ({
         id: card.id,
         category_id: card.category_id,
-        search_param: card.search_param,
+        search_param: card.search_param,  
+        title: card.title,
         trading_card_img: card.trading_card_img,
-        cardname: card.search_param, // Blade uses cardname
+        cardname: card.title, // Blade uses cardname
         categoryname: categoryMap[card.category_id] ? {
           id: categoryMap[card.category_id].id,
           sport_name: categoryMap[card.category_id].sport_name
@@ -6631,9 +6672,10 @@ export const getShippingParcelBuysell = async (req: Request, res: Response) => {
           product: product.product ? {
             id: product.product.id,
             search_param: product.product.search_param,
+            title: product.product.title,
             trading_card_img: product.product.trading_card_img,
             category_id: product.product.category_id,
-            cardname: product.product.search_param, // Blade uses cardname
+            cardname: product.product.title, // Blade uses cardname
             product_copy_url: `#`, // Default URL
             categoryname: categoryMap[product.product.category_id] ? {
               id: categoryMap[product.product.category_id].id,
@@ -6730,13 +6772,13 @@ export const saveParcelBuysell = async (req: Request, res: Response) => {
     const packageIds = Array.isArray(packageSelect) ? packageSelect : [packageSelect];
     const tradingCards = await TradingCard.findAll({
       where: { id: { [Op.in]: packageIds } },
-      attributes: ['id', 'search_param']
+      attributes: ['id', 'search_param','title']
     });
 
     // Create label info
     const label_info = tradingCards.map((card: any) => ({
       id: `pl_${card.id}`,
-      object: card.search_param
+      object: card.title
     }));
 
     // Update shipment with parcel and label data
@@ -6931,7 +6973,7 @@ export const getShipmentCarrierBuysell = async (req: Request, res: Response) => 
     if (buySellCard.main_card) {
       const tradingCards = await TradingCard.findAll({
         where: { id: buySellCard.main_card },
-        attributes: ['id', 'category_id', 'search_param', 'trading_card_img']
+        attributes: ['id', 'category_id', 'search_param', 'title', 'trading_card_img']
       });
 
       // Get categories for sendTradeCards
@@ -6950,8 +6992,9 @@ export const getShipmentCarrierBuysell = async (req: Request, res: Response) => 
         id: card.id,
         category_id: card.category_id,
         search_param: card.search_param,
+        title: card.title,
         trading_card_img: card.trading_card_img,
-        cardname: card.search_param, // Blade uses cardname
+        cardname: card.title, // Blade uses cardname
         categoryname: categoryMap[card.category_id] ? {
           id: categoryMap[card.category_id].id,
           sport_name: categoryMap[card.category_id].sport_name
@@ -6998,6 +7041,7 @@ export const getShipmentCarrierBuysell = async (req: Request, res: Response) => 
           product: product.product ? {
             id: product.product.id,
             search_param: product.product.search_param,
+            title: product.product.title,
             trading_card_img: product.product.trading_card_img,
             category_id: product.product.category_id,
             categoryname: product.product.parentCategory ? {
@@ -7280,7 +7324,7 @@ export const getShippingCheckoutBuysell = async (req: Request, res: Response) =>
         {
           model: TradingCard,
           as: 'tradingCard',
-          attributes: ['id', 'search_param']
+          attributes: ['id', 'title']
         },
         {
           model: BuyOfferProduct,
@@ -7289,7 +7333,7 @@ export const getShippingCheckoutBuysell = async (req: Request, res: Response) =>
             {
               model: TradingCard,
               as: 'product',
-              attributes: ['id', 'search_param']
+              attributes: ['id', 'title']
             }
           ]
         }
@@ -7356,29 +7400,35 @@ export const getShippingCheckoutBuysell = async (req: Request, res: Response) =>
           weight: formattedWeight
         };
       })(),
-      package_details: (() => {
-        const packageContents = [];
-        
-        // Add main trading card if exists
-        if ((buySellCard as any)?.tradingCard?.search_param) {
-          packageContents.push((buySellCard as any).tradingCard.search_param);
-        }
-        
-        // Add buy offer products if exist
+      package_details: await (async () => {
+        const details: string[][] = [];
+        // Collect product IDs for category lookup
+        const ids: number[] = [];
+        if ((buySellCard as any)?.tradingCard?.id) ids.push((buySellCard as any).tradingCard.id);
         if ((buySellCard as any)?.buyOfferProducts && (buySellCard as any).buyOfferProducts.length > 0) {
           (buySellCard as any).buyOfferProducts.forEach((product: any) => {
-            if (product.product?.search_param) {
-              packageContents.push(product.product.search_param);
-            }
+            if (product.product?.id) ids.push(product.product.id);
           });
         }
-        
-        // If no trading cards found, show default message
-        if (packageContents.length === 0) {
-          packageContents.push("Package contents not specified");
+
+        if (ids.length > 0) {
+          const cards = await TradingCard.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id','title','category_id'] });
+          const categoryIds = cards.map(c => c.category_id).filter((id: any): id is number => typeof id === 'number');
+          const categories = await Category.findAll({ where: { id: { [Op.in]: categoryIds } }, attributes: ['id','sport_name'] });
+          const catMap: Record<number, string> = {} as any;
+          categories.forEach(cat => { (catMap as any)[cat.id] = cat.sport_name; });
+          cards.forEach(card => {
+            const title = String((card as any).title || '').trim();
+            const catName = card.category_id ? (catMap as any)[card.category_id] || '' : '';
+            if (title) details.push([catName, title]);
+          });
         }
-        
-        return packageContents;
+
+        if (details.length === 0) {
+          details.push(['Package contents not specified','']);
+        }
+
+        return details;
       })(),
       shipment_details: {
         carrier: rateData.carrier || '',
@@ -7860,8 +7910,8 @@ const sendShipmentConfirmationEmailsForBuySell = async (buySellId: number) => {
     let cardName = '';
     if (buySellCard.main_card && buySellCard.main_card > 0) {
       const tradingCard = await TradingCard.findByPk(buySellCard.main_card);
-      if (tradingCard?.search_param) {
-        cardName = `1. ${tradingCard.search_param}`;
+      if (tradingCard?.title) {
+        cardName = `1. ${tradingCard.title}`;
       }
     } else {
       const buyOfferProducts = await BuyOfferProduct.findAll({
@@ -7869,13 +7919,13 @@ const sendShipmentConfirmationEmailsForBuySell = async (buySellId: number) => {
         include: [{
           model: TradingCard,
           as: 'product',
-          attributes: ['search_param']
+          attributes: ['search_param', 'title']
         }]
       });
 
       if (buyOfferProducts.length > 0) {
         const cardNamesArray = buyOfferProducts.map((item: any, index: number) => {
-          return item.product?.search_param ? `${index + 1}. ${item.product.search_param}` : null;
+          return item.product?.title ? `${index + 1}. ${item.product.title}` : null;
         }).filter(Boolean);
         cardName = cardNamesArray.join('<br/>');
       }

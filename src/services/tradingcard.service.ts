@@ -505,12 +505,11 @@ export class TradingCardService {
       const allFieldNames = Object.keys(cardData);
       
              // Filter out null/undefined values and exclude basic fields that are already in main response
-       const basicFields = ['id', 'code', 'trading_card_status', 'category_id', 'search_param', 'title',
+       const basicFields = ['id', 'code', 'trading_card_status', 'category_id', 'search_param',
                            'trading_card_img', 'trading_card_img_back', 'trading_card_slug', 
                            'is_traded', 'created_at', 'is_demo', 'trader_id', 
                            'trading_card_asking_price', 'trading_card_estimated_value', 
-                           'trading_card_recent_sell_link', 'trading_card_recent_trade_value', 
-                           'can_trade', 'can_buy', 'trader'];
+                           'trading_card_recent_sell_link', 'trading_card_recent_trade_value', 'trader'];
       
       for (const fieldName of allFieldNames) {
         if (!basicFields.includes(fieldName) && 

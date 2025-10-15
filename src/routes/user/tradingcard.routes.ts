@@ -2,7 +2,8 @@ import { Router } from "express";
 import { 
   getTradingCards, 
   getUserTradingCards,
-  getTradingCard, 
+  getTradingCard,
+  getUserTradingCard, 
   getTradingCardsByCategoryName, 
   getMyTradingCardsByCategory, 
   getFormFieldsByCategory, 
@@ -46,7 +47,7 @@ router.put("/:cardId/status", userAuth, updateTradingCardStatus);
 router.delete("/:id", deleteTradingCard);
 
 // Catch-all route must be last
-router.get("/:id", getTradingCard);
+router.get("/:id", getUserTradingCard);
 
 
 export default router;

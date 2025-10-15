@@ -60,6 +60,7 @@ import { Type } from './type.model.js';
 import { RecordSize } from './recordSize.model.js';
 import { MintMark } from './mintMarks.model.js';
 import { ExclusiveEventRetailer } from './exclusiveEventRetailers.model.js';
+import { Block } from './block.model.js';
 
 // Import all models here
 export const models = [
@@ -124,6 +125,7 @@ export const models = [
   ,RecordSize
   ,MintMark
   ,ExclusiveEventRetailer
+  ,Block
 ];
 
 // Function to set up all associations
@@ -614,4 +616,5 @@ export {
   ,RecordSize
   ,MintMark
   ,ExclusiveEventRetailer
+  ,Block
 };

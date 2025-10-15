@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { TradingCardService } from "../services/tradingcard.service.js";
-import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark } from "../models/index.js";
+import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark, ExclusiveEventRetailer } from "../models/index.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
@@ -462,7 +462,8 @@ export const getTradingCards = async (req: Request, res: Response) => {
   }
 };
 
-export const getTradingCard = async (req: Request, res: Response) => {
+// Common function for both public and user trading card endpoints
+const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint: boolean = false) => {
   try {
     // Validate the ID parameter
     const cardId = Number(req.params.id);
@@ -572,6 +573,7 @@ export const getTradingCard = async (req: Request, res: Response) => {
       'seller_notes',
       'shipping_details',
       'usa_shipping_flat_rate',
+      'usa_add_product_flat_rate',
       'canada_shipping_flat_rate',
       'creator_id',
       'vehicle_year_text',
@@ -589,10 +591,13 @@ export const getTradingCard = async (req: Request, res: Response) => {
       'grade_rating_id',
       'canada_add_product_flat_rate',
       'free_shipping',
-      'title'
+      'title',
+      'can_trade',  
+      'can_buy'
     ];
+    // For user endpoint, never exclude fields. For public endpoint, exclude fields when productDetail=true
     const filteredAdditionalFields = Array.isArray(additionalFields)
-      ? (isDetail ? additionalFields.filter((f: any) => !fieldsToExclude.includes(f?.field_name)) : [...additionalFields])
+      ? (isUserEndpoint ? [...additionalFields] : (isDetail ? additionalFields.filter((f: any) => !fieldsToExclude.includes(f?.field_name)) : [...additionalFields]))
       : additionalFields;
 
     // Enrich master-backed fields in additionalFields (issue_number -> year_of_issues)
@@ -685,6 +690,17 @@ export const getTradingCard = async (req: Request, res: Response) => {
           }
         }
 
+        // exclusive_event_retailer -> exclusive_event_retailers
+        const exclusiveEventRetailerField = filteredAdditionalFields.find((f: any) => f?.field_name === 'exclusive_event_retailer' && f.field_value);
+        if (exclusiveEventRetailerField && !isNaN(Number(exclusiveEventRetailerField.field_value))) {
+          const eerRow = await ExclusiveEventRetailer.findByPk(Number(exclusiveEventRetailerField.field_value));
+          if (eerRow) {
+            exclusiveEventRetailerField.field_label = exclusiveEventRetailerField.field_label || 'Exclusive Event/Retailers';
+            exclusiveEventRetailerField.related_field_name = 'exclusive_event_retailers';
+            exclusiveEventRetailerField.related_field_value = eerRow.name;
+          }
+        }
+
         // denomination_slt -> denominations
         const denomField = filteredAdditionalFields.find((f: any) => f?.field_name === 'denomination_slt' && f.field_value);
         if (denomField && !isNaN(Number(denomField.field_value))) {
@@ -762,7 +778,7 @@ export const getTradingCard = async (req: Request, res: Response) => {
           }
         }
 
-        // year_date_of_issue -> years
+        // year_date_of_issue -> years (+ year_date_of_issue_text)
         const ydoiField = filteredAdditionalFields.find((f: any) => f?.field_name === 'year_date_of_issue' && f.field_value);
         if (ydoiField && !isNaN(Number(ydoiField.field_value))) {
           const yearRow = await Year.findByPk(Number(ydoiField.field_value));
@@ -770,6 +786,525 @@ export const getTradingCard = async (req: Request, res: Response) => {
             ydoiField.field_label = ydoiField.field_label || 'Release Year';
             ydoiField.related_field_name = 'years';
             ydoiField.related_field_value = yearRow.name;
+            (ydoiField as any).year_date_of_issue_text = yearRow.name;
+          }
+        }
+
+        // speed -> speeds
+        const speedField = filteredAdditionalFields.find((f: any) => f?.field_name === 'speed' && f.field_value);
+        if (speedField && !isNaN(Number(speedField.field_value))) {
+          const spRow = await Speed.findByPk(Number(speedField.field_value));
+          if (spRow) {
+            speedField.field_label = speedField.field_label || 'Speed';
+            speedField.related_field_name = 'speeds';
+            speedField.related_field_value = spRow.name;
+          }
+        }
+
+        // types -> types
+        const typesField = filteredAdditionalFields.find((f: any) => f?.field_name === 'types' && f.field_value);
+        if (typesField && !isNaN(Number(typesField.field_value))) {
+          const tRow = await Type.findByPk(Number(typesField.field_value));
+          if (tRow) {
+            typesField.field_label = typesField.field_label || 'Type';
+            typesField.related_field_name = 'types';
+            typesField.related_field_value = tRow.name;
+          }
+        }
+
+        // record_size -> record_sizes
+        const rsField = filteredAdditionalFields.find((f: any) => f?.field_name === 'record_size' && f.field_value);
+        if (rsField && !isNaN(Number(rsField.field_value))) {
+          const rsRow = await RecordSize.findByPk(Number(rsField.field_value));
+          if (rsRow) {
+            rsField.field_label = rsField.field_label || 'Record Size';
+            rsField.related_field_name = 'record_sizes';
+            rsField.related_field_value = rsRow.name;
+          }
+        }
+
+        // publication_year -> add publication_year_text with related_field_value
+        const pubYearField = filteredAdditionalFields.find((f: any) => f?.field_name === 'publication_year');
+        if (pubYearField) {
+          // Ensure related_field_value is present; if not, try to resolve from master
+          if (!pubYearField.related_field_value && pubYearField.field_value && !isNaN(Number(pubYearField.field_value))) {
+            const py = await PublicationYear.findByPk(Number(pubYearField.field_value));
+            if (py) {
+              pubYearField.related_field_name = pubYearField.related_field_name || 'publication_years';
+              pubYearField.related_field_value = pubYearField.related_field_value || py.name;
+            }
+          }
+          if (pubYearField.related_field_value) {
+            (pubYearField as any).publication_year_text = pubYearField.related_field_value;
+          }
+        }
+
+        // release_year -> add release_year_text with related_field_value
+        const relYearField = filteredAdditionalFields.find((f: any) => f?.field_name === 'release_year');
+        if (relYearField) {
+          if (!relYearField.related_field_value && relYearField.field_value && !isNaN(Number(relYearField.field_value))) {
+            const yr = await Year.findByPk(Number(relYearField.field_value));
+            if (yr) {
+              relYearField.related_field_name = relYearField.related_field_name || 'years';
+              relYearField.related_field_value = relYearField.related_field_value || yr.name;
+            }
+          }
+          if (relYearField.related_field_value) {
+            (relYearField as any).release_year_text = relYearField.related_field_value;
+          }
+        }
+
+        // vehicle_year -> add vehicle_year_text with related_field_value
+        const vehYearField = filteredAdditionalFields.find((f: any) => f?.field_name === 'vehicle_year');
+        if (vehYearField) {
+          if (!vehYearField.related_field_value && vehYearField.field_value && !isNaN(Number(vehYearField.field_value))) {
+            const vy = await VehicleYear.findByPk(Number(vehYearField.field_value));
+            if (vy) {
+              vehYearField.related_field_name = vehYearField.related_field_name || 'vehicle_years';
+              vehYearField.related_field_value = vehYearField.related_field_value || vy.name;
+            }
+          }
+          if (vehYearField.related_field_value) {
+            (vehYearField as any).vehicle_year_text = vehYearField.related_field_value;
+          }
+        }
+
+        // item_type -> item_types
+        const itemTypeField = filteredAdditionalFields.find((f: any) => f?.field_name === 'item_type' && f.field_value);
+        if (itemTypeField && !isNaN(Number(itemTypeField.field_value))) {
+          const itemTypeRow = await ItemType.findByPk(Number(itemTypeField.field_value));
+          if (itemTypeRow) {
+            itemTypeField.field_label = itemTypeField.field_label || 'Item Type';
+            itemTypeField.related_field_name = 'item_types';
+            itemTypeField.related_field_value = itemTypeRow.name;
+          }
+        }
+
+        // genre -> genres
+        const genreField = filteredAdditionalFields.find((f: any) => f?.field_name === 'genre' && f.field_value);
+        if (genreField && !isNaN(Number(genreField.field_value))) {
+          const genreRow = await Genre.findByPk(Number(genreField.field_value));
+          if (genreRow) {
+            genreField.field_label = genreField.field_label || 'Genre';
+            genreField.related_field_name = 'genres';
+            genreField.related_field_value = genreRow.name;
+          }
+        }
+
+        // featured_person_artist -> features (fallback to superhero_teams if needed)
+        const fpaField = filteredAdditionalFields.find((f: any) => f?.field_name === 'featured_person_artist' && f.field_value !== undefined && f.field_value !== null);
+        if (fpaField) {
+          const numericId = Number(fpaField.field_value);
+          if (!isNaN(numericId)) {
+            let relatedName: string | undefined;
+            let relatedTable = 'features';
+            const featureRow = await Feature.findByPk(numericId);
+            if (featureRow) relatedName = featureRow.name;
+            if (!relatedName) {
+              const teamRow = await SuperheroTeam.findByPk(numericId);
+              if (teamRow) {
+                relatedName = teamRow.name;
+                relatedTable = 'superhero_teams';
+              }
+            }
+            if (relatedName) {
+              fpaField.field_label = fpaField.field_label || 'Featured Person/Artist';
+              fpaField.related_field_name = relatedTable;
+              fpaField.related_field_value = relatedName;
+            }
+          } else if (typeof fpaField.field_value === 'string' && fpaField.field_value.trim()) {
+            // If API sent text instead of ID, reflect as related value
+            fpaField.field_label = fpaField.field_label || 'Featured Person/Artist';
+            fpaField.related_field_name = 'features';
+            fpaField.related_field_value = fpaField.field_value.trim();
+          }
+        }
+
+        // Map enum 1/0 to human text for is_rookie_card
+        const rookieField = filteredAdditionalFields.find((f: any) => f?.field_name === 'is_rookie_card');
+        if (rookieField && (rookieField.field_value === '1' || rookieField.field_value === 1)) {
+          rookieField.related_field_value = 'Yes';
+        }
+
+        // Map enum 1/0 for is_variant: 1 -> Yes, else -> 0
+        const isVariantField = filteredAdditionalFields.find((f: any) => f?.field_name === 'is_variant');
+        if (isVariantField) {
+          if (isVariantField.field_value === '1' || isVariantField.field_value === 1) {
+            isVariantField.related_field_value = 'Yes';
+          } else {
+            isVariantField.related_field_value = '0';
+          }
+        }
+
+        // Map enum 1/0 for is_parallel: 1 -> Yes, 0 -> No
+        const isParallelField = filteredAdditionalFields.find((f: any) => f?.field_name === 'is_parallel');
+        if (isParallelField) {
+          const v = isParallelField.field_value;
+          if (v === '1' || v === 1) {
+            isParallelField.related_field_value = 'Yes';
+          } else if (v === '0' || v === 0) {
+            isParallelField.related_field_value = 'No';
+          }
+        }
+      } catch (e) {
+        console.warn('issue_number enrichment failed:', e);
+      }
+    }
+
+    // Ensure is_controllers_included appears last in additionalFields
+    if (Array.isArray(filteredAdditionalFields) && filteredAdditionalFields.length > 0) {
+      const idx = filteredAdditionalFields.findIndex((f: any) => f?.field_name === 'is_controllers_included');
+      if (idx > -1) {
+        const [ctrl] = filteredAdditionalFields.splice(idx, 1);
+        filteredAdditionalFields.push(ctrl);
+      }
+    }
+
+    const transformedCard = {
+      id: tradingCard.id,
+      code: tradingCard.code,
+      trading_card_status: tradingCard.trading_card_status,
+      category_id: tradingCard.category_id,
+      search_param: tradingCard.search_param,
+      title: tradingCard.title,
+      trading_card_slug: tradingCard.trading_card_slug,
+      is_traded: tradingCard.is_traded,
+      created_at: tradingCard.createdAt,
+      is_demo: tradingCard.is_demo,
+      trader_id: tradingCard.trader_id,
+      trader_name: tradingCard.trader ? tradingCard.trader.username : null,
+      trading_card_asking_price: tradingCard.trading_card_asking_price,
+      trading_card_estimated_value: tradingCard.trading_card_estimated_value,
+      trading_card_recent_sell_link: tradingCard.trading_card_recent_sell_link,
+      trading_card_recent_trade_value: tradingCard.trading_card_recent_trade_value,
+      can_trade: tradingCard.can_trade,
+      can_buy: tradingCard.can_buy,
+      usa_shipping_flat_rate: (tradingCard as any).usa_shipping_flat_rate,
+      canada_shipping_flat_rate: (tradingCard as any).canada_shipping_flat_rate,
+      year_date_of_issue_text: (() => {
+        if (Array.isArray(filteredAdditionalFields)) {
+          const ydoi = filteredAdditionalFields.find((f: any) => f?.field_name === 'year_date_of_issue');
+          return ydoi?.related_field_value || (ydoi as any)?.year_date_of_issue_text || null;
+        }
+        return null;
+      })(),
+      // Add all non-null additional fields from trading card (filtered)
+      additionalFields: filteredAdditionalFields,
+      // Add card images data (now includes trading_card_img and trading_card_img_back)
+      cardImages: cardImages,
+      // Add can trade or offer parameter
+      canTradeOrOffer: canTradeOrOffer,
+      // Add interested_in status
+      interested_in: interested_in,
+      // Add offer limit text for authenticated users
+      offer_limit_text: offerLimitText,
+      // Add eBay link search parameter
+      ebayLinkSearch: tradingCard.search_param ? 
+        `https://www.ebay.com/sch/i.html?_nkw=${tradingCard.search_param.replace(/\s+/g, '+')}&rt=nc&LH_Complete=1&LH_Sold=1` : 
+        null,
+      // Add all other non-null/non-empty fields from trading_cards table
+      ...additionalNonNullFields
+    };
+    
+    return sendApiResponse(res, 200, true, "Trading card retrieved successfully", transformedCard);
+  } catch (error: any) {
+    console.error(error);
+    return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
+  }
+};
+
+
+const getTradingCardForEdit = async (req: Request, res: Response, isUserEndpoint: boolean = false) => {
+  try {
+    // Validate the ID parameter
+    const cardId = Number(req.params.id);
+    if (!req.params.id || isNaN(cardId) || cardId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid trading card ID is required");
+    }
+    
+    // Extract user ID from JWT token if available
+    let authenticatedUserId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
+      } catch (jwtError) {
+        // Token is invalid, but we'll continue without authentication
+      }
+    }
+    
+    
+    const result = await tradingcardService.getTradingCardById(cardId, authenticatedUserId);
+    
+    if (!result) {
+      return sendApiResponse(res, 404, false, "Trading Card not found");
+    }
+    
+    const { additionalFields, cardImages, canTradeOrOffer, interested_in, ...tradingCard } = result;
+    
+    // Get offer attempts count for authenticated user
+    let offerLimitText = null;
+    if (authenticatedUserId) {
+      // Check if user is trying to view their own card
+      if (authenticatedUserId === tradingCard.trader_id) {
+        offerLimitText = null; // No limit for own cards
+      } else {
+        const buyOfferAttempt = await BuyOfferAttempt.findOne({
+          where: {
+            user_id: authenticatedUserId,
+            product_id: tradingCard.id
+          }
+        });
+
+        // Get actual attempts count from database
+        let attemptsCount = 0;
+        if (buyOfferAttempt) {
+          attemptsCount = buyOfferAttempt.attempts || 0;
+        }
+        
+        
+        // Calculate remaining attempts
+        let remainingAttempts = 3 - attemptsCount;
+        
+        
+        // Ensure remaining attempts is not negative
+        if (remainingAttempts < 0) {
+          remainingAttempts = 0;
+        }
+        
+
+        // Generate offer limit text based on attempts count
+        // Show used attempts out of total 3
+        if (attemptsCount === 0) {
+          offerLimitText = "Offer Limit: 0/3";
+        } else if (attemptsCount === 1) {
+          offerLimitText = "Offer Limit: 1/3";
+        } else if (attemptsCount === 2) {
+          offerLimitText = "Offer Limit: 2/3";
+        } else if (attemptsCount >= 3) {
+          offerLimitText = "Offer Limit: Exceeded, buy at asking price.";
+        }
+
+      }
+    }
+    
+    // Transform the response to preserve existing structure and add missing non-null fields
+    const cardData = tradingCard as any;
+    
+    // Get all non-null/non-empty fields that are not already included in the main response
+    const additionalNonNullFields: any = {};
+    Object.keys(cardData).forEach(key => {
+      const value = cardData[key];
+      // Skip if it's already included in the main response or if it's null/empty
+      const alreadyIncluded = [
+        'id', 'code', 'trading_card_status', 'category_id', 'search_param', 'trading_card_img', 
+        'trading_card_img_back', 'trading_card_slug', 'is_traded', 'created_at', 'is_demo', 
+        'trader_id', 'trading_card_asking_price', 'trading_card_estimated_value', 
+        'trading_card_recent_sell_link', 'trading_card_recent_trade_value', 'can_trade', 
+        'can_buy', 'usa_shipping_flat_rate', 'canada_shipping_flat_rate', 'trader'
+      ];
+      
+      if (!alreadyIncluded.includes(key) && 
+          value !== null && 
+          value !== undefined && 
+          value !== '' && 
+          !(value === 0 && typeof value === 'number')) {
+        additionalNonNullFields[key] = value;
+      }
+    });
+
+    // For user endpoint, never exclude any fields - return all additionalFields as is
+    const filteredAdditionalFields = Array.isArray(additionalFields) ? [...additionalFields] : additionalFields;
+
+    // Enrich master-backed fields in additionalFields (issue_number -> year_of_issues)
+    if (Array.isArray(filteredAdditionalFields)) {
+      try {
+        const issueField = filteredAdditionalFields.find((f: any) => f?.field_name === 'issue_number' && f.field_value);
+        if (issueField && !isNaN(Number(issueField.field_value))) {
+          const issueRow = await YearOfIssue.findByPk(Number(issueField.field_value));
+          if (issueRow) {
+            issueField.field_label = issueField.field_label || 'Issue Number';
+            issueField.related_field_name = 'year_of_issues';
+            issueField.related_field_value = issueRow.name;
+          }
+        }
+
+        // publisher -> publishers
+        const publisherField = filteredAdditionalFields.find((f: any) => f?.field_name === 'publisher' && f.field_value);
+        if (publisherField && !isNaN(Number(publisherField.field_value))) {
+          const publisherRow = await Publisher.findByPk(Number(publisherField.field_value));
+          if (publisherRow) {
+            publisherField.field_label = publisherField.field_label || 'Publisher';
+            publisherField.related_field_name = 'publishers';
+            publisherField.related_field_value = publisherRow.name;
+          }
+        }
+
+        // brand -> brands
+        const brandField = filteredAdditionalFields.find((f: any) => f?.field_name === 'brand' && f.field_value);
+        if (brandField && !isNaN(Number(brandField.field_value))) {
+          const brandRow = await Brand.findByPk(Number(brandField.field_value));
+          if (brandRow) {
+            brandField.field_label = brandField.field_label || 'Brand';
+            brandField.related_field_name = 'brands';
+            brandField.related_field_value = brandRow.name;
+          }
+        }
+
+        // packaging -> packages
+        const packagingField = filteredAdditionalFields.find((f: any) => f?.field_name === 'packaging' && f.field_value);
+        if (packagingField && !isNaN(Number(packagingField.field_value))) {
+          const packageRow = await Package.findByPk(Number(packagingField.field_value));
+          if (packageRow) {
+            packagingField.field_label = packagingField.field_label || 'Packaging';
+            packagingField.related_field_name = 'packages';
+            packagingField.related_field_value = packageRow.name;
+          }
+        }
+
+        // convention_event -> convention_events
+        const convField = filteredAdditionalFields.find((f: any) => f?.field_name === 'convention_event' && f.field_value);
+        if (convField && !isNaN(Number(convField.field_value))) {
+          const convRow = await ConventionEvent.findByPk(Number(convField.field_value));
+          if (convRow) {
+            convField.field_label = convField.field_label || 'Convention/Event';
+            convField.related_field_name = 'convention_events';
+            convField.related_field_value = convRow.name;
+          }
+        }
+
+        // country_id -> countries
+        const countryField = filteredAdditionalFields.find((f: any) => f?.field_name === 'country_id' && f.field_value);
+        if (countryField && !isNaN(Number(countryField.field_value))) {
+          const countryRow = await Country.findByPk(Number(countryField.field_value));
+          if (countryRow) {
+            countryField.field_label = countryField.field_label || 'Country of Origin';
+            countryField.related_field_name = 'countries';
+            countryField.related_field_value = countryRow.name;
+          }
+        }
+
+        // coin_name_slt -> coin_names
+        const coinNameField = filteredAdditionalFields.find((f: any) => f?.field_name === 'coin_name_slt' && f.field_value);
+        if (coinNameField && !isNaN(Number(coinNameField.field_value))) {
+          const coinRow = await CoinName.findByPk(Number(coinNameField.field_value));
+          if (coinRow) {
+            coinNameField.field_label = coinNameField.field_label || 'Coin Name';
+            coinNameField.related_field_name = 'coin_names';
+            coinNameField.related_field_value = coinRow.name;
+          }
+        }
+
+        // mint_mark_slt -> mint_marks
+        const mintMarkField = filteredAdditionalFields.find((f: any) => f?.field_name === 'mint_mark_slt' && f.field_value);
+        if (mintMarkField && !isNaN(Number(mintMarkField.field_value))) {
+          const mmRow = await MintMark.findByPk(Number(mintMarkField.field_value));
+          if (mmRow) {
+            mintMarkField.field_label = mintMarkField.field_label || 'Mint Mark';
+            mintMarkField.related_field_name = 'mint_marks';
+            mintMarkField.related_field_value = mmRow.name;
+          }
+        }
+
+        // exclusive_event_retailer -> exclusive_event_retailers
+        const exclusiveEventRetailerField = filteredAdditionalFields.find((f: any) => f?.field_name === 'exclusive_event_retailer' && f.field_value);
+        if (exclusiveEventRetailerField && !isNaN(Number(exclusiveEventRetailerField.field_value))) {
+          const eerRow = await ExclusiveEventRetailer.findByPk(Number(exclusiveEventRetailerField.field_value));
+          if (eerRow) {
+            exclusiveEventRetailerField.field_label = exclusiveEventRetailerField.field_label || 'Exclusive Event/Retailers';
+            exclusiveEventRetailerField.related_field_name = 'exclusive_event_retailers';
+            exclusiveEventRetailerField.related_field_value = eerRow.name;
+          }
+        }
+
+        // denomination_slt -> denominations
+        const denomField = filteredAdditionalFields.find((f: any) => f?.field_name === 'denomination_slt' && f.field_value);
+        if (denomField && !isNaN(Number(denomField.field_value))) {
+          const denomRow = await Denomination.findByPk(Number(denomField.field_value));
+          if (denomRow) {
+            denomField.field_label = denomField.field_label || 'Denomination';
+            denomField.related_field_name = 'denominations';
+            denomField.related_field_value = denomRow.name;
+          }
+        }
+
+        // circulated -> circulateds
+        const circField = filteredAdditionalFields.find((f: any) => f?.field_name === 'circulated' && f.field_value !== undefined && f.field_value !== null);
+        if (circField && !isNaN(Number(circField.field_value))) {
+          const circRow = await Circulated.findByPk(Number(circField.field_value));
+          if (circRow) {
+            circField.field_label = circField.field_label || 'Circulated';
+            circField.related_field_name = 'circulateds';
+            circField.related_field_value = circRow.name;
+          }
+        }
+
+        // storage_capacity -> storage_capacities
+        const storageField = filteredAdditionalFields.find((f: any) => f?.field_name === 'storage_capacity' && f.field_value);
+        if (storageField && !isNaN(Number(storageField.field_value))) {
+          const scRow = await StorageCapacity.findByPk(Number(storageField.field_value));
+          if (scRow) {
+            storageField.field_label = storageField.field_label || 'Storage Capacity';
+            storageField.related_field_name = 'storage_capacities';
+            storageField.related_field_value = scRow.name;
+          }
+        }
+
+        // console_name_model -> console_models
+        const consoleModelField = filteredAdditionalFields.find((f: any) => f?.field_name === 'console_name_model' && f.field_value);
+        if (consoleModelField && !isNaN(Number(consoleModelField.field_value))) {
+          const cmRow = await ConsoleModel.findByPk(Number(consoleModelField.field_value));
+          if (cmRow) {
+            consoleModelField.field_label = consoleModelField.field_label || 'Console Model';
+            consoleModelField.related_field_name = 'console_models';
+            consoleModelField.related_field_value = cmRow.name;
+          }
+        }
+
+        // region_code -> region_codes
+        const regionCodeField = filteredAdditionalFields.find((f: any) => f?.field_name === 'region_code' && f.field_value);
+        if (regionCodeField && !isNaN(Number(regionCodeField.field_value))) {
+          const rcRow = await RegionCode.findByPk(Number(regionCodeField.field_value));
+          if (rcRow) {
+            regionCodeField.field_label = regionCodeField.field_label || 'Region Code';
+            regionCodeField.related_field_name = 'region_codes';
+            regionCodeField.related_field_value = rcRow.name;
+          }
+        }
+
+        // edition -> editions
+        const editionField = filteredAdditionalFields.find((f: any) => f?.field_name === 'edition' && f.field_value);
+        if (editionField && !isNaN(Number(editionField.field_value))) {
+          const edRow = await Edition.findByPk(Number(editionField.field_value));
+          if (edRow) {
+            editionField.field_label = editionField.field_label || 'Edition';
+            editionField.related_field_name = 'editions';
+            editionField.related_field_value = edRow.name;
+          }
+        }
+
+        // platform_console -> platform_consoles
+        const platformField = filteredAdditionalFields.find((f: any) => f?.field_name === 'platform_console' && f.field_value);
+        if (platformField && !isNaN(Number(platformField.field_value))) {
+          const pcRow = await PlatformConsole.findByPk(Number(platformField.field_value));
+          if (pcRow) {
+            platformField.field_label = platformField.field_label || 'Platform';
+            platformField.related_field_name = 'platform_consoles';
+            platformField.related_field_value = pcRow.name;
+          }
+        }
+
+        // year_date_of_issue -> years (+ year_date_of_issue_text)
+        const ydoiField = filteredAdditionalFields.find((f: any) => f?.field_name === 'year_date_of_issue' && f.field_value);
+        if (ydoiField && !isNaN(Number(ydoiField.field_value))) {
+          const yearRow = await Year.findByPk(Number(ydoiField.field_value));
+          if (yearRow) {
+            ydoiField.field_label = ydoiField.field_label || 'Release Year';
+            ydoiField.related_field_name = 'years';
+            ydoiField.related_field_value = yearRow.name;
+            (ydoiField as any).year_date_of_issue_text = yearRow.name;
           }
         }
 
@@ -953,6 +1488,13 @@ export const getTradingCard = async (req: Request, res: Response) => {
       can_buy: tradingCard.can_buy,
       usa_shipping_flat_rate: (tradingCard as any).usa_shipping_flat_rate,
       canada_shipping_flat_rate: (tradingCard as any).canada_shipping_flat_rate,
+      year_date_of_issue_text: (() => {
+        if (Array.isArray(filteredAdditionalFields)) {
+          const ydoi = filteredAdditionalFields.find((f: any) => f?.field_name === 'year_date_of_issue');
+          return ydoi?.related_field_value || (ydoi as any)?.year_date_of_issue_text || null;
+        }
+        return null;
+      })(),
       // Add all non-null additional fields from trading card (filtered)
       additionalFields: filteredAdditionalFields,
       // Add card images data (now includes trading_card_img and trading_card_img_back)
@@ -976,6 +1518,18 @@ export const getTradingCard = async (req: Request, res: Response) => {
     console.error(error);
     return sendApiResponse(res, 500, false, "Internal server error", { error: error.message || 'Unknown error' });
   }
+};
+
+
+// Public endpoint for getting trading card details
+export const getTradingCard = async (req: Request, res: Response) => {
+  return getTradingCardCommon(req, res, false);
+};
+
+// User endpoint for getting trading card details (same functionality as public)
+
+export const getUserTradingCard = async (req: Request, res: Response) => {
+  return getTradingCardForEdit(req, res, true);
 };
 
 export const createTradingCard = async (req: Request, res: Response) => {

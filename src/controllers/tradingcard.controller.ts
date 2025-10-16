@@ -2403,29 +2403,23 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
     // Handle file uploads
     const uploadPath = process.cwd() + '/public/user/assets/images/trading_cards_img/';
     
-    console.log(`[DEBUG CONTROLLER UPDATE] Starting file processing for cardId: ${cardId}`);
-    console.log(`[DEBUG CONTROLLER UPDATE] Initial requestData.additional_images:`, requestData.additional_images);
-    console.log(`[DEBUG CONTROLLER UPDATE] req.files exists:`, !!req.files);
-    console.log(`[DEBUG CONTROLLER UPDATE] req.files:`, req.files);
-    
+      
     // Handle additional_images - can be both text filenames and actual file uploads
     const additionalImages: string[] = [];
     
     // First, check if additional_images is provided as text in request body
     if (requestData.additional_images) {
-      console.log(`[DEBUG CONTROLLER UPDATE] Processing additional_images from request body:`, requestData.additional_images);
+      
       if (typeof requestData.additional_images === 'string') {
         // Single image as text
         if (requestData.additional_images.trim()) {
-          additionalImages.push(requestData.additional_images.trim());
-          console.log(`[DEBUG CONTROLLER UPDATE] Added text image:`, requestData.additional_images.trim());
+          additionalImages.push(requestData.additional_images.trim());          
         }
       } else if (Array.isArray(requestData.additional_images)) {
         // Multiple images as text array
         for (const img of requestData.additional_images) {
           if (typeof img === 'string' && img.trim()) {
-            additionalImages.push(img.trim());
-            console.log(`[DEBUG CONTROLLER UPDATE] Added text image from array:`, img.trim());
+            additionalImages.push(img.trim());            
           }
         }
       }
@@ -2515,15 +2509,11 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       console.log(`[DEBUG] Total collected additional images from files: ${collectedAdditional.length}`);
       
       // Upload actual files and add to additionalImages array
-      if (collectedAdditional.length > 0) {
-        console.log(`[DEBUG CONTROLLER UPDATE] Uploading ${collectedAdditional.length} additional files`);
+      if (collectedAdditional.length > 0) {        
         for (const file of collectedAdditional) {
-          console.log(`[DEBUG CONTROLLER UPDATE] Uploading file: ${file.originalname}`);
           const imagePath = uploadOne(file as any, uploadPath);
-          console.log(`[DEBUG CONTROLLER UPDATE] Upload result: ${imagePath}`);
           if (imagePath && String(imagePath).trim()) {
             additionalImages.push(imagePath);
-            console.log(`[DEBUG CONTROLLER UPDATE] Added uploaded image: ${imagePath}`);
           }
         }
       }
@@ -2534,16 +2524,11 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
     if (additionalImages.length > 0) {
       // Check if more than 4 images are provided
       if (additionalImages.length > 4) {
-        console.log(`[DEBUG CONTROLLER UPDATE] Error: ${additionalImages.length} images provided, maximum 4 allowed`);
         return sendApiResponse(res, 400, false, `Maximum 4 additional images allowed. You provided ${additionalImages.length} images.`);
       }
       
       requestData.additional_images = additionalImages.slice(0, 4);
-      console.log(`[DEBUG CONTROLLER UPDATE] Final additional images array (max 4):`, requestData.additional_images);
-      console.log(`[DEBUG CONTROLLER UPDATE] Setting requestData.additional_images to:`, requestData.additional_images);
     } else {
-      console.log(`[DEBUG CONTROLLER UPDATE] No additional images to process`);
-      console.log(`[DEBUG CONTROLLER UPDATE] additionalImages array is empty:`, additionalImages);
     }
 
     // Call service to update trading card
@@ -2645,8 +2630,7 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       }
     }
 
-    console.log(`[DEBUG CONTROLLER UPDATE] About to call service with requestData:`, JSON.stringify(requestData, null, 2));
-    console.log(`[DEBUG CONTROLLER UPDATE] Specifically checking additional_images:`, requestData.additional_images);
+    
     const result = await tradingcardService.updateTradingCard(cardIdNum, requestData, userId);
 
     if (!result.success) {

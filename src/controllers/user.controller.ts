@@ -11,6 +11,7 @@ import { ReviewCollection } from "../models/reviewCollection.model.js";
 import { QueryTypes } from "sequelize";
 import { Op } from 'sequelize';
 import { Dictionary } from "../models/dictionary.model.js";
+import { CategoryShippingRate } from "../models/categoryShippingRates.model.js";
 const { EmailHelperService } = await import('../services/emailHelper.service.js');
 // POST /api/common/check-word-quality
 export const checkWordQuality = async (req: Request, res: Response) => {
@@ -1061,6 +1062,17 @@ export const getCategoryShippingRateHistory = async (req: Request, res: Response
     const result = await UserService.getCategoryShippingRateHistory(userId, categoryId, specificId, page, perPage);
 
     if (result.success && result.data) {
+      // Behavior differs by route prefix:
+      // - /api/user/... => return only shippingRates array
+      // - /api/users/... => return original full payload with pagination
+      const base = req.baseUrl || '';
+      const isLegacySingleArray = /^\/api\/user(\/|$)/.test(base);
+      if (isLegacySingleArray) {
+        const ratesOnly = specificId && result.data.specificShippingRate
+          ? [result.data.specificShippingRate]
+          : (result.data.shippingRates || []);
+        return sendApiResponse(res, 200, true, "Category shipping rate history retrieved successfully", ratesOnly);
+      }
       return sendApiResponse(res, 200, true, "Category shipping rate history retrieved successfully", result.data, result.pagination);
     } else {
       return sendApiResponse(res, 400, false, "Failed to get category shipping rate history", result.error);
@@ -1068,6 +1080,63 @@ export const getCategoryShippingRateHistory = async (req: Request, res: Response
 
   } catch (error: any) {
     console.error("Get category shipping rate history error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+// GET /api/user/category-shipping-rate?category_id=ID
+// Returns the authenticated user's category shipping rate for a given category
+export const getCategoryShippingRate = async (req: Request, res: Response) => {
+  try {
+    // Require authentication
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendApiResponse(res, 401, false, "Authorization token required", []);
+    }
+
+    const token = authHeader.substring(7);
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (jwtError) {
+      return sendApiResponse(res, 401, false, "Invalid or expired token", []);
+    }
+
+    const userId = decoded.user_id || decoded.sub || decoded.id;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "Valid user ID not found in token", []);
+    }
+
+    const categoryIdParam = req.query.category_id as string;
+    if (!categoryIdParam || isNaN(Number(categoryIdParam))) {
+      return sendApiResponse(res, 400, false, "Valid category_id is required", []);
+    }
+    const categoryId = parseInt(categoryIdParam);
+
+    // In Laravel view they skip category id 26; caller can also skip, but we return no data for 26
+    if (categoryId === 26) {
+      return sendApiResponse(res, 200, true, "No shipping rate for this category", { exists: false });
+    }
+
+    const rate = await CategoryShippingRate.findOne({
+      where: { user_id: userId, category_id: categoryId },
+      attributes: ['id', 'usa_rate', 'canada_rate']
+    });
+
+    if (!rate) {
+      return sendApiResponse(res, 200, true, "Shipping rate not found", { exists: false });
+    }
+
+    const data = {
+      id: (rate as any).id,
+      usa_rate: (rate as any).usa_rate,
+      canada_rate: (rate as any).canada_rate,
+      exists: true
+    };
+
+    return sendApiResponse(res, 200, true, "Category shipping rate retrieved successfully", data);
+  } catch (error: any) {
+    console.error("Get category shipping rate error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };

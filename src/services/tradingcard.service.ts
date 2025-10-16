@@ -846,7 +846,7 @@ export class TradingCardService {
         ...(loggedInUserId ? { trader_id: { [Op.ne]: loggedInUserId } } : {})
       },
       include: [
-        { model: User, attributes: ['id'], where: { user_status: '1' }, required: true }
+        { model: User, as: 'trader', attributes: ['id'], where: { user_status: '1' }, required: true }
       ]
     });
 
@@ -857,7 +857,7 @@ export class TradingCardService {
       },
       include: [
         { model: Category, attributes: ['id', 'slug', 'sport_name'] },
-        { model: User, attributes: ['id', 'username'], where: { user_status: '1' }, required: true },
+        { model: User, as: 'trader', attributes: ['id', 'username'], where: { user_status: '1' }, required: true },
         { model: CardCondition, attributes: ['id', 'card_condition_name', 'card_condition_status'] }
       ],
       attributes: [
@@ -964,7 +964,7 @@ export class TradingCardService {
       include: [
         { model: Category, attributes: ["id", "slug", "sport_name", "sport_icon"] },
         { model: CardCondition, attributes: ["id", "card_condition_name", "card_condition_status"] },
-        { model: User, attributes: ["id", "username"], where: { user_status: '1' }, required: false }
+        { model: User, as: 'trader', attributes: ["id", "username"], where: { user_status: '1' }, required: false }
       ],
       order: [["updated_at", "DESC"]],
       limit: perPage,
@@ -1267,7 +1267,7 @@ export class TradingCardService {
           categoryAjaxFieldCollection.push(itemColumn.name || '');
         }
         
-        // Handle select fields - populate is_loop with table data for all select type fields
+        // Handle select fields - populate is_loop
         if (itemColumn && itemColumn.type === 'select' && itemColumn.rel_master_table) {
           
           try {
@@ -1332,6 +1332,32 @@ export class TradingCardService {
           } catch (error) {
             console.error(`Error getting loop data for field ${itemColumn.name}:`, error);
           }
+        } else if (itemColumn && itemColumn.type === 'select' && !itemColumn.rel_master_table) {
+          // No master table: build is_loop from option_values JSON (e.g., how_many_controllers)
+          try {
+            const optionsStr = itemColumn.option_values as unknown as string | undefined;
+            if (optionsStr) {
+              let parsed: Record<string, string> | null = null;
+              try { parsed = JSON.parse(optionsStr); } catch { parsed = null; }
+              if (parsed && typeof parsed === 'object') {
+                const selectOptions = Object.entries(parsed).map(([key, val]) => ({
+                  id: Number(key),
+                  label: String(val),
+                  value: Number(key)
+                }));
+                itemColumn.is_loop = selectOptions;
+                categoryJSFieldCollection.push(itemColumn.name || '');
+                categoryFieldCollection[`${itemColumn.name}_options`] = selectOptions;
+              } else {
+                itemColumn.is_loop = [];
+              }
+            } else {
+              itemColumn.is_loop = [];
+            }
+          } catch (e) {
+            console.error(`Error parsing option_values for field ${itemColumn.name}:`, e);
+            itemColumn.is_loop = [];
+          }
         } else {
           if (itemColumn) {
           }
@@ -1340,6 +1366,34 @@ export class TradingCardService {
       
       // Debug: Log the final itemColumn state
       if (itemColumn && itemColumn.type === 'select') {
+      }
+      
+      // Fallback: if is_loop wasn't populated yet, try deriving from option_values
+      if (itemColumn && (itemColumn.is_loop === null || itemColumn.is_loop === undefined)) {
+        try {
+          const optionsStr = itemColumn.option_values as unknown as string | undefined;
+          if (optionsStr) {
+            let parsed: Record<string, string> | null = null;
+            try { parsed = JSON.parse(optionsStr); } catch { parsed = null; }
+            if (parsed && typeof parsed === 'object') {
+              const selectOptions = Object.entries(parsed).map(([key, val]) => ({
+                id: Number(key),
+                label: String(val),
+                value: Number(key)
+              }));
+              itemColumn.is_loop = selectOptions;
+              categoryJSFieldCollection.push(itemColumn.name || '');
+              categoryFieldCollection[`${itemColumn.name}_options`] = selectOptions;
+            } else {
+              itemColumn.is_loop = [];
+            }
+          } else {
+            itemColumn.is_loop = [];
+          }
+        } catch (e) {
+          console.error(`Fallback parse option_values failed for field ${itemColumn?.name}:`, e);
+          itemColumn.is_loop = [];
+        }
       }
       
       return {

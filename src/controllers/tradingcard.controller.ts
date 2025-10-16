@@ -85,17 +85,12 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
     const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
     const gradedParam = req.query.graded as string;
     
-    // Extract user ID from JWT token if available
-    let authenticatedUserId: number | undefined;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      try {
-        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
-      } catch (jwtError) {
-        // Token is invalid, but we'll continue without authentication
-      }
+    // Get user ID from req.user (set by userAuth middleware)
+    const authenticatedUserId: number | undefined = (req as any).user?.id;
+    
+    // Validate that user ID is present (required for user endpoints)
+    if (!authenticatedUserId) {
+      return sendApiResponse(res, 401, false, "Valid user ID is required", []);
     }
     
     const page = pageParam ? parseInt(pageParam, 10) : 1;
@@ -2008,6 +2003,41 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
     // Map year_date_of_issue_text to year_of_issue
     if (requestData.year_date_of_issue_text !== undefined) {
       requestData.year_of_issue = requestData.year_date_of_issue_text;
+    }
+
+    // Ensure option_values exist for how_many_controllers in item_columns and merge incoming value
+    try {
+      const defaultOptions: Record<string, string> = { "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "10": "10" };
+      const incomingValRaw = (requestData as any).how_many_controllers;
+      const incomingVal = incomingValRaw !== undefined && incomingValRaw !== null ? String(incomingValRaw).trim() : '';
+
+      const howManyColumn = await (ItemColumn as any).findOne({ where: { name: 'how_many_controllers' } });
+      if (howManyColumn) {
+        let parsed: Record<string, string> | null = null;
+        const currentStr = (howManyColumn.option_values ?? '').toString();
+        if (currentStr) {
+          try { parsed = JSON.parse(currentStr); } catch { parsed = null; }
+        }
+        if (!parsed || typeof parsed !== 'object') {
+          parsed = { ...defaultOptions };
+        }
+        let changed = false;
+        if (incomingVal) {
+          if (!Object.prototype.hasOwnProperty.call(parsed, incomingVal)) {
+            parsed[incomingVal] = incomingVal;
+            changed = true;
+          }
+        }
+        // If option_values was empty, we initialized defaults
+        if (!currentStr) {
+          changed = true;
+        }
+        if (changed) {
+          await howManyColumn.update({ option_values: JSON.stringify(parsed) });
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to ensure/merge option_values for how_many_controllers:', e);
     }
 
     // how_many_controllers field is already correctly named, no mapping needed

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment, changePassword, buyCardCollectionReview, checkWordQuality } from "../controllers/user.controller.js";
+import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getTopTraders, getTradersList, toggleFollow, getLikesAndFollowing, getCoinPurchaseHistory, getCoinDeductionHistory, getCoinTransactionHistory, getPayPalTransactions, updateUserProfile, getShipmentLog, trackShipment, getShippingLabel, getCategoryShippingRateHistory, createCategoryShippingRate, updateCategoryShippingRate, deleteCategoryShippingRate, getBoughtAndSoldProducts, getOngoingTrades, getTradeDetail, getCompletedTrades, getCancelledTrades, getNotifications, getAddresses, getAddressById, createAddress, updateAddress, deleteAddress, markAddressAsDefault, submitRating, markAllNotificationsAsRead, getMyTickets, confirmPayment, cancelShippingPayment, changePassword, buyCardCollectionReview, checkWordQuality, getCategoryShippingRate } from "../controllers/user.controller.js";
 import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
 import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
@@ -56,6 +56,8 @@ router.get("/shipping-label/:tracking_id", getShippingLabel);
 // Category shipping rate history API (requires authentication - handled in controller)
 router.get("/category-shipping-rate-history", getCategoryShippingRateHistory);
 router.get("/category-shipping-rate-history/:id", getCategoryShippingRateHistory);
+// New: fetch single shipping rate by category for current user
+router.get("/category-shipping-rate", getCategoryShippingRate);
 
 // Create category shipping rate API (requires authentication - handled in controller)
 router.post("/category-shipping-rate-history", createCategoryShippingRate);

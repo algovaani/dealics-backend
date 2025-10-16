@@ -102,8 +102,11 @@ app.use("/api/users", userRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/tradingCards", tradingcardRoutes);
 app.use("/api/admin/tradingCards", adminTradingcardRoutes);
+// Mount specific user routes first (more specific routes before general ones)
 app.use("/api/user/tradingcards", userTradingcardRoutes);
 app.use("/api/user/trading-cards-fields", userTradingcardFieldsRoutes);
+// Alias: also mount user routes under /api/user to support legacy paths (after specific routes)
+app.use("/api/user", userRoutes);
 app.use("/api/sliders", sliderRoutes);
 app.use("/api/email", emailRoutes);
 app.use("/api/support", supportRoutes);

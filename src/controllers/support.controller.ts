@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { SupportService } from "../services/support.service.js";
 import { sendApiResponse } from "../utils/apiResponse.js";
+import jwt from "jsonwebtoken";
 
 // Extend Request interface to include user property
 declare global {
@@ -58,9 +59,20 @@ export const createSupportTicket = async (req: Request, res: Response) => {
       return sendApiResponse(res, 400, false, "Please enter comment.");
     }
 
-    // Get user ID if authenticated
-    const userId = req.user?.id || req.user?.user_id || req.user?.sub;
-    console.log('DEBUG: Support API - User object:', req.user);
+    // Get user ID if authenticated (optional auth): from middleware or Authorization header
+    let userId = req.user?.id || req.user?.user_id || req.user?.sub;
+    if (!userId) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+          userId = decoded?.user_id || decoded?.sub || decoded?.id || decoded?.userId;
+        } catch (e) {
+          // ignore invalid token for optional auth
+        }
+      }
+    }
     console.log('DEBUG: Support API - Extracted user_id:', userId);
 
     // Prepare support data

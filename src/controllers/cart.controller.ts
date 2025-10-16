@@ -1997,8 +1997,8 @@ const transferCardOwnership = async (tradeProposal: any): Promise<void> => {
         trader_id: tradeProposal.trade_sent_to,
         previous_owner_id: tradeProposal.trade_sent_by,
         trading_card_status: '0',
-        seller_notes: '',
-        shipping_details: '',
+        // seller_notes: '',
+        // shipping_details: '',
         updated_at: new Date()
       }, {
         where: { id: { [Op.in]: sendCards } }
@@ -2011,8 +2011,8 @@ const transferCardOwnership = async (tradeProposal: any): Promise<void> => {
         trader_id: tradeProposal.trade_sent_by,
         previous_owner_id: tradeProposal.trade_sent_to,
         trading_card_status: '0',
-        seller_notes: '',
-        shipping_details: '',
+        // seller_notes: '',
+        // shipping_details: '',
         updated_at: new Date()
       }, {
         where: { id: { [Op.in]: receiveCards } }
@@ -7808,8 +7808,8 @@ export const receiveShipment = async (req: Request, res: Response) => {
           trading_card_status: '0',
           previous_owner_id: buySellCard.seller,
           trader_id: buySellCard.buyer,
-          seller_notes: '',
-          shipping_details: ''
+          // seller_notes: '',
+          // shipping_details: ''
         });
       }
     } else {
@@ -7828,8 +7828,8 @@ export const receiveShipment = async (req: Request, res: Response) => {
             trading_card_status: '0',
             previous_owner_id: buySellCard.seller,
             trader_id: buySellCard.buyer,
-            seller_notes: '',
-            shipping_details: ''
+            // seller_notes: '',
+            // shipping_details: ''
           }, {
             where: { id: { [Op.in]: cardIds } }
           });

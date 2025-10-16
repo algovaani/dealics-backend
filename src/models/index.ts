@@ -59,6 +59,11 @@ import { Speed } from './speed.model.js';
 import { Type } from './type.model.js';
 import { RecordSize } from './recordSize.model.js';
 import { MintMark } from './mintMarks.model.js';
+import { Certification } from './certification.model.js';
+import { SleeveGrader } from './sleeveGrader.model.js';
+import { SleeveGradeRating } from './sleeveGradeRating.model.js';
+import { RecordGrader } from './recordGrader.model.js';
+import { RecordGradeRating } from './recordGradeRating.model.js';
 import { ExclusiveEventRetailer } from './exclusiveEventRetailers.model.js';
 import { Block } from './block.model.js';
 
@@ -124,6 +129,11 @@ export const models = [
   ,Type
   ,RecordSize
   ,MintMark
+  ,Certification
+  ,SleeveGrader
+  ,SleeveGradeRating
+  ,RecordGrader
+  ,RecordGradeRating
   ,ExclusiveEventRetailer
   ,Block
 ];
@@ -615,6 +625,11 @@ export {
   ,Type
   ,RecordSize
   ,MintMark
+  ,Certification
+  ,SleeveGrader
+  ,SleeveGradeRating
+  ,RecordGrader
+  ,RecordGradeRating
   ,ExclusiveEventRetailer
   ,Block
 };

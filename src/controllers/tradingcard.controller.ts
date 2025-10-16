@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Certification } from "../models/certification.model.js";
 import { TradingCardService } from "../services/tradingcard.service.js";
 import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark, ExclusiveEventRetailer } from "../models/index.js";
 import { Sequelize, QueryTypes } from "sequelize";
@@ -559,45 +560,119 @@ const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint:
       }
     });
 
-    // Conditionally exclude some fields only when detail=true is passed
+    // Conditionally exclude fields for PUBLIC endpoint
     const detailFlag = (req.query as any)?.productDetail ?? (req.query as any)?.detail;
     const isDetail = ['true', '1', 'yes'].includes(String(detailFlag || '').toLowerCase());
-    const fieldsToExclude = [
-      'publication_year_text',
-      'trading_card_offer_accept_above',
-      'seller_notes',
-      'shipping_details',
+    // 1) Always-hidden fields for PUBLIC endpoint
+    const alwaysHiddenPublic = [
+      // keep this list minimal and additive
+      'creator_id',
       'usa_shipping_flat_rate',
       'usa_add_product_flat_rate',
       'canada_shipping_flat_rate',
-      'creator_id',
       'vehicle_year_text',
-      'included_missing_accessories',
       'updated_at',
-      'certification_number',
-      'certification',
-      'is_certified',
-      'coin_stamp_grade_rating',
+      'publication_year_text',
+      'trading_card_offer_accept_above',
       'release_year_text',
       'is_autograph_card',
       'player_id_text',
-      'graded',
       'professional_grader_id',
       'grade_rating_id',
       'canada_add_product_flat_rate',
-      'free_shipping',
-      'title',
       'can_trade',  
-      'can_buy'
+      'can_buy',
+      'title',
     ];
-    // For user endpoint, never exclude fields. For public endpoint, exclude fields when productDetail=true
+    const fieldsToExclude = [      
+      'seller_notes',
+      'shipping_details',      
+      'included_missing_accessories',      
+      'certification_number',
+      // keep certification visible so its master value can be enriched
+      'is_certified',
+      'coin_stamp_grade_rating',
+      'graded',      
+      'free_shipping',           
+    ];
+    // For user endpoint, never exclude fields.
+    // For public endpoint:
+    //  - Always remove items in alwaysHiddenPublic
+    //  - Additionally, when productDetail=true, remove items in fieldsToExclude
     const filteredAdditionalFields = Array.isArray(additionalFields)
-      ? (isUserEndpoint ? [...additionalFields] : (isDetail ? additionalFields.filter((f: any) => !fieldsToExclude.includes(f?.field_name)) : [...additionalFields]))
+      ? (
+          isUserEndpoint
+            ? [...additionalFields]
+            : (
+                additionalFields
+                  .filter((f: any) => !alwaysHiddenPublic.includes(f?.field_name))
+                  .filter((f: any) => (isDetail ? !fieldsToExclude.includes(f?.field_name) : true))
+              )
+        )
       : additionalFields;
 
     // Enrich master-backed fields in additionalFields (issue_number -> year_of_issues)
     if (Array.isArray(filteredAdditionalFields)) {
       try {
+        // Map enum 1/0 for is_certified and coin_stamp_grade_rating: 1 -> Yes, 0 -> No
+        const yesNoFields = ['is_certified', 'coin_stamp_grade_rating', 'graded', 'is_sleeve_graded', 'is_record_graded', 'is_controllers_included'];
+        yesNoFields.forEach((fname) => {
+          const fld = filteredAdditionalFields.find((f: any) => f?.field_name === fname);
+          if (fld) {
+            const v = fld.field_value;
+            if (v === '1' || v === 1) {
+              fld.related_field_value = 'Yes';
+            } else if (v === '0' || v === 0) {
+              fld.related_field_value = 'No';
+            }
+          }
+        });
+
+        // certification -> certifications (master lookup)
+        const certificationField = filteredAdditionalFields.find((f: any) => f?.field_name === 'certification' && f.field_value);
+        if (certificationField && !isNaN(Number(certificationField.field_value))) {
+          const row = await Certification.findByPk(Number(certificationField.field_value));
+          if (row) {
+            certificationField.field_label = certificationField.field_label || 'Certification';
+            certificationField.related_field_name = 'certifications';
+            certificationField.related_field_value = (row as any).name;
+          }
+        }
+
+        // record_grader -> record_graders
+        const recordGraderField = filteredAdditionalFields.find((f: any) => f?.field_name === 'record_grader' && f.field_value);
+        if (recordGraderField && !isNaN(Number(recordGraderField.field_value))) {
+          const { RecordGrader } = await import('../models/recordGrader.model.js');
+          const row = await RecordGrader.findByPk(Number(recordGraderField.field_value));
+          if (row) {
+            recordGraderField.field_label = recordGraderField.field_label || 'Record Grader';
+            recordGraderField.related_field_name = 'record_graders';
+            recordGraderField.related_field_value = (row as any).name;
+          }
+        }
+
+        // sleeve_grader -> sleeve_graders
+        const sleeveGraderField = filteredAdditionalFields.find((f: any) => f?.field_name === 'sleeve_grader' && f.field_value);
+        if (sleeveGraderField && !isNaN(Number(sleeveGraderField.field_value))) {
+          const row = await (await import('../models/sleeveGrader.model.js')).SleeveGrader.findByPk(Number(sleeveGraderField.field_value));
+          if (row) {
+            sleeveGraderField.field_label = sleeveGraderField.field_label || 'Sleeve Grader';
+            sleeveGraderField.related_field_name = 'sleeve_graders';
+            sleeveGraderField.related_field_value = (row as any).name;
+          }
+        }
+
+        // sleeve_grade_rating -> sleeve_grade_ratings
+        const sleeveGradeRatingField = filteredAdditionalFields.find((f: any) => f?.field_name === 'sleeve_grade_rating' && f.field_value);
+        if (sleeveGradeRatingField && !isNaN(Number(sleeveGradeRatingField.field_value))) {
+          const row = await (await import('../models/sleeveGradeRating.model.js')).SleeveGradeRating.findByPk(Number(sleeveGradeRatingField.field_value));
+          if (row) {
+            sleeveGradeRatingField.field_label = sleeveGradeRatingField.field_label || 'Sleeve Grade Rating';
+            sleeveGradeRatingField.related_field_name = 'sleeve_grade_ratings';
+            sleeveGradeRatingField.related_field_value = (row as any).name;
+          }
+        }
+
         const issueField = filteredAdditionalFields.find((f: any) => f?.field_name === 'issue_number' && f.field_value);
         if (issueField && !isNaN(Number(issueField.field_value))) {
           const issueRow = await YearOfIssue.findByPk(Number(issueField.field_value));
@@ -955,11 +1030,21 @@ const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint:
       }
     }
 
+    // Resolve category_name from category_id
+    let category_name: string | null = null;
+    try {
+      if (tradingCard.category_id) {
+        const cat = await Category.findByPk(tradingCard.category_id, { attributes: ['sport_name'] });
+        category_name = (cat as any)?.sport_name || null;
+      }
+    } catch {}
+
     const transformedCard = {
       id: tradingCard.id,
       code: tradingCard.code,
       trading_card_status: tradingCard.trading_card_status,
       category_id: tradingCard.category_id,
+      category_name: category_name,
       search_param: tradingCard.search_param,
       title: tradingCard.title,
       trading_card_slug: tradingCard.trading_card_slug,

@@ -393,7 +393,6 @@ export class UserService {
         FROM trading_cards tc
         ${whereClause}
       `;
-
       const dataQuery = `
         SELECT 
           tc.id, tc.code, tc.trading_card_status, tc.category_id, 
@@ -2285,12 +2284,15 @@ export class UserService {
       }
 
       // Get categories with grades_ungraded_status = true
-      const categories = await Category.findAll({
+      let categories = await Category.findAll({
         where: {
           grades_ungraded_status: true
         },
         attributes: ['id', 'sport_name']
       });
+
+      // Exclude "Sports Memorabilia" from categories list for plural users route response
+      categories = categories.filter((c: any) => String(c.sport_name).trim() !== 'Sports Memorabilia');
 
       // Build query for shipping rates
       let whereClause: any = {

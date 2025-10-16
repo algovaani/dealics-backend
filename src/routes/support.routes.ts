@@ -14,8 +14,8 @@ const router = Router();
  * Support Routes
  */
 
-// Create support ticket (optional auth - will extract user_id if token provided)
-router.post("/create", userAuth, createSupportTicket);
+// Create support ticket (optional auth - controller extracts user_id from token if present)
+router.post("/create", createSupportTicket);
 
 // Get user's own support tickets (auth required)
 router.get("/my-tickets", userAuth, getMySupportTickets);

@@ -326,52 +326,38 @@ export class UserService {
   // Get card statistics
   private static async getCardStats(userId: number) {
     try {
-      const allProductsQuery = `
-        SELECT COUNT(*) as count
-        FROM trading_cards 
-        WHERE trader_id = :userId 
-        AND mark_as_deleted IS NULL 
-        AND trading_card_status = '1' 
-        AND is_traded = '0' 
-        AND (can_trade = '1' OR can_buy = '1')
-      `;
+      // 1. all_products: Match exact logic of GET /api/user/tradingcards
+      // Use the same service and count to keep numbers aligned with that API
+      const { TradingCardService } = await import('./tradingcard.service.js');
+      const tradingCardService = new TradingCardService();
+      const allProductsResult = await tradingCardService.getAllTradingCards(1, 1, undefined, userId);
+      const allProducts = (allProductsResult as any)?.count || 0;
 
-      const ongoingDealsQuery = `
-        SELECT COUNT(*) as count
-        FROM trading_cards 
-        WHERE trader_id = :userId 
-        AND trading_card_status = '1' 
-        AND is_traded = '1' 
-        AND mark_as_deleted IS NULL
-      `;
+      // 2. ongoing_deals: Get count from /api/users/ongoing-trades
+      const ongoingTradesResult = await this.getOngoingTrades(userId, {}, 1, 100);
+      const ongoingDeals = ongoingTradesResult.success ? (ongoingTradesResult.pagination?.totalCount || 0) : 0;
 
-      const allProducts = await sequelize.query(allProductsQuery, {
-        replacements: { userId },
-        type: QueryTypes.SELECT
-      });
+      // 3. successful_trades: Get count from /api/users/completed-trades
+      const completedTradesResult = await this.getCompletedTrades(userId, {}, 1, 100);
+      const successfulTrades = completedTradesResult.success ? (completedTradesResult.pagination?.totalCount || 0) : 0;
 
-      const ongoingDeals = await sequelize.query(ongoingDealsQuery, {
-        replacements: { userId },
-        type: QueryTypes.SELECT
-      });
+      // 4. products_sold: Get count from /api/users/bought-and-sold-products?trade_type=sold
+      const soldProductsResult = await this.getBoughtAndSoldProducts(userId, { trade_type: 'sold' }, 1, 100);
+      const productsSold = soldProductsResult.success ? (soldProductsResult.pagination?.totalCount || 0) : 0;
 
-      // Get user data for other stats
-      const user = await User.findByPk(userId, {
-        attributes: ['trade_transactions']
-      });
-
-      // For now, we'll set these to 0 as we don't have the BuySellCards table
-      const productsSold = 0;
-      const productsBought = 0;
+      // 5. products_bought: Get count from /api/users/bought-and-sold-products?trade_type=purchased
+      const boughtProductsResult = await this.getBoughtAndSoldProducts(userId, { trade_type: 'purchased' }, 1, 100);
+      const productsBought = boughtProductsResult.success ? (boughtProductsResult.pagination?.totalCount || 0) : 0;
 
       return {
-        'all_products': (allProducts[0] as any)?.count || 0,
-        'ongoing_deals': (ongoingDeals[0] as any)?.count || 0,
-        'successful_trades': user?.trade_transactions || 0,
+        'all_products': allProducts,
+        'ongoing_deals': ongoingDeals,
+        'successful_trades': successfulTrades,
         'products_sold': productsSold,
         'products_bought': productsBought
       };
     } catch (error) {
+      console.error('Error getting card stats:', error);
       return {
         'all_products': 0,
         'ongoing_deals': 0,

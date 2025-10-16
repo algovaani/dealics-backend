@@ -30,6 +30,14 @@ export class AuthService {
     return foundUser;
   }
 
+  async findUserByIdentifier(identifier: string) {
+    return await User.findOne({
+      where: {
+        [Op.or]: [{ email: identifier }, { username: identifier }],
+      },
+    });
+  }
+
   issueToken(user: User) {
     const secret = process.env.JWT_SECRET || "dev-secret-change";
     return jwt.sign(

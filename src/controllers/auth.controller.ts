@@ -56,6 +56,11 @@ export const login = async (req: Request, res: Response) => {
     
     const user = await authService.validateUser(identifier, password);
     if (!user) {
+      // If no user matched credentials, check if account exists at all
+      const exists = await authService.findUserByIdentifier(identifier);
+      if (!exists) {
+        return sendApiResponse(res, 404, false, "No account was found. Please register to proceed.", []);
+      }
       return sendApiResponse(res, 401, false, "Invalid credentials", []);
     }
     

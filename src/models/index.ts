@@ -66,6 +66,7 @@ import { RecordGrader } from './recordGrader.model.js';
 import { RecordGradeRating } from './recordGradeRating.model.js';
 import { ExclusiveEventRetailer } from './exclusiveEventRetailers.model.js';
 import { Block } from './block.model.js';
+import { Size } from './size.model.js';
 
 // Import all models here
 export const models = [
@@ -136,6 +137,7 @@ export const models = [
   ,RecordGradeRating
   ,ExclusiveEventRetailer
   ,Block
+  ,Size
 ];
 
 // Function to set up all associations
@@ -632,4 +634,5 @@ export {
   ,RecordGradeRating
   ,ExclusiveEventRetailer
   ,Block
+  ,Size
 };

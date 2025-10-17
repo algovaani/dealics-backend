@@ -1060,7 +1060,7 @@ export class TradingCardService {
       LEFT JOIN categories c ON tc.category_id = c.id
       LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
       ${interestedJoin}
-      WHERE tc.creator_id = ${validUserId}
+      WHERE tc.trader_id = ${validUserId}
         AND tc.trading_card_status = '1'
         AND tc.mark_as_deleted IS NULL
         AND tc.is_traded != '1'
@@ -1072,7 +1072,7 @@ export class TradingCardService {
     const countQuery = `
       SELECT COUNT(*) as total
       FROM trading_cards tc
-      WHERE tc.creator_id = ${validUserId}
+      WHERE tc.trader_id = ${validUserId}
         AND tc.trading_card_status = '1'
         AND tc.mark_as_deleted IS NULL
         AND tc.is_traded != '1'
@@ -2100,6 +2100,24 @@ export class TradingCardService {
           requestData.trading_card_img_back !== null && 
           String(requestData.trading_card_img_back).trim() !== '') {
         saveData.trading_card_img_back = requestData.trading_card_img_back;
+      }
+
+      // Business rules for can_trade / can_buy impacting price/value fields
+      if (requestData.can_trade !== undefined) {
+        const canTradeFlag = String(requestData.can_trade) === '1' ? '1' : '0';
+        saveData.can_trade = canTradeFlag;
+        if (canTradeFlag === '0') {
+          saveData.trading_card_estimated_value = 0;
+        }
+      }
+
+      if (requestData.can_buy !== undefined) {
+        const canBuyFlag = String(requestData.can_buy) === '1' ? '1' : '0';
+        saveData.can_buy = canBuyFlag;
+        if (canBuyFlag === '0') {
+          saveData.trading_card_asking_price = 0;
+          saveData.trading_card_offer_accept_above = 0;
+        }
       }
 
       // Check if we have any data to update

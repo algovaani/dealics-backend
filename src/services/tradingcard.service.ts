@@ -524,7 +524,7 @@ export class TradingCardService {
            const fieldType = fieldInfo.type;
            
            // Check if this field has a relationship (ends with _id) or known FK fields
-           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'convention_event') {
+           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'convention_event' || fieldName === 'brand') {
               
               let relatedTableName: string;
               
@@ -541,6 +541,8 @@ export class TradingCardService {
                 relatedTableName = 'size';
               } else if (fieldName === 'convention_event') {
                 relatedTableName = 'convention_event';
+              } else if (fieldName === 'brand') {
+                relatedTableName = 'brand';
               } else {
                 relatedTableName = fieldName.replace('_id', '');
               }
@@ -572,8 +574,8 @@ export class TradingCardService {
               });
               
               // Only add _text field if the field type is "autocomplete"
-              // Special-cases: ensure release_year, publication_year, vehicle_year, size, convention_event always expose _text when related value exists
-              if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'convention_event') && relatedValue !== null && relatedValue !== undefined) {
+              // Special-cases: ensure release_year, publication_year, vehicle_year, size, convention_event, brand always expose _text when related value exists
+              if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'convention_event' || fieldName === 'brand') && relatedValue !== null && relatedValue !== undefined) {
                 additionalFields.push({
                   field_name: `${fieldName}_text`,
                   field_value: relatedValue,
@@ -716,7 +718,6 @@ export class TradingCardService {
       const tableConfigs: { [key: string]: { table: string; displayField: string | string[]; idField?: string } } = {
         'player': { table: 'players', displayField: 'player_name', idField: 'id' },
         'team': { table: 'teams', displayField: 'team_name', idField: 'id' },
-        'brand': { table: 'brands', displayField: 'brand_name', idField: 'id' },
         'year': { table: 'years', displayField: 'name', idField: 'id' },
         // Map release_year aliases to years
         'release_year': { table: 'years', displayField: 'name', idField: 'id' },
@@ -735,7 +736,8 @@ export class TradingCardService {
         'set': { table: 'sets', displayField: 'set_name', idField: 'id' },
         'manufacturer': { table: 'manufacturers', displayField: 'manufacturer_name', idField: 'id' },
         'size': { table: 'sizes', displayField: 'name', idField: 'id' },
-        'convention_event': { table: 'convention_events', displayField: 'name', idField: 'id' }
+        'convention_event': { table: 'convention_events', displayField: 'name', idField: 'id' },
+        'brand': { table: 'brands', displayField: 'name', idField: 'id' }
       };
 
       const config = tableConfigs[tableName];
@@ -1515,6 +1517,11 @@ export class TradingCardService {
         saveData.convention_event = requestData.convention_event;
       }
 
+      // Handle brand field directly if provided (not dependent on category fields)
+      if (requestData.brand !== undefined) {
+        saveData.brand = requestData.brand;
+      }
+
       // Get category fields with priority - exactly like Laravel
       const categoryFields = await CategoryField.findAll({
         where: { category_id: categoryId },
@@ -2116,6 +2123,19 @@ export class TradingCardService {
           requestData.trading_card_img_back !== null && 
           String(requestData.trading_card_img_back).trim() !== '') {
         saveData.trading_card_img_back = requestData.trading_card_img_back;
+      }
+
+      // Handle master data fields directly if provided (not dependent on category fields)
+      if (requestData.size !== undefined) {
+        saveData.size = requestData.size;
+      }
+
+      if (requestData.convention_event !== undefined) {
+        saveData.convention_event = requestData.convention_event;
+      }
+
+      if (requestData.brand !== undefined) {
+        saveData.brand = requestData.brand;
       }
 
       // Business rules for can_trade / can_buy impacting price/value fields

@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { Certification } from "../models/certification.model.js";
 import { TradingCardService } from "../services/tradingcard.service.js";
-import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark, ExclusiveEventRetailer } from "../models/index.js";
+import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark, ExclusiveEventRetailer, Size } from "../models/index.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
@@ -2285,6 +2285,132 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
       }
     }
 
+    // Handle size field - either size_text or size value (string or ID)
+    if (requestData.size_text && String(requestData.size_text).trim()) {
+      // If size_text is provided, find or create in master and set size ID
+      try {
+        const [size] = await (Size as any).findOrCreate({
+          where: {
+            name: String(requestData.size_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            name: String(requestData.size_text).trim(),
+            category_id: String(categoryIdNum),
+            status: '1'
+          }
+        });
+        if (size && size.id) {
+          (requestData as any).size = size.id;
+        }
+      } catch (e) {
+        console.warn('size upsert failed (create):', e);
+      }
+    } else if (requestData.size !== undefined) {
+      // Handle size field - could be string value or numeric ID
+      try {
+        
+        // Check if it's a numeric ID
+        if (!isNaN(Number(requestData.size)) && String(requestData.size).trim() === String(Number(requestData.size))) {
+          // It's a pure numeric ID
+          const sizeId = Number(requestData.size);
+          const existingSize = await (Size as any).findByPk(sizeId);
+          
+          if (!existingSize) {
+            // Size ID doesn't exist, create a new one with a default name
+            const newSize = await (Size as any).create({
+              name: `Size ${sizeId}`,
+              category_id: String(categoryIdNum),
+              status: '1'
+            });
+            (requestData as any).size = newSize.id;
+          } else {
+          }
+        } else {
+          // It's a string value (like "1 ukxdasd"), save to master table
+          const sizeValue = String(requestData.size).trim();
+          const [size] = await (Size as any).findOrCreate({
+            where: {
+              name: sizeValue,
+              category_id: String(categoryIdNum)
+            },
+            defaults: {
+              name: sizeValue,
+              category_id: String(categoryIdNum),
+              status: '1'
+            }
+          });
+          if (size && size.id) {
+            (requestData as any).size = size.id;
+          }
+        }
+      } catch (e) {
+        console.warn('size processing failed:', e);
+      }
+    }
+
+    // Handle convention_event field - either convention_event_text or convention_event value (string or ID)
+    if (requestData.convention_event_text && String(requestData.convention_event_text).trim()) {
+      // If convention_event_text is provided, find or create in master and set convention_event ID
+      try {
+        const [conventionEvent] = await (ConventionEvent as any).findOrCreate({
+          where: {
+            name: String(requestData.convention_event_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            name: String(requestData.convention_event_text).trim(),
+            category_id: String(categoryIdNum),
+            status: '1'
+          }
+        });
+        if (conventionEvent && conventionEvent.id) {
+          (requestData as any).convention_event = conventionEvent.id;
+        }
+      } catch (e) {
+        console.warn('convention_event upsert failed (create):', e);
+      }
+    } else if (requestData.convention_event !== undefined) {
+      // Handle convention_event field - could be string value or numeric ID
+      try {
+        // Check if it's a numeric ID
+        if (!isNaN(Number(requestData.convention_event)) && String(requestData.convention_event).trim() === String(Number(requestData.convention_event))) {
+          // It's a pure numeric ID
+          const conventionEventId = Number(requestData.convention_event);
+          const existingConventionEvent = await (ConventionEvent as any).findByPk(conventionEventId);
+          
+          if (!existingConventionEvent) {
+            // Convention event ID doesn't exist, create a new one with a default name
+            const newConventionEvent = await (ConventionEvent as any).create({
+              name: `Convention Event ${conventionEventId}`,
+              category_id: String(categoryIdNum),
+              status: '1'
+            });
+            (requestData as any).convention_event = newConventionEvent.id;
+          }
+        } else {
+          // It's a string value (like "custom value"), save to master table
+          const conventionEventValue = String(requestData.convention_event).trim();
+          const [conventionEvent] = await (ConventionEvent as any).findOrCreate({
+            where: {
+              name: conventionEventValue,
+              category_id: String(categoryIdNum)
+            },
+            defaults: {
+              name: conventionEventValue,
+              category_id: String(categoryIdNum),
+              status: '1'
+            }
+          });
+          if (conventionEvent && conventionEvent.id) {
+            (requestData as any).convention_event = conventionEvent.id;
+          }
+        }
+      } catch (e) {
+        console.warn('convention_event processing failed:', e);
+      }
+    }
+
     // Call service to save trading card
     const result = await tradingcardService.saveTradingCard(requestData, categoryIdNum, userId);
 
@@ -2627,6 +2753,134 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
         }
       } catch (e) {
         console.warn('release_year upsert failed (update, years):', e);
+      }
+    }
+
+    // Handle size field - either size_text or size value (string or ID)
+    if (requestData.size_text && String(requestData.size_text).trim()) {
+      // If size_text is provided, find or create in master and set size ID
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        const [size] = await (Size as any).findOrCreate({
+          where: {
+            name: String(requestData.size_text).trim(),
+            category_id: String(effectiveCategoryId)
+          },
+          defaults: {
+            name: String(requestData.size_text).trim(),
+            category_id: String(effectiveCategoryId),
+            status: '1'
+          }
+        });
+        if (size && size.id) {
+          (requestData as any).size = size.id;
+        }
+      } catch (e) {
+        console.warn('size upsert failed (update):', e);
+      }
+    } else if (requestData.size !== undefined) {
+      // Handle size field - could be string value or numeric ID
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        // Check if it's a numeric ID
+        if (!isNaN(Number(requestData.size)) && String(requestData.size).trim() === String(Number(requestData.size))) {
+          // It's a pure numeric ID
+          const sizeId = Number(requestData.size);
+          const existingSize = await (Size as any).findByPk(sizeId);
+          
+          if (!existingSize) {
+            // Size ID doesn't exist, create a new one with a default name
+            const newSize = await (Size as any).create({
+              name: `Size ${sizeId}`,
+              category_id: String(effectiveCategoryId),
+              status: '1'
+            });
+            (requestData as any).size = newSize.id;
+          }
+        } else {
+          // It's a string value (like "1 ukxdasd"), save to master table
+          const sizeValue = String(requestData.size).trim();
+          const [size] = await (Size as any).findOrCreate({
+            where: {
+              name: sizeValue,
+              category_id: String(effectiveCategoryId)
+            },
+            defaults: {
+              name: sizeValue,
+              category_id: String(effectiveCategoryId),
+              status: '1'
+            }
+          });
+          if (size && size.id) {
+            (requestData as any).size = size.id;
+          }
+        }
+      } catch (e) {
+        console.warn('size processing failed (update):', e);
+      }
+    }
+
+    // Handle convention_event field - either convention_event_text or convention_event value (string or ID)
+    if (requestData.convention_event_text && String(requestData.convention_event_text).trim()) {
+      // If convention_event_text is provided, find or create in master and set convention_event ID
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        const [conventionEvent] = await (ConventionEvent as any).findOrCreate({
+          where: {
+            name: String(requestData.convention_event_text).trim(),
+            category_id: String(effectiveCategoryId)
+          },
+          defaults: {
+            name: String(requestData.convention_event_text).trim(),
+            category_id: String(effectiveCategoryId),
+            status: '1'
+          }
+        });
+        if (conventionEvent && conventionEvent.id) {
+          (requestData as any).convention_event = conventionEvent.id;
+        }
+      } catch (e) {
+        console.warn('convention_event upsert failed (update):', e);
+      }
+    } else if (requestData.convention_event !== undefined) {
+      // Handle convention_event field - could be string value or numeric ID
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        // Check if it's a numeric ID
+        if (!isNaN(Number(requestData.convention_event)) && String(requestData.convention_event).trim() === String(Number(requestData.convention_event))) {
+          // It's a pure numeric ID
+          const conventionEventId = Number(requestData.convention_event);
+          const existingConventionEvent = await (ConventionEvent as any).findByPk(conventionEventId);
+          
+          if (!existingConventionEvent) {
+            // Convention event ID doesn't exist, create a new one with a default name
+            const newConventionEvent = await (ConventionEvent as any).create({
+              name: `Convention Event ${conventionEventId}`,
+              category_id: String(effectiveCategoryId),
+              status: '1'
+            });
+            (requestData as any).convention_event = newConventionEvent.id;
+          }
+        } else {
+          // It's a string value (like "custom value"), save to master table
+          const conventionEventValue = String(requestData.convention_event).trim();
+          const [conventionEvent] = await (ConventionEvent as any).findOrCreate({
+            where: {
+              name: conventionEventValue,
+              category_id: String(effectiveCategoryId)
+            },
+            defaults: {
+              name: conventionEventValue,
+              category_id: String(effectiveCategoryId),
+              status: '1'
+            }
+          });
+          if (conventionEvent && conventionEvent.id) {
+            (requestData as any).convention_event = conventionEvent.id;
+          }
+        }
+      } catch (e) {
+        console.warn('convention_event processing failed (update):', e);
       }
     }
 

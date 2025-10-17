@@ -524,7 +524,7 @@ export class TradingCardService {
            const fieldType = fieldInfo.type;
            
            // Check if this field has a relationship (ends with _id) or known FK fields
-           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year') {
+           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'convention_event') {
               
               let relatedTableName: string;
               
@@ -537,6 +537,10 @@ export class TradingCardService {
                 relatedTableName = 'publication_years';
               } else if (fieldName === 'vehicle_year') {
                 relatedTableName = 'vehicle_years';
+              } else if (fieldName === 'size') {
+                relatedTableName = 'size';
+              } else if (fieldName === 'convention_event') {
+                relatedTableName = 'convention_event';
               } else {
                 relatedTableName = fieldName.replace('_id', '');
               }
@@ -568,8 +572,8 @@ export class TradingCardService {
               });
               
               // Only add _text field if the field type is "autocomplete"
-              // Special-cases: ensure release_year, publication_year, vehicle_year always expose _text when related value exists
-              if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year') && relatedValue !== null && relatedValue !== undefined) {
+              // Special-cases: ensure release_year, publication_year, vehicle_year, size, convention_event always expose _text when related value exists
+              if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'convention_event') && relatedValue !== null && relatedValue !== undefined) {
                 additionalFields.push({
                   field_name: `${fieldName}_text`,
                   field_value: relatedValue,
@@ -729,7 +733,9 @@ export class TradingCardService {
         'sport': { table: 'sports', displayField: 'sport_name', idField: 'id' },
         'league': { table: 'leagues', displayField: 'league_name', idField: 'id' },
         'set': { table: 'sets', displayField: 'set_name', idField: 'id' },
-        'manufacturer': { table: 'manufacturers', displayField: 'manufacturer_name', idField: 'id' }
+        'manufacturer': { table: 'manufacturers', displayField: 'manufacturer_name', idField: 'id' },
+        'size': { table: 'sizes', displayField: 'name', idField: 'id' },
+        'convention_event': { table: 'convention_events', displayField: 'name', idField: 'id' }
       };
 
       const config = tableConfigs[tableName];
@@ -1498,6 +1504,16 @@ export class TradingCardService {
         trader_id: userId,
         category_id: categoryId,
       };
+
+      // Handle size field directly if provided (not dependent on category fields)
+      if (requestData.size !== undefined) {
+        saveData.size = requestData.size;
+      }
+
+      // Handle convention_event field directly if provided (not dependent on category fields)
+      if (requestData.convention_event !== undefined) {
+        saveData.convention_event = requestData.convention_event;
+      }
 
       // Get category fields with priority - exactly like Laravel
       const categoryFields = await CategoryField.findAll({

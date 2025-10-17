@@ -2411,6 +2411,68 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
       }
     }
 
+    // Handle brand field - either brand_text or brand value (string or ID)
+    if (requestData.brand_text && String(requestData.brand_text).trim()) {
+      // If brand_text is provided, find or create in master and set brand ID
+      try {
+        const [brand] = await (Brand as any).findOrCreate({
+          where: {
+            name: String(requestData.brand_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            name: String(requestData.brand_text).trim(),
+            category_id: String(categoryIdNum),
+            status: '1'
+          }
+        });
+        if (brand && brand.id) {
+          (requestData as any).brand = brand.id;
+        }
+      } catch (e) {
+        console.warn('brand upsert failed (create):', e);
+      }
+    } else if (requestData.brand !== undefined) {
+      // Handle brand field - could be string value or numeric ID
+      try {
+        // Check if it's a numeric ID
+        if (!isNaN(Number(requestData.brand)) && String(requestData.brand).trim() === String(Number(requestData.brand))) {
+          // It's a pure numeric ID
+          const brandId = Number(requestData.brand);
+          const existingBrand = await (Brand as any).findByPk(brandId);
+          
+          if (!existingBrand) {
+            // Brand ID doesn't exist, create a new one with a default name
+            const newBrand = await (Brand as any).create({
+              name: `Brand ${brandId}`,
+              category_id: String(categoryIdNum),
+              status: '1'
+            });
+            (requestData as any).brand = newBrand.id;
+          }
+        } else {
+          // It's a string value (like "custom baint"), save to master table
+          const brandValue = String(requestData.brand).trim();
+          const [brand] = await (Brand as any).findOrCreate({
+            where: {
+              name: brandValue,
+              category_id: String(categoryIdNum)
+            },
+            defaults: {
+              name: brandValue,
+              category_id: String(categoryIdNum),
+              status: '1'
+            }
+          });
+          if (brand && brand.id) {
+            (requestData as any).brand = brand.id;
+          }
+        }
+      } catch (e) {
+        console.warn('brand processing failed:', e);
+      }
+    }
+
     // Call service to save trading card
     const result = await tradingcardService.saveTradingCard(requestData, categoryIdNum, userId);
 
@@ -2881,6 +2943,70 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
         }
       } catch (e) {
         console.warn('convention_event processing failed (update):', e);
+      }
+    }
+
+    // Handle brand field - either brand_text or brand value (string or ID)
+    if (requestData.brand_text && String(requestData.brand_text).trim()) {
+      // If brand_text is provided, find or create in master and set brand ID
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        const [brand] = await (Brand as any).findOrCreate({
+          where: {
+            name: String(requestData.brand_text).trim(),
+            category_id: String(effectiveCategoryId)
+          },
+          defaults: {
+            name: String(requestData.brand_text).trim(),
+            category_id: String(effectiveCategoryId),
+            status: '1'
+          }
+        });
+        if (brand && brand.id) {
+          (requestData as any).brand = brand.id;
+        }
+      } catch (e) {
+        console.warn('brand upsert failed (update):', e);
+      }
+    } else if (requestData.brand !== undefined) {
+      // Handle brand field - could be string value or numeric ID
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        // Check if it's a numeric ID
+        if (!isNaN(Number(requestData.brand)) && String(requestData.brand).trim() === String(Number(requestData.brand))) {
+          // It's a pure numeric ID
+          const brandId = Number(requestData.brand);
+          const existingBrand = await (Brand as any).findByPk(brandId);
+          
+          if (!existingBrand) {
+            // Brand ID doesn't exist, create a new one with a default name
+            const newBrand = await (Brand as any).create({
+              name: `Brand ${brandId}`,
+              category_id: String(effectiveCategoryId),
+              status: '1'
+            });
+            (requestData as any).brand = newBrand.id;
+          }
+        } else {
+          // It's a string value (like "custom baint"), save to master table
+          const brandValue = String(requestData.brand).trim();
+          const [brand] = await (Brand as any).findOrCreate({
+            where: {
+              name: brandValue,
+              category_id: String(effectiveCategoryId)
+            },
+            defaults: {
+              name: brandValue,
+              category_id: String(effectiveCategoryId),
+              status: '1'
+            }
+          });
+          if (brand && brand.id) {
+            (requestData as any).brand = brand.id;
+          }
+        }
+      } catch (e) {
+        console.warn('brand processing failed (update):', e);
       }
     }
 

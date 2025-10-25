@@ -920,17 +920,31 @@ import {
     @Column(DataType.TEXT)
     canada_shipping_flat_rate?: string;
   
-      @AllowNull
-  @Column(DataType.TEXT)
-  canada_add_product_flat_rate?: string;
+    @AllowNull
+    @Column(DataType.TEXT)
+    canada_add_product_flat_rate?: string;
 
- 
+    @AllowNull
+    @Column(DataType.INTEGER)
+    shoe_size?: number;
+    
 
-  // Virtual properties for associations (will be populated by Sequelize)
-  trader?: any;
-  creatorUser?: any;
-  parentCategory?: any;
-  cardCondition?: any;
-  cardImages?: any[];
-  } 
-  
+    @AllowNull
+    @Column(DataType.STRING(50))
+    style_code?: string;
+
+    @AllowNull
+    @Column(DataType.DATE)
+    release_date?: Date;
+
+    @AllowNull
+    @Column(DataType.DOUBLE(12, 2))
+    retail_price?: number;
+
+    // Virtual properties for associations (will be populated by Sequelize)
+    trader?: any;
+    creatorUser?: any;
+    parentCategory?: any;
+    cardCondition?: any;
+    cardImages?: any[];
+}

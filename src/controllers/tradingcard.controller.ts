@@ -1086,6 +1086,11 @@ const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint:
       ...additionalNonNullFields
     };
     
+    // Set no-cache headers
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     return sendApiResponse(res, 200, true, "Trading card retrieved successfully", transformedCard);
   } catch (error: any) {
     console.error(error);
@@ -1592,6 +1597,11 @@ const getTradingCardForEdit = async (req: Request, res: Response, isUserEndpoint
       // Add all other non-null/non-empty fields from trading_cards table
       ...additionalNonNullFields
     };
+    
+    // Set no-cache headers
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     
     return sendApiResponse(res, 200, true, "Trading card retrieved successfully", transformedCard);
   } catch (error: any) {
@@ -2356,11 +2366,11 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
         const [conventionEvent] = await (ConventionEvent as any).findOrCreate({
           where: {
             name: String(requestData.convention_event_text).trim(),
-            category_id: String(categoryIdNum)
+            categoryId: String(categoryIdNum)
           },
           defaults: {
             name: String(requestData.convention_event_text).trim(),
-            category_id: String(categoryIdNum),
+            categoryId: String(categoryIdNum),
             status: '1'
           }
         });
@@ -2383,7 +2393,7 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
             // Convention event ID doesn't exist, create a new one with a default name
             const newConventionEvent = await (ConventionEvent as any).create({
               name: `Convention Event ${conventionEventId}`,
-              category_id: String(categoryIdNum),
+              categoryId: String(categoryIdNum),
               status: '1'
             });
             (requestData as any).convention_event = newConventionEvent.id;
@@ -2394,11 +2404,11 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
           const [conventionEvent] = await (ConventionEvent as any).findOrCreate({
             where: {
               name: conventionEventValue,
-              category_id: String(categoryIdNum)
+              categoryId: String(categoryIdNum)
             },
             defaults: {
               name: conventionEventValue,
-              category_id: String(categoryIdNum),
+              categoryId: String(categoryIdNum),
               status: '1'
             }
           });
@@ -2418,11 +2428,11 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
         const [brand] = await (Brand as any).findOrCreate({
           where: {
             name: String(requestData.brand_text).trim(),
-            category_id: String(categoryIdNum)
+            categoryId: String(categoryIdNum)
           },
           defaults: {
             name: String(requestData.brand_text).trim(),
-            category_id: String(categoryIdNum),
+            categoryId: String(categoryIdNum),
             status: '1'
           }
         });
@@ -2445,7 +2455,7 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
             // Brand ID doesn't exist, create a new one with a default name
             const newBrand = await (Brand as any).create({
               name: `Brand ${brandId}`,
-              category_id: String(categoryIdNum),
+              categoryId: String(categoryIdNum),
               status: '1'
             });
             (requestData as any).brand = newBrand.id;
@@ -2456,11 +2466,11 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
           const [brand] = await (Brand as any).findOrCreate({
             where: {
               name: brandValue,
-              category_id: String(categoryIdNum)
+              categoryId: String(categoryIdNum)
             },
             defaults: {
               name: brandValue,
-              category_id: String(categoryIdNum),
+              categoryId: String(categoryIdNum),
               status: '1'
             }
           });
@@ -2802,7 +2812,7 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
           },
           defaults: {
             name: String(requestData.release_year_text).trim(),
-            category_id: String(effectiveCategoryId),
+            categoryId: String(effectiveCategoryId),
             status: '1'
           }
         });
@@ -2882,63 +2892,36 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       }
     }
 
-    // Handle convention_event field - either convention_event_text or convention_event value (string or ID)
-    if (requestData.convention_event_text && String(requestData.convention_event_text).trim()) {
-      // If convention_event_text is provided, find or create in master and set convention_event ID
+    // Handle convention_event field - check if numeric (existing) or string (new)
+    if (requestData.convention_event !== undefined) {
       try {
         const effectiveCategoryId = tradingCard.category_id;
-        const [conventionEvent] = await (ConventionEvent as any).findOrCreate({
-          where: {
-            name: String(requestData.convention_event_text).trim(),
-            category_id: String(effectiveCategoryId)
-          },
-          defaults: {
-            name: String(requestData.convention_event_text).trim(),
-            category_id: String(effectiveCategoryId),
-            status: '1'
-          }
-        });
-        if (conventionEvent && conventionEvent.id) {
-          (requestData as any).convention_event = conventionEvent.id;
-        }
-      } catch (e) {
-        console.warn('convention_event upsert failed (update):', e);
-      }
-    } else if (requestData.convention_event !== undefined) {
-      // Handle convention_event field - could be string value or numeric ID
-      try {
-        const effectiveCategoryId = tradingCard.category_id;
-        // Check if it's a numeric ID
-        if (!isNaN(Number(requestData.convention_event)) && String(requestData.convention_event).trim() === String(Number(requestData.convention_event))) {
-          // It's a pure numeric ID
-          const conventionEventId = Number(requestData.convention_event);
-          const existingConventionEvent = await (ConventionEvent as any).findByPk(conventionEventId);
-          
-          if (!existingConventionEvent) {
-            // Convention event ID doesn't exist, create a new one with a default name
-            const newConventionEvent = await (ConventionEvent as any).create({
-              name: `Convention Event ${conventionEventId}`,
-              category_id: String(effectiveCategoryId),
-              status: '1'
-            });
-            (requestData as any).convention_event = newConventionEvent.id;
-          }
+        const conventionEventValue = String(requestData.convention_event).trim();
+        
+        // Check if it's a numeric ID (from dropdown - already exists in master table)
+        if (!isNaN(Number(conventionEventValue)) && conventionEventValue === String(Number(conventionEventValue))) {
+          // It's a numeric ID from dropdown, use it directly
+          console.log('Using existing convention_event ID from dropdown:', conventionEventValue);
+          (requestData as any).convention_event = Number(conventionEventValue);
         } else {
-          // It's a string value (like "custom value"), save to master table
-          const conventionEventValue = String(requestData.convention_event).trim();
+          // It's a string value, find or create in master table
+          console.log('Processing new convention_event value:', conventionEventValue, 'for category:', effectiveCategoryId);
+          
           const [conventionEvent] = await (ConventionEvent as any).findOrCreate({
             where: {
               name: conventionEventValue,
-              category_id: String(effectiveCategoryId)
+              categoryId: String(effectiveCategoryId)
             },
             defaults: {
               name: conventionEventValue,
-              category_id: String(effectiveCategoryId),
+              categoryId: String(effectiveCategoryId),
               status: '1'
             }
           });
+          
           if (conventionEvent && conventionEvent.id) {
             (requestData as any).convention_event = conventionEvent.id;
+            console.log('Convention event created/found with ID:', conventionEvent.id);
           }
         }
       } catch (e) {
@@ -2946,63 +2929,36 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       }
     }
 
-    // Handle brand field - either brand_text or brand value (string or ID)
-    if (requestData.brand_text && String(requestData.brand_text).trim()) {
-      // If brand_text is provided, find or create in master and set brand ID
+    // Handle brand field - check if numeric (existing) or string (new)
+    if (requestData.brand !== undefined) {
       try {
         const effectiveCategoryId = tradingCard.category_id;
-        const [brand] = await (Brand as any).findOrCreate({
-          where: {
-            name: String(requestData.brand_text).trim(),
-            category_id: String(effectiveCategoryId)
-          },
-          defaults: {
-            name: String(requestData.brand_text).trim(),
-            category_id: String(effectiveCategoryId),
-            status: '1'
-          }
-        });
-        if (brand && brand.id) {
-          (requestData as any).brand = brand.id;
-        }
-      } catch (e) {
-        console.warn('brand upsert failed (update):', e);
-      }
-    } else if (requestData.brand !== undefined) {
-      // Handle brand field - could be string value or numeric ID
-      try {
-        const effectiveCategoryId = tradingCard.category_id;
-        // Check if it's a numeric ID
-        if (!isNaN(Number(requestData.brand)) && String(requestData.brand).trim() === String(Number(requestData.brand))) {
-          // It's a pure numeric ID
-          const brandId = Number(requestData.brand);
-          const existingBrand = await (Brand as any).findByPk(brandId);
-          
-          if (!existingBrand) {
-            // Brand ID doesn't exist, create a new one with a default name
-            const newBrand = await (Brand as any).create({
-              name: `Brand ${brandId}`,
-              category_id: String(effectiveCategoryId),
-              status: '1'
-            });
-            (requestData as any).brand = newBrand.id;
-          }
+        const brandValue = String(requestData.brand).trim();
+        
+        // Check if it's a numeric ID (from dropdown - already exists in master table)
+        if (!isNaN(Number(brandValue)) && brandValue === String(Number(brandValue))) {
+          // It's a numeric ID from dropdown, use it directly
+          console.log('Using existing brand ID from dropdown:', brandValue);
+          (requestData as any).brand = Number(brandValue);
         } else {
-          // It's a string value (like "custom baint"), save to master table
-          const brandValue = String(requestData.brand).trim();
+          // It's a string value, find or create in master table
+          console.log('Processing new brand value:', brandValue, 'for category:', effectiveCategoryId);
+          
           const [brand] = await (Brand as any).findOrCreate({
             where: {
               name: brandValue,
-              category_id: String(effectiveCategoryId)
+              categoryId: String(effectiveCategoryId)
             },
             defaults: {
               name: brandValue,
-              category_id: String(effectiveCategoryId),
+              categoryId: String(effectiveCategoryId),
               status: '1'
             }
           });
+          
           if (brand && brand.id) {
             (requestData as any).brand = brand.id;
+            console.log('Brand created/found with ID:', brand.id);
           }
         }
       } catch (e) {
@@ -3010,6 +2966,8 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       }
     }
 
+    // Debug: Log the final requestData before calling service
+    console.log('Final requestData before service call - brand:', requestData.brand, 'convention_event:', requestData.convention_event);
     
     const result = await tradingcardService.updateTradingCard(cardIdNum, requestData, userId);
 

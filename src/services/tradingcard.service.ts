@@ -427,6 +427,12 @@ export class TradingCardService {
           attributes: ['username'],
           where: { user_status: '1' },
           required: false
+        },
+        {
+          model: Category,
+          as: 'parentCategory',
+          attributes: ['id', 'sport_name', 'slug'],
+          required: false
         }
       ]
     });
@@ -503,7 +509,7 @@ export class TradingCardService {
       
       // Get all field names from the trading card model
       const allFieldNames = Object.keys(cardData);
-      
+           
              // Filter out null/undefined values and exclude basic fields that are already in main response
        const basicFields = ['id', 'code', 'trading_card_status', 'category_id', 'search_param',
                            'trading_card_img', 'trading_card_img_back', 'trading_card_slug', 
@@ -524,21 +530,36 @@ export class TradingCardService {
            const fieldType = fieldInfo.type;
            
            // Check if this field has a relationship (ends with _id) or known FK fields
-           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'convention_event' || fieldName === 'brand') {
+           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'year_date_of_issue' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'shoe_size' || fieldName === 'convention_event' || fieldName === 'brand' || fieldName === 'style_code' || fieldName === 'release_date' || fieldName === 'retail_price') {
               
               let relatedTableName: string;
               
               if (fieldName === 'card_condition_id') {
                 relatedTableName = 'condition';
               } else if (fieldName === 'release_year') {
-                // Use years table for release_year lookups
-                relatedTableName = 'years';
+                // For sneakers category, use release_years table, otherwise use years table
+                const categorySlug = tradingCard.parentCategory?.slug;
+                if (categorySlug === 'sneakers') {
+                  relatedTableName = 'release_years';
+                } else {
+                  relatedTableName = 'years';
+                }
+              } else if (fieldName === 'year_date_of_issue') {
+                // For sneakers category, use release_years table, otherwise use years table
+                const categorySlug = tradingCard.parentCategory?.slug;
+                if (categorySlug === 'sneakers') {
+                  relatedTableName = 'release_years';
+                } else {
+                  relatedTableName = 'years';
+                }
               } else if (fieldName === 'publication_year') {
                 relatedTableName = 'publication_years';
               } else if (fieldName === 'vehicle_year') {
                 relatedTableName = 'vehicle_years';
               } else if (fieldName === 'size') {
                 relatedTableName = 'size';
+              } else if (fieldName === 'shoe_size') {
+                relatedTableName = 'shoe_size';
               } else if (fieldName === 'convention_event') {
                 relatedTableName = 'convention_event';
               } else if (fieldName === 'brand') {
@@ -549,9 +570,20 @@ export class TradingCardService {
               
               let relatedValue = await this.getRelatedValue(relatedTableName, cardData[fieldName]);
 
-              // Fallback: if release_year not found in years (legacy data), try release_years
-              if (fieldName === 'release_year' && (relatedValue === null || relatedValue === undefined)) {
-                const fallbackValue = await this.getRelatedValue('release_years', cardData[fieldName]);
+              // Fallback: if release_year or year_date_of_issue not found in the primary table, try the alternative table
+              if ((fieldName === 'release_year' || fieldName === 'year_date_of_issue') && (relatedValue === null || relatedValue === undefined)) {
+                const categorySlug = tradingCard.parentCategory?.slug;
+                let fallbackTableName: string;
+                
+                if (categorySlug === 'sneakers') {
+                  // For sneakers, if not found in release_years, try years
+                  fallbackTableName = 'years';
+                } else {
+                  // For other categories, if not found in years, try release_years
+                  fallbackTableName = 'release_years';
+                }
+                
+                const fallbackValue = await this.getRelatedValue(fallbackTableName, cardData[fieldName]);
                 if (fallbackValue !== null && fallbackValue !== undefined) {
                   relatedValue = fallbackValue;
                 }
@@ -575,7 +607,7 @@ export class TradingCardService {
               
               // Only add _text field if the field type is "autocomplete"
               // Special-cases: ensure release_year, publication_year, vehicle_year, size, convention_event, brand always expose _text when related value exists
-              if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'convention_event' || fieldName === 'brand') && relatedValue !== null && relatedValue !== undefined) {
+              if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'shoe_size' || fieldName === 'convention_event' || fieldName === 'brand') && relatedValue !== null && relatedValue !== undefined) {
                 additionalFields.push({
                   field_name: `${fieldName}_text`,
                   field_value: relatedValue,
@@ -721,7 +753,7 @@ export class TradingCardService {
         'year': { table: 'years', displayField: 'name', idField: 'id' },
         // Map release_year aliases to years
         'release_year': { table: 'years', displayField: 'name', idField: 'id' },
-        'release_years': { table: 'years', displayField: 'name', idField: 'id' },
+        'release_years': { table: 'release_years', displayField: 'name', idField: 'id' },
         // publication_year maps to publication_years (try multiple potential columns just in case)
         'publication_year': { table: 'publication_years', displayField: ['name'], idField: 'id' },
         'publication_years': { table: 'publication_years', displayField: ['name'], idField: 'id' },
@@ -736,6 +768,7 @@ export class TradingCardService {
         'set': { table: 'sets', displayField: 'set_name', idField: 'id' },
         'manufacturer': { table: 'manufacturers', displayField: 'manufacturer_name', idField: 'id' },
         'size': { table: 'sizes', displayField: 'name', idField: 'id' },
+        'shoe_size': { table: 'shoe_sizes', displayField: 'name', idField: 'id' },
         'convention_event': { table: 'convention_events', displayField: 'name', idField: 'id' },
         'brand': { table: 'brands', displayField: 'name', idField: 'id' }
       };
@@ -1255,7 +1288,7 @@ export class TradingCardService {
             'platform_consoles', 'PlatformConsole', 'platformconsoles', 'record_grade_ratings', 'RecordGradeRating', 'recordgraderatings',
             'record_graders', 'RecordGrader', 'recordgraders', 'record_sizes', 'RecordSize', 'recordsizes',
             'sleeve_grade_ratings', 'SleeveGradeRating', 'sleevegraderatings', 'sleeve_graders', 'SleeveGrader', 'sleevegraders',
-            'types', 'Type', 'Types', 'publication_years', 'PublicationYear'
+            'types', 'Type', 'Types', 'publication_years', 'PublicationYear', 'shoe_sizes', 'ShoeSize'
           ];
           
           if (specialTables.includes(itemColumn.rel_master_table)) {
@@ -1291,7 +1324,7 @@ export class TradingCardService {
               'platform_consoles', 'PlatformConsole', 'platformconsoles', 'record_grade_ratings', 'RecordGradeRating', 'recordgraderatings',
               'record_graders', 'RecordGrader', 'recordgraders', 'record_sizes', 'RecordSize', 'recordsizes',
               'sleeve_grade_ratings', 'SleeveGradeRating', 'sleevegraderatings', 'sleeve_graders', 'SleeveGrader', 'sleevegraders',
-              'types', 'Type', 'Types', 'publication_years', 'PublicationYear'
+              'types', 'Type', 'Types', 'publication_years', 'PublicationYear', 'shoe_sizes', 'ShoeSize'
             ];
             
             if (specialTables.includes(itemColumn.rel_master_table)) {
@@ -1510,6 +1543,26 @@ export class TradingCardService {
       // Handle size field directly if provided (not dependent on category fields)
       if (requestData.size !== undefined) {
         saveData.size = requestData.size;
+      }
+
+      // Handle shoe_size field directly if provided (not dependent on category fields)
+      if (requestData.shoe_size !== undefined) {
+        saveData.shoe_size = requestData.shoe_size;
+      }
+
+      // Handle style_code field directly if provided
+      if (requestData.style_code !== undefined) {
+        saveData.style_code = requestData.style_code;
+      }
+
+      // Handle release_date field directly if provided
+      if (requestData.release_date !== undefined) {
+        saveData.release_date = requestData.release_date;
+      }
+
+      // Handle retail_price field directly if provided
+      if (requestData.retail_price !== undefined) {
+        saveData.retail_price = requestData.retail_price;
       }
 
       // Handle convention_event field directly if provided (not dependent on category fields)
@@ -2130,6 +2183,25 @@ export class TradingCardService {
         saveData.size = requestData.size;
       }
 
+      if (requestData.shoe_size !== undefined) {
+        saveData.shoe_size = requestData.shoe_size;
+      }
+
+      if (requestData.style_code !== undefined) {
+        console.log('SERVICE UPDATE: Processing style_code field:', requestData.style_code);
+        saveData.style_code = requestData.style_code;
+      }
+
+      if (requestData.release_date !== undefined) {
+        console.log('SERVICE UPDATE: Processing release_date field:', requestData.release_date);
+        saveData.release_date = requestData.release_date;
+      }
+
+      if (requestData.retail_price !== undefined) {
+        console.log('SERVICE UPDATE: Processing retail_price field:', requestData.retail_price);
+        saveData.retail_price = requestData.retail_price;
+      }
+
       if (requestData.convention_event !== undefined) {
         saveData.convention_event = requestData.convention_event;
       }
@@ -2162,6 +2234,7 @@ export class TradingCardService {
       }
 
       // Debug: Log what we're about to save
+      console.log('SERVICE UPDATE: Final saveData before database update:', JSON.stringify(saveData, null, 2));
 
       // Update the trading card
       await TradingCard.update(saveData, { where: { id: cardId } });

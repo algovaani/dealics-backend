@@ -696,8 +696,8 @@ export class UserService {
         };
       }
 
-      // Remove email and username from update data (non-editable fields)
-      const { email, username, ...allowedFields } = profileData;
+      // Remove username from update data (non-editable field)
+      const { username, ...allowedFields } = profileData;
       
       // Log what fields are being updated
 
@@ -719,6 +719,40 @@ export class UserService {
           validationErrors.push('Last name must be a string');
         } else if (allowedFields.last_name.trim().length === 0) {
           validationErrors.push('Last name cannot be empty');
+        }
+      }
+
+      // Validate email
+      if (allowedFields.email !== undefined) {
+        if (typeof allowedFields.email !== 'string') {
+          validationErrors.push('Email must be a string');
+        } else if (allowedFields.email.trim().length === 0) {
+          validationErrors.push('Email cannot be empty');
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(allowedFields.email.trim())) {
+          validationErrors.push('Email format is invalid');
+        } else {
+          // Check if email is being changed
+          const trimmedEmail = allowedFields.email.trim();
+          if (user.email !== trimmedEmail) {
+            // Email is being changed, set verification status to unverified
+            allowedFields.is_email_verified = "0";
+            allowedFields.email_verified_at = null;
+            console.log('Email changed, setting is_email_verified to 0 for user:', userId);
+          }
+          
+          // Check if email already exists for another user
+          const existingUser = await User.findOne({
+            where: {
+              email: trimmedEmail,
+              id: { [Op.ne]: userId } // Exclude current user
+            }
+          });
+          
+          if (existingUser) {
+            validationErrors.push('Email is already in use by another account');
+          }else{
+            
+          }
         }
       }
 
@@ -750,7 +784,7 @@ export class UserService {
 
       // Validate allowed fields
       const allowedUpdateFields = [
-        'first_name', 'last_name', 'profile_picture', 'phone_number', 
+        'first_name', 'last_name', 'email', 'is_email_verified', 'email_verified_at', 'profile_picture', 'phone_number', 
         'country_code', 'about_user', 'bio', 'shipping_address', 
         'shipping_city', 'shipping_state', 'shipping_zip_code',
         'ebay_store_url', 'paypal_business_email', 'is_free_shipping',
@@ -780,6 +814,9 @@ export class UserService {
       });
 
 
+      // Check if email is being updated before the update
+      const emailUpdated = allowedFields.email !== undefined && user.email !== allowedFields.email.trim();
+      
       // Update the user
       try {
         await user.update(filteredData);
@@ -787,6 +824,33 @@ export class UserService {
         console.error('❌ Database update error:', updateError);
         console.error('❌ Update data that caused error:', filteredData);
         throw updateError;
+      }
+
+      // Send emails after successful update
+      try {
+        const { EmailHelperService } = await import('./emailHelper.service.js');
+        
+        // Always send profile updated email (to current email - could be old or new)
+        await EmailHelperService.sendProfileUpdatedEmail(
+          user.email || '',
+          user.first_name || '',
+          user.last_name || ''
+        );
+        console.log('✅ Profile updated email sent successfully');
+
+        // If email was updated, also send email verification to NEW email address
+        if (emailUpdated) {
+          await EmailHelperService.sendEmailUpdatedVerificationEmail(
+            allowedFields.email.trim(), // NEW email address
+            user.first_name || '',
+            user.last_name || '',
+            user.id
+          );
+          console.log('✅ Email verification email sent to NEW email address:', allowedFields.email.trim());
+        }
+      } catch (emailError: any) {
+        console.error('❌ Email sending failed:', emailError);
+        // Don't fail the request if email sending fails
       }
 
       return {

@@ -67,6 +67,7 @@ import { RecordGradeRating } from './recordGradeRating.model.js';
 import { ExclusiveEventRetailer } from './exclusiveEventRetailers.model.js';
 import { Block } from './block.model.js';
 import { Size } from './size.model.js';
+import { ShoeSize } from './shoeSize.model.js';
 
 // Import all models here
 export const models = [
@@ -138,6 +139,7 @@ export const models = [
   ,ExclusiveEventRetailer
   ,Block
   ,Size
+  ,ShoeSize
 ];
 
 // Function to set up all associations
@@ -635,4 +637,5 @@ export {
   ,ExclusiveEventRetailer
   ,Block
   ,Size
+  ,ShoeSize
 };

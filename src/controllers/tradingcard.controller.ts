@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { Certification } from "../models/certification.model.js";
 import { TradingCardService } from "../services/tradingcard.service.js";
 import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark, ExclusiveEventRetailer, Size } from "../models/index.js";
+import { ShoeSize } from "../models/shoeSize.model.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import { uploadOne, getFileUrl } from "../utils/fileUpload.js";
@@ -2359,6 +2360,94 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
       }
     }
 
+    // Handle shoe_size field - either shoe_size_text or shoe_size value (string or ID)
+    if (requestData.shoe_size_text && String(requestData.shoe_size_text).trim()) {
+      // If shoe_size_text is provided, find or create in master and set shoe_size ID
+      try {
+        const [shoeSize] = await (ShoeSize as any).findOrCreate({
+          where: {
+            name: String(requestData.shoe_size_text).trim(),
+            category_id: String(categoryIdNum)
+          },
+          defaults: {
+            name: String(requestData.shoe_size_text).trim(),
+            category_id: String(categoryIdNum),
+            status: '1'
+          }
+        });
+        if (shoeSize && shoeSize.id) {
+          (requestData as any).shoe_size = shoeSize.id;
+        }
+      } catch (e) {
+        console.warn('shoe_size upsert failed:', e);
+      }
+    } else if (requestData.shoe_size !== undefined) {
+      // Handle shoe_size field - could be string value or numeric ID
+      try {
+        const shoeSizeValue = String(requestData.shoe_size).trim();
+        
+        // Check if it's a numeric ID (from dropdown - already exists in master table)
+        if (!isNaN(Number(shoeSizeValue)) && shoeSizeValue === String(Number(shoeSizeValue))) {
+          // It's a numeric ID from dropdown, verify it exists in master table
+          const shoeSizeId = Number(shoeSizeValue);
+          const existingShoeSize = await (ShoeSize as any).findByPk(shoeSizeId);
+          
+          if (existingShoeSize) {
+            // ID exists in master table, use it directly
+            console.log('SAVE: Using existing shoe_size ID from dropdown:', shoeSizeValue);
+            (requestData as any).shoe_size = shoeSizeId;
+          } else {
+            // ID doesn't exist in master table, create a new entry
+            console.log('SAVE: Shoe size ID not found in master table, creating new entry:', shoeSizeValue);
+            const newShoeSize = await (ShoeSize as any).create({
+              name: `Shoe Size ${shoeSizeValue}`,
+              category_id: String(categoryIdNum),
+              status: '1'
+            });
+            (requestData as any).shoe_size = newShoeSize.id;
+            console.log('SAVE: Created new shoe size with ID:', newShoeSize.id);
+          }
+        } else {
+          // It's a string value, find or create in master table
+          console.log('SAVE: Processing new shoe_size value:', shoeSizeValue, 'for category:', categoryIdNum);
+          
+          const [shoeSize] = await (ShoeSize as any).findOrCreate({
+            where: {
+              name: shoeSizeValue,
+              category_id: String(categoryIdNum)
+            },
+            defaults: {
+              name: shoeSizeValue,
+              category_id: String(categoryIdNum),
+              status: '1'
+            }
+          });
+          
+          if (shoeSize && shoeSize.id) {
+            (requestData as any).shoe_size = shoeSize.id;
+            console.log('SAVE: Shoe size created/found with ID:', shoeSize.id);
+          }
+        }
+      } catch (e) {
+        console.warn('SAVE: shoe_size processing failed:', e);
+      }
+    }
+
+    // Handle style_code field - direct assignment
+    if (requestData.style_code !== undefined) {
+      (requestData as any).style_code = requestData.style_code;
+    }
+
+    // Handle release_date field - direct assignment
+    if (requestData.release_date !== undefined) {
+      (requestData as any).release_date = requestData.release_date;
+    }
+
+    // Handle retail_price field - direct assignment
+    if (requestData.retail_price !== undefined) {
+      (requestData as any).retail_price = requestData.retail_price;
+    }
+
     // Handle convention_event field - either convention_event_text or convention_event value (string or ID)
     if (requestData.convention_event_text && String(requestData.convention_event_text).trim()) {
       // If convention_event_text is provided, find or create in master and set convention_event ID
@@ -2890,6 +2979,77 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       } catch (e) {
         console.warn('size processing failed (update):', e);
       }
+    }
+
+    // Handle shoe_size field - check if numeric (existing) or string (new)
+    if (requestData.shoe_size !== undefined) {
+      try {
+        const effectiveCategoryId = tradingCard.category_id;
+        const shoeSizeValue = String(requestData.shoe_size).trim();
+        
+        // Check if it's a numeric ID (from dropdown - already exists in master table)
+        if (!isNaN(Number(shoeSizeValue)) && shoeSizeValue === String(Number(shoeSizeValue))) {
+          // It's a numeric ID from dropdown, verify it exists in master table
+          const shoeSizeId = Number(shoeSizeValue);
+          const existingShoeSize = await (ShoeSize as any).findByPk(shoeSizeId);
+          
+          if (existingShoeSize) {
+            // ID exists in master table, use it directly
+            console.log('Using existing shoe_size ID from dropdown:', shoeSizeValue);
+            (requestData as any).shoe_size = shoeSizeId;
+          } else {
+            // ID doesn't exist in master table, create a new entry
+            console.log('Shoe size ID not found in master table, creating new entry:', shoeSizeValue);
+            const newShoeSize = await (ShoeSize as any).create({
+              name: `Shoe Size ${shoeSizeValue}`,
+              category_id: String(effectiveCategoryId),
+              status: '1'
+            });
+            (requestData as any).shoe_size = newShoeSize.id;
+            console.log('Created new shoe size with ID:', newShoeSize.id);
+          }
+        } else {
+          // It's a string value, find or create in master table
+          console.log('Processing new shoe_size value:', shoeSizeValue, 'for category:', effectiveCategoryId);
+          
+          const [shoeSize] = await (ShoeSize as any).findOrCreate({
+            where: {
+              name: shoeSizeValue,
+              category_id: String(effectiveCategoryId)
+            },
+            defaults: {
+              name: shoeSizeValue,
+              category_id: String(effectiveCategoryId),
+              status: '1'
+            }
+          });
+          
+          if (shoeSize && shoeSize.id) {
+            (requestData as any).shoe_size = shoeSize.id;
+            console.log('Shoe size created/found with ID:', shoeSize.id);
+          }
+        }
+      } catch (e) {
+        console.warn('shoe_size processing failed (update):', e);
+      }
+    }
+
+    // Handle style_code field - direct assignment
+    if (requestData.style_code !== undefined) {
+      console.log('UPDATE: Processing style_code field:', requestData.style_code);
+      (requestData as any).style_code = requestData.style_code;
+    }
+
+    // Handle release_date field - direct assignment
+    if (requestData.release_date !== undefined) {
+      console.log('UPDATE: Processing release_date field:', requestData.release_date);
+      (requestData as any).release_date = requestData.release_date;
+    }
+
+    // Handle retail_price field - direct assignment
+    if (requestData.retail_price !== undefined) {
+      console.log('UPDATE: Processing retail_price field:', requestData.retail_price);
+      (requestData as any).retail_price = requestData.retail_price;
     }
 
     // Handle convention_event field - check if numeric (existing) or string (new)

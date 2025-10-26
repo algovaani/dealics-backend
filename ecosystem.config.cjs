@@ -16,7 +16,7 @@ module.exports = {
         DB_USER: 'root',
         DB_PASSWORD: 'RockyLinux@DB1',
         JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',
-        FRONTEND_URL: 'https://spi.dealics.com'
+        FRONTEND_URL: 'https://staging.dealics.com/'
       },
       error_file: './logs/staging-err.log',
       out_file: './logs/staging-out.log',
@@ -40,7 +40,7 @@ module.exports = {
         DB_USER: 'root',
         DB_PASSWORD: 'RockyLinux@DB1',
         JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',
-        FRONTEND_URL: 'https://ppi.dealics.com'
+        FRONTEND_URL: 'https://dealics.com/'
       },
       error_file: './logs/prod-err.log',
       out_file: './logs/prod-out.log',

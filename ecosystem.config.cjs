@@ -7,10 +7,16 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
-      env_file: './env.staging',
       env: {
         NODE_ENV: 'staging',
-        PORT: 5000
+        PORT: 5000,
+        DB_HOST: 'localhost',
+        DB_PORT: 3306,
+        DB_NAME: 'stagingtradeblock_new',
+        DB_USER: 'root',
+        DB_PASSWORD: '',
+        JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',
+        FRONTEND_URL: 'https://spi.dealics.com'
       },
       error_file: './logs/staging-err.log',
       out_file: './logs/staging-out.log',
@@ -25,10 +31,16 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
-      env_file: './env.production',
       env: {
         NODE_ENV: 'production',
-        PORT: 8000
+        PORT: 8000,
+        DB_HOST: 'localhost',
+        DB_PORT: 3306,
+        DB_NAME: 'stagingtradeblock_new',
+        DB_USER: 'root',
+        DB_PASSWORD: '',
+        JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',
+        FRONTEND_URL: 'https://ppi.dealics.com'
       },
       error_file: './logs/prod-err.log',
       out_file: './logs/prod-out.log',

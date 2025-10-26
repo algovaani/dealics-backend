@@ -14,7 +14,7 @@ module.exports = {
         DB_PORT: 3306,
         DB_NAME: 'stagingtradeblock_new',
         DB_USER: 'root',
-        DB_PASSWORD: '',
+        DB_PASSWORD: 'RockyLinux@DB1',
         JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',
         FRONTEND_URL: 'https://spi.dealics.com'
       },
@@ -38,7 +38,7 @@ module.exports = {
         DB_PORT: 3306,
         DB_NAME: 'stagingtradeblock_new',
         DB_USER: 'root',
-        DB_PASSWORD: '',
+        DB_PASSWORD: 'RockyLinux@DB1',
         JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',
         FRONTEND_URL: 'https://ppi.dealics.com'
       },

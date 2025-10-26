@@ -1,59 +1,185 @@
 # Standardized API Response Format
 
-## Overview
-All API endpoints now return a consistent response format with status codes, status flags (true/false), and standardized structure.
+All APIs in this project now return responses in the following standardized format:
 
-## Response Structure
+```json
+{
+  "status": true/false,
+  "message": "Success or error message",
+  "data": []
+}
+```
 
-### Success Response
+## Response Format Details
+
+- **status**: `boolean` - Indicates if the request was successful
+- **message**: `string` - Human-readable message describing the result
+- **data**: `array` - Contains the response data (empty array if no data)
+
+## Updated Controllers
+
+### 1. Authentication Controller (`src/controllers/auth.controller.ts`)
+
+#### Login
+```
+POST /api/auth/login
+```
+**Response:**
 ```json
 {
   "status": true,
-  "message": "Operation completed successfully",
-  "data": { /* actual response data */ },
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "message": "Login successful",
+  "data": [{"token": "jwt_token", "user": {...}}]
 }
 ```
 
-### Error Response
+#### Register
+```
+POST /api/auth/register
+```
+**Response:**
 ```json
 {
-  "status": false,
-  "message": "Error description",
-  "data": { "error": "Detailed error information" },
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "status": true,
+  "message": "Registration successful",
+  "data": [{"token": "jwt_token", "user": {...}}]
 }
 ```
 
-## Status Codes
+### 2. User Controller (`src/controllers/user.controller.ts`)
 
-### Success Codes
-- **200 OK**: Request successful
-- **201 Created**: Resource created successfully
-- **204 No Content**: Request successful, no content to return
-
-### Client Error Codes
-- **400 Bad Request**: Invalid request parameters
-- **401 Unauthorized**: Authentication required
-- **403 Forbidden**: Access denied
-- **404 Not Found**: Resource not found
-- **409 Conflict**: Resource conflict
-- **422 Unprocessable Entity**: Validation failed
-
-### Server Error Codes
-- **500 Internal Server Error**: Server error
-- **501 Not Implemented**: Feature not implemented
-- **502 Bad Gateway**: Gateway error
-- **503 Service Unavailable**: Service temporarily unavailable
-
-## API Endpoints with Standardized Responses
-
-### 1. Get Trading Cards by Category
+#### Get All Users
 ```
-GET /api/tradingCards/by-category/:categoryName
+GET /api/users
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Users retrieved successfully",
+  "data": [/* array of users */]
+}
 ```
 
-**Success Response (200):**
+#### Get User by ID
+```
+GET /api/users/:id
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "User retrieved successfully",
+  "data": [/* user object */]
+}
+```
+
+#### Create User
+```
+POST /api/users
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "User created successfully",
+  "data": [/* created user */]
+}
+```
+
+#### Update User
+```
+PUT /api/users/:id
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "User updated successfully",
+  "data": [/* updated user */]
+}
+```
+
+#### Delete User
+```
+DELETE /api/users/:id
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "User deleted successfully",
+  "data": []
+}
+```
+
+### 3. Categories Controller (`src/controllers/categories.controller.ts`)
+
+#### Get All Categories
+```
+GET /api/categories
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Categories retrieved successfully",
+  "data": [/* array of categories */]
+}
+```
+
+#### Get Category by ID
+```
+GET /api/categories/:id
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Category retrieved successfully",
+  "data": [/* category object */]
+}
+```
+
+#### Update Category
+```
+PUT /api/categories/:id
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Category updated successfully",
+  "data": [/* updated category */]
+}
+```
+
+### 4. Trading Card Controller (`src/controllers/tradingcard.controller.ts`)
+
+#### Get Trading Cards by Category
+```
+GET /api/tradingcards/category/:categoryName
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Trading cards retrieved successfully",
+  "data": [/* array of trading cards */]
+}
+```
+
+#### Get All Trading Cards (with Pagination)
+```
+GET /api/tradingcards?page=1&perPage=10&category_id=1
+```
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `perPage` (optional): Items per page (default: 10, max: 100)
+- `category_id` (optional): Filter by category ID
+
+**Response:**
 ```json
 {
   "status": true,
@@ -61,331 +187,409 @@ GET /api/tradingCards/by-category/:categoryName
   "data": [
     {
       "id": 1,
-      "code": "TC001",
       "category_id": 1,
       "trading_card_img": "image.jpg",
+      "trading_card_img_back": "image_back.jpg",
       "trading_card_slug": "trading-card-1",
-      "trading_card_estimated_value": "100.00",
-      "is_demo": "0",
-      "haveitem": 1
-    }
-  ],
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-**Error Response (400):**
-```json
-{
-  "status": false,
-  "message": "Category name (slug) is required",
-  "data": null,
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-**Error Response (404):**
-```json
-{
-  "status": false,
-  "message": "Category not found or no trading cards",
-  "data": null,
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-### 2. Get All Trading Cards
-```
-GET /api/tradingCards
-```
-
-**Success Response (200):**
-```json
-{
-  "status": true,
-  "message": "Trading cards retrieved successfully",
-  "data": [
+      "trading_card_recent_trade_value": "100.00",
+      "trading_card_asking_price": "120.00",
+      "sport_name": "Trading Cards"
+    },
     {
-      "id": 1,
-      "code": "TC001",
-      "category_id": 1
+      "id": 2,
+      "category_id": 1,
+      "trading_card_img": "image2.jpg",
+      "trading_card_img_back": "image2_back.jpg",
+      "trading_card_slug": "trading-card-2",
+      "trading_card_recent_trade_value": "150.00",
+      "trading_card_asking_price": "180.00",
+      "sport_name": "Trading Cards"
     }
-  ],
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  ]
 }
 ```
 
-### 3. Get Trading Card by ID
+#### Get Trading Card by ID
 ```
-GET /api/tradingCards/:id
+GET /api/tradingcards/:id
 ```
-
-**Success Response (200):**
+**Response:**
 ```json
 {
   "status": true,
   "message": "Trading card retrieved successfully",
-  "data": {
-    "id": 1,
-    "code": "TC001",
-    "category_id": 1
-  },
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "data": [/* trading card object */]
 }
 ```
 
-**Error Response (404):**
-```json
-{
-  "status": false,
-  "message": "Trading Card not found",
-  "data": null,
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
+#### Delete Trading Card
 ```
-
-### 4. Get My Trading Cards by Category
+DELETE /api/tradingcards/:id
 ```
-GET /api/user/tradingCards/my-products/:categoryName
-```
-
-**Success Response (200):**
-```json
-{
-  "status": true,
-  "message": "My trading cards retrieved successfully",
-  "data": {
-    "tradingcards": [...],
-    "pagination": {
-      "page": 1,
-      "perPage": 9,
-      "total": 25,
-      "totalPages": 3
-    },
-    "StagFilterForAllCategory": true,
-    "MyCards": true,
-    "stagDatas": [...],
-    "stag_url_trader": "my-products/"
-  },
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-**Error Response (401):**
-```json
-{
-  "status": false,
-  "message": "Unauthorized",
-  "data": null,
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-### 5. Get Form Fields by Category
-```
-GET /api/user/tradingCards/form-fields/:categorySlug
-```
-
-**Success Response (200):**
-```json
-{
-  "status": true,
-  "message": "Form fields retrieved successfully",
-  "data": {
-    "category_id": 1,
-    "CategoryField": [
-      {
-        "fields": "manufacturer_id",
-        "is_required": 0,
-        "additional_information": "1",
-        "priority": 14,
-        "item_column": {
-          "id": 4,
-          "label": "Manufacturer",
-          "name": "manufacturer_id",
-          "type": "select",
-          "rel_model_index": "manufacturers",
-          "rel_master_table": "Manufacturers",
-          "rel_model_fun": "manufacturername",
-          "rel_model_col": "manufacturer_name",
-          "d_class": "col-md-6",
-          "act_class": "",
-          "do_not_show_on_detail": 0,
-          "is_newline": 0,
-          "maxlength": "",
-          "input_maxlength": "",
-          "is_ajax_load": 0,
-          "is_js_load": 0,
-          "label_options": "",
-          "placeholder": "",
-          "prefix": "",
-          "graded_ungraded": 0,
-          "option_values": "",
-          "is_loop": "",
-          "is_highlight": 0,
-          "is_link": 0,
-          "out_of_collapse": 0,
-          "is_label_bold": 0,
-          "not_for_demo_user": 0,
-          "created_at": "2024-09-24T04:37:17.000000Z",
-          "updated_at": "2024-10-01T23:34:45.000000Z"
-        }
-      }
-    ],
-    "CategoryFieldCollection": {},
-    "SelectDownMasterDataId": [],
-    "CategoryAjaxFieldCollection": [],
-    "CategoryJSFieldCollection": [],
-    "category": {
-      "id": 1,
-      "label": "Trading Cards",
-      "slug": "trading-cards"
-    },
-    "categories": [...]
-  },
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-**Error Response (404):**
-```json
-{
-  "status": false,
-  "message": "Category not found",
-  "data": null,
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-### 6. Delete Trading Card
-```
-DELETE /api/tradingCards/:id
-```
-
-**Success Response (200):**
+**Response:**
 ```json
 {
   "status": true,
   "message": "Trading Card deleted successfully",
-  "data": null,
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "data": []
 }
 ```
 
-### 7. Not Implemented Endpoints
+#### Get My Trading Cards by Category
 ```
-POST /api/tradingCards
-PUT /api/tradingCards/:id
+GET /user/tradingcards/my-products/:categoryName
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "My trading cards retrieved successfully",
+  "data": [{
+    "tradingcards": [...],
+    "pagination": {...},
+    "StagFilterForAllCategory": true,
+    "MyCards": true,
+    "stagDatas": [...],
+    "stag_url_trader": "my-products/"
+  }]
+}
 ```
 
-**Response (501):**
+#### Get Form Fields by Category
+```
+GET /user/tradingcards/form-fields/:categorySlug
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Form fields retrieved successfully",
+  "data": [/* form fields object */]
+}
+```
+
+#### Get All Card Conditions
+```
+GET /api/tradingCards/card-conditions
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Card conditions retrieved successfully",
+  "data": [/* array of card conditions */]
+}
+```
+
+#### Get Card Condition by ID
+```
+GET /api/tradingCards/card-conditions/:id
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Card condition retrieved successfully",
+  "data": [/* card condition object */]
+}
+```
+
+#### Save Trading Card
+```
+POST /api/user/tradingcards/save/:categoryId
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Trading card saved successfully",
+  "data": [/* saved trading card data */]
+}
+```
+
+#### Update Trading Card
+```
+PATCH /api/user/tradingcards/:cardId
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Trading card updated successfully",
+  "data": [/* updated trading card data */]
+}
+```
+
+### 5. Slider Controller (`src/controllers/slider.controller.ts`)
+
+#### Get Active Sliders
+```
+GET /api/sliders/active
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Active sliders retrieved successfully",
+  "data": [/* array of active sliders */]
+}
+```
+
+### 6. Trading Card Fields Controller (`src/controllers/tradingcardfields.controller.ts`)
+
+#### Get Trading Card Fields
+```
+GET /api/tradingcard-fields
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Trading card fields retrieved successfully",
+  "data": [{"fields": [...]}]
+}
+```
+
+### 7. Category Fields Controller (`src/controllers/categoryfields.controller.ts`)
+
+#### Get Category Fields
+```
+GET /api/category-fields
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Category fields retrieved successfully",
+  "data": [/* array of category fields */]
+}
+```
+
+### 8. Email Controller (`src/controllers/email.controller.ts`)
+
+#### Send Email
+```
+POST /api/email/send
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Email sent successfully",
+  "data": []
+}
+```
+
+#### Send Welcome Onboarding Email
+```
+POST /api/email/welcome-onboarding
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Welcome onboarding email sent successfully",
+  "data": []
+}
+```
+
+#### Get Email Template
+```
+GET /api/email/template/:alias
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Email template retrieved successfully",
+  "data": [/* template object */]
+}
+```
+
+#### Create/Update Email Template
+```
+POST /api/email/template
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Email template saved successfully",
+  "data": [/* template object */]
+}
+```
+
+#### Get All Email Templates
+```
+GET /api/email/templates
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Email templates retrieved successfully",
+  "data": [/* array of templates */]
+}
+```
+
+#### Delete Email Template
+```
+DELETE /api/email/template/:id
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Email template deleted successfully",
+  "data": []
+}
+```
+
+#### Process Mail Queue
+```
+POST /api/email/process-queue
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Mail queue processed successfully",
+  "data": []
+}
+```
+
+#### Get Mail Queue Status
+```
+GET /api/email/queue-status
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Mail queue status retrieved successfully",
+  "data": [{"totalPending": 0, "totalProcessed": 0}]
+}
+```
+
+#### Send Unified Email
+```
+POST /api/email/send-unified
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Verification email sent successfully",
+  "data": []
+}
+```
+
+#### Send Email Verification
+```
+POST /api/email/send-verification
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Please enter your email address",
+  "data": []
+}
+```
+
+#### Test Email Configuration
+```
+POST /api/email/test-config
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Email configuration is valid",
+  "data": []
+}
+```
+
+#### Update Mail Settings
+```
+PUT /api/email/settings
+```
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Mail settings updated successfully",
+  "data": [{"mail_sent": 1}]
+}
+```
+
+## Error Response Examples
+
+### 400 Bad Request
 ```json
 {
   "status": false,
-  "message": "Create trading card not implemented yet",
-  "data": null,
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "message": "Email and password are required",
+  "data": []
 }
 ```
 
-## Error Handling
-
-### Standard Error Response
-All errors follow the same pattern:
+### 401 Unauthorized
 ```json
 {
   "status": false,
-  "message": "Human readable error message",
-  "data": {
-    "error": "Detailed error information or stack trace"
-  },
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "message": "Unauthorized",
+  "data": []
 }
 ```
 
-### Common Error Messages
-- **400**: "Category name (slug) is required"
-- **401**: "Unauthorized"
-- **404**: "Category not found" / "Trading Card not found"
-- **500**: "Internal server error"
-- **501**: "Feature not implemented yet"
-
-## Frontend Integration
-
-### Success Handling
-```javascript
-fetch('/api/user/tradingCards/form-fields/trading-cards')
-  .then(response => response.json())
-  .then(data => {
-    if (data.status === true) {
-      // Success - use data.data
-      const formFields = data.data.CategoryField;
-      console.log('Form fields:', formFields);
-    } else {
-      // Error - show data.message
-      console.error('Error:', data.message);
-    }
-  });
+### 403 Forbidden
+```json
+{
+  "status": false,
+  "message": "Token expired",
+  "data": []
+}
 ```
 
-### Error Handling
-```javascript
-fetch('/api/user/tradingCards/form-fields/invalid-category')
-  .then(response => response.json())
-  .then(data => {
-    if (data.status === false) {
-      // Show error message
-      showErrorMessage(data.message);
-      
-      // Log detailed error if available
-      if (data.data && data.data.error) {
-        console.error('Detailed error:', data.data.error);
-      }
-    }
-  });
+### 404 Not Found
+```json
+{
+  "status": false,
+  "message": "User not found",
+  "data": []
+}
 ```
 
-### Status Code Handling
-```javascript
-fetch('/api/user/tradingCards/form-fields/trading-cards')
-  .then(response => {
-    if (response.ok) {
-      return response.json();
-    } else {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-  })
-  .then(data => {
-    if (data.status === true) {
-      // Handle success
-      handleSuccess(data.data);
-    } else {
-      // Handle API error
-      handleApiError(data.message);
-    }
-  })
-  .catch(error => {
-    // Handle network/HTTP errors
-    handleNetworkError(error.message);
-  });
+### 500 Internal Server Error
+```json
+{
+  "status": false,
+  "message": "Internal server error",
+  "data": []
+}
 ```
 
-## Benefits of Standardized Responses
+## Middleware Updates
 
-1. **Consistent Structure**: All endpoints return the same response format
-2. **Clear Status Indication**: `status` boolean flag for easy checking
-3. **Human Readable Messages**: Clear error messages for users
-4. **Detailed Error Information**: Technical details for developers
-5. **Timestamp**: When the response was generated
-6. **Easy Frontend Integration**: Predictable response structure
-7. **Better Error Handling**: Consistent error response format
-8. **API Documentation**: Clear response examples for developers
+### Auth Middleware (`src/middlewares/auth.middleware.ts`)
+- Updated to use standardized response format for authentication errors
+
+### Admin Middleware (`src/middlewares/admin.middleware.ts`)
+- Updated to use standardized response format for authorization errors
 
 ## Implementation Notes
 
-- All responses use the `sendApiResponse` helper function
-- Status codes follow HTTP standards
-- Error messages are user-friendly
-- Technical details are included in `data.error` for debugging
-- Timestamps are in ISO 8601 format
-- The `status` field is always a boolean (true/false)
+1. **Consistent Format**: All API responses now follow the same structure
+2. **Error Handling**: All controllers include proper try-catch blocks with standardized error responses
+3. **Data Arrays**: All data is wrapped in arrays, even single objects
+4. **Empty Arrays**: When no data is returned, an empty array is used instead of null/undefined
+5. **Helper Function**: Each controller includes a `sendApiResponse` helper function for consistency
+
+## Benefits
+
+- **Consistency**: All APIs return the same response structure
+- **Predictability**: Frontend developers know exactly what to expect
+- **Error Handling**: Standardized error responses make debugging easier
+- **Maintainability**: Easier to maintain and update response formats
+- **Documentation**: Clear structure makes API documentation more accurate

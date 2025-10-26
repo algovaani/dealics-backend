@@ -37,6 +37,9 @@ import {
     @Column(DataType.DOUBLE)
     product_amount!: number;
   
+  @Column({ type: DataType.DATE, field: 'hold_expires_at' })
+  hold_expires_at?: Date;
+  
     @CreatedAt
     @Column({ field: 'created_at', type: DataType.DATE })
     created_at!: Date;

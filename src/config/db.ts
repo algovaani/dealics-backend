@@ -1,20 +1,17 @@
 import { Sequelize } from "sequelize-typescript";
-import { User } from "../models/user.model.js";
-import { Category } from "../models/category.model.js";
-import { TradingCard } from "../models/tradingcard.model.js";
-import { CategoryField } from "../models/category_field.model.js";
-import { CardCondition } from "../models/cardCondition.model.js";
 
 export const sequelize = new Sequelize({
-  database: "stagingtradeblock",
-  username: "root",
-  password: "",
-  host: "localhost",
+  database: process.env.DB_NAME || "stagingtradeblock_new",
+  username: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "RockyLinux@DB1",
+  host: process.env.DB_HOST || "localhost",
+  port: parseInt(process.env.DB_PORT || "3306") as number,
   dialect: "mysql",
-  // models: [User], // switch to explicit addModels below
+  // Force all date writes/reads to use IST (UTC+5:30)
+  timezone: "+05:30",
+  dialectOptions: {
+    // Ensure MySQL driver treats times as IST (UTC+5:30)
+    timezone: "+05:30"
+  },
   logging: false,
 });
-
-// Explicitly register models to ensure initialization
-import { Slider } from "../models/slider.model.js";
-sequelize.addModels([User, Category, TradingCard, Slider, CategoryField, CardCondition]);

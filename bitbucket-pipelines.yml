@@ -1,0 +1,54 @@
+image: node:20-bullseye
+definitions:
+  caches:
+    npm: ~/.npm-store
+  steps:
+    - step: &build-step
+        name: Build Application
+        caches:
+          - node
+          - npm
+        script:
+          - corepack enable
+          - corepack prepare npm@10.2.4 --activate
+          - npm ci
+          - npm run build
+        artifacts:
+          - dist/**
+          - package.json
+          - package-lock.json
+          - ecosystem.config.cjs
+          - deploy.sh
+          - env.example
+pipelines:
+  branches:
+    dev:
+      - step: *build-step
+      - step:
+          name: Deploy to staging
+          deployment: staging
+          script:
+            - apt-get update
+            - apt-get install -y openssh-client rsync
+            - mkdir -p ~/.ssh
+            - echo "$SERVER_PRIVATE_KEY" > ~/.ssh/id_rsa
+            - chmod 600 ~/.ssh/id_rsa
+            - ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+            - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env.local" --exclude ".next/cache" --exclude "public/user/assets/**" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
+            - chmod +x deploy.sh
+            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deploy.sh && ./deploy.sh"
+    master:
+      - step: *build-step
+      - step:
+          name: Deploy to Production
+          deployment: production
+          script:
+            - apt-get update
+            - apt-get install -y openssh-client rsync
+            - mkdir -p ~/.ssh
+            - echo "$SERVER_PRIVATE_KEY" > ~/.ssh/id_rsa
+            - chmod 600 ~/.ssh/id_rsa
+            - ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+            - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" --exclude "public/user/assets/**" ./ "$SERVER_USER@$SERVER_HOST:$PRODUCTION_API_PATH"
+            - chmod +x deploy.sh
+            - ssh "$SERVER_USER@$SERVER_HOST" "cd $PRODUCTION_API_PATH && export NODE_ENV=production && chmod +x deploy.sh && ./deploy.sh"

@@ -56,6 +56,10 @@ import {
     @AllowNull
     @Column(DataType.STRING)
     password?: string;
+
+    @AllowNull
+    @Column(DataType.STRING)
+    recover_password_token?: string;
   
     @AllowNull
     @Column(DataType.TEXT)
@@ -160,10 +164,6 @@ import {
     @AllowNull
     @Column(DataType.INTEGER)
     trading_cards?: number;
-  
-    @AllowNull
-    @Column(DataType.STRING)
-    recover_password_token?: string;
   
     @AllowNull
     @Column(DataType.STRING(100))

@@ -1,6 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
+// Helper function to send standardized API responses
+const sendApiResponse = (res: Response, statusCode: number, status: boolean, message: string, data?: any) => {
+  return res.status(statusCode).json({
+    status,
+    message,
+    data: data || []
+  });
+};
+
 function extractToken(req: Request): string | null {
 	// Authorization header variants
 	const rawAuthLower = req.headers["authorization"] as string | undefined;
@@ -33,7 +42,7 @@ function extractToken(req: Request): string | null {
 
 export function userAuth(req: Request, res: Response, next: NextFunction) {
 	const token = extractToken(req);
-	if (!token) return res.status(401).json({ message: "Unauthorized" });
+	if (!token) return sendApiResponse(res, 401, false, "Unauthorized", []);
 
 	try {
 		const secret = process.env.JWT_SECRET || "dev-secret-change";
@@ -46,8 +55,8 @@ export function userAuth(req: Request, res: Response, next: NextFunction) {
 		return next();
 	} catch (err: any) {
 		if (err?.name === "TokenExpiredError") {
-			return res.status(403).json({ message: "Token expired" });
+			return sendApiResponse(res, 403, false, "Token expired", []);
 		}
-		return res.status(403).json({ message: "Invalid or expired token" });
+		return sendApiResponse(res, 403, false, "Invalid or expired token", []);
 	}
 }

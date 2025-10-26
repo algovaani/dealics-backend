@@ -56,5 +56,6 @@ import {
     @AllowNull
     @Column(DataType.DATE)
     updated_at?: Date;
+
   }
   

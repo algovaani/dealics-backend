@@ -7,12 +7,8 @@ import {
   AutoIncrement,
   AllowNull,
   Default,
-  ForeignKey,
-  BelongsTo
+  ForeignKey
 } from "sequelize-typescript";
-  import { Category } from "../models/category.model.js";
-  import { User } from "../models/user.model.js";
-  import { CardCondition } from "../models/cardCondition.model.js";
   
   @Table({
     tableName: "trading_cards",
@@ -38,7 +34,6 @@ import {
     @Column(DataType.INTEGER)
     creator_id?: number;
   
-  @ForeignKey(() => User)
   @AllowNull
   @Column(DataType.INTEGER)
   trader_id?: number;
@@ -51,7 +46,6 @@ import {
     @Column(DataType.INTEGER)
     sport_id?: number;
   
-  @ForeignKey(() => Category)
   @AllowNull
   @Column(DataType.INTEGER)
   category_id?: number;
@@ -112,7 +106,6 @@ import {
     @Column(DataType.INTEGER)
     grade_rating_id?: number;
   
-    @ForeignKey(() => CardCondition)
     @AllowNull
     @Column(DataType.INTEGER)
     card_condition_id?: number;
@@ -154,8 +147,12 @@ import {
     trading_card_img_back?: string;
   
     @AllowNull
-    @Column(DataType.BOOLEAN)
-    mark_as_deleted?: boolean;
+    @Column({
+      type: DataType.TINYINT,
+      allowNull: true,
+      defaultValue: null,  // optional, remove भी कर सकते हो
+    })
+    mark_as_deleted?: number | null;
   
     @AllowNull
     @Column(DataType.TEXT)
@@ -342,7 +339,11 @@ import {
     @AllowNull
     @Column(DataType.STRING(30))
     mint_mark?: string;
-  
+
+    @AllowNull
+    @Column(DataType.INTEGER)
+    mint_mark_slt?: number;
+
     @AllowNull
     @Column(DataType.STRING(30))
     denomination?: string;
@@ -923,13 +924,27 @@ import {
     @Column(DataType.TEXT)
     canada_add_product_flat_rate?: string;
 
-    @BelongsTo(() => Category)
-    category?: Category;
+    @AllowNull
+    @Column(DataType.INTEGER)
+    shoe_size?: number;
+    
 
-    @BelongsTo(() => User)
-     trader?: User;
+    @AllowNull
+    @Column(DataType.STRING(50))
+    style_code?: string;
 
-    @BelongsTo(() => CardCondition)
-    cardCondition?: CardCondition;
-  } 
-  
+    @AllowNull
+    @Column(DataType.DATE)
+    release_date?: Date;
+
+    @AllowNull
+    @Column(DataType.DOUBLE(12, 2))
+    retail_price?: number;
+
+    // Virtual properties for associations (will be populated by Sequelize)
+    trader?: any;
+    creatorUser?: any;
+    parentCategory?: any;
+    cardCondition?: any;
+    cardImages?: any[];
+}

@@ -10,6 +10,7 @@ export declare class User extends Model<User> {
     is_email_verified: string;
     email_verified_at?: Date;
     password?: string;
+    recover_password_token?: string;
     two_factor_secret?: string;
     two_factor_recovery_codes?: string;
     two_factor_confirmed_at?: Date;
@@ -36,7 +37,6 @@ export declare class User extends Model<User> {
     followers?: number;
     trade_transactions?: number;
     trading_cards?: number;
-    recover_password_token?: string;
     paypal_business_email?: string;
     is_free_shipping: boolean;
     shipping_flat_rate?: number;

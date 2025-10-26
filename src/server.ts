@@ -1,12 +1,26 @@
 import "reflect-metadata";
+import dotenv from "dotenv";
 import express from "express";
+import cors from "cors";
+
+// Load environment variables
+dotenv.config();
+
 import { sequelize } from "./config/db.js";
 import { fixDatabaseSchema } from "./config/fixDatabaseSchema.js";
-import "./models/user.model.js";
-import "./models/category.model.js";
-import "./models/tradingcard.model.js";
-import "./models/category_field.model.js";
-import "./models/cardCondition.model.js";
+import { models, setupAssociations } from "./models/index.js";
+import { EmailTemplete } from "./models/emailTemplate.model.js";
+import { Setting } from "./models/setting.model.js";
+import { MailQueue } from "./models/mailQueue.model.js";
+import { InterestedIn } from "./models/interestedIn.model.js";
+
+// Add models to Sequelize instance
+sequelize.addModels([...models, EmailTemplete, Setting, MailQueue, InterestedIn]);
+
+// Set up associations
+setupAssociations();
+
+// Import routes
 import userRoutes from "./routes/user.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import categoryRoutes from "./routes/category.routes.js";
@@ -15,10 +29,56 @@ import adminTradingcardRoutes from "./routes/admin/tradingcard.routes.js";
 import userTradingcardRoutes from "./routes/user/tradingcard.routes.js";
 import userTradingcardFieldsRoutes from "./routes/user/tradingcardfields.routes.js";
 import sliderRoutes from "./routes/slider.routes.js";
+import emailRoutes from "./routes/email.routes.js";
+import supportRoutes from "./routes/support.routes.js";
+import blockRoutes from "./routes/block.routes.js";
+
+// Import middleware
+import { noCache } from "./middlewares/noCache.middleware.js";
 
 
 const app = express();
-app.use(express.json());
+
+// Configure CORS to allow all origins
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow all origins for development
+    return callback(null, true);
+  },
+  credentials: true, // Allow credentials (cookies, authorization headers)
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // Allow all HTTP methods
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'Accept', 
+    'Origin',
+    'Access-Control-Allow-Origin',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Allow-Methods',
+    'Access-Control-Allow-Credentials'
+  ], // Allow common headers
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'], // Expose additional headers if needed
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+}));
+
+// Body parser configuration with increased limits
+app.use(express.json({ 
+  limit: '10mb'
+}));
+app.use(express.urlencoded({ 
+  limit: '10mb',
+  extended: true 
+}));
+
+// Serve static files from public folder
+app.use('/user', express.static('public/user'));
+
+// Apply no-cache middleware to all API routes
+app.use('/api', noCache);
 
 const PORT = process.env.PORT || 5000;
 
@@ -36,29 +96,42 @@ app.get("/", (req, res) => {
   res.send("TypeScript + MySQL API running 🚀");
 });
 
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/tradingCards", tradingcardRoutes);
 app.use("/api/admin/tradingCards", adminTradingcardRoutes);
-app.use("/api/user/tradingCards", userTradingcardRoutes);
+// Mount specific user routes first (more specific routes before general ones)
+app.use("/api/user/tradingcards", userTradingcardRoutes);
 app.use("/api/user/trading-cards-fields", userTradingcardFieldsRoutes);
+// Alias: also mount user routes under /api/user to support legacy paths (after specific routes)
+app.use("/api/user", userRoutes);
 app.use("/api/sliders", sliderRoutes);
+app.use("/api/email", emailRoutes);
+app.use("/api/support", supportRoutes);
+app.use("/api/blocks", blockRoutes);
+
+// Add a 404 handler for unmatched routes
+app.use((req, res) => {
+  res.status(404).json({
+    status: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`
+  });
+});
 
 const start = async () => {
   try {
     await sequelize.authenticate();
-    console.log("✅ MySQL Connected!");
     
     // Fix database schema first
     await fixDatabaseSchema();
     
     // Sync models without altering (to avoid foreign key constraint issues)
     await sequelize.sync({ force: false, alter: false });
-    console.log("✅ Models synchronized!");
     
     app.listen(PORT, () => {
-      console.log(`Server running at http://localhost:${PORT}`);
+      // Server started
     });
   } catch (err) {
     console.error("❌ DB Connection failed:", err);

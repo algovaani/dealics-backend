@@ -96,15 +96,15 @@ fi
 echo "Starting PM2 process..."
 if [ "$NODE_ENV" = "production" ]; then
     echo "Deploying to production environment..."
-    pm2 startOrReload ecosystem.config.cjs --update-env --env production || {
+    pm2 startOrReload ecosystem.config.cjs --only prod-dealics-backend --update-env || {
         echo "PM2 startOrReload failed, trying start..."
-        pm2 start ecosystem.config.cjs --env production
+        pm2 start ecosystem.config.cjs --only prod-dealics-backend
     }
 else
-    echo "Deploying to development/staging environment..."
-    pm2 startOrReload ecosystem.config.cjs --update-env --env development || {
+    echo "Deploying to staging environment..."
+    pm2 startOrReload ecosystem.config.cjs --only staging-dealics-backend --update-env || {
         echo "PM2 startOrReload failed, trying start..."
-        pm2 start ecosystem.config.cjs --env development
+        pm2 start ecosystem.config.cjs --only staging-dealics-backend
     }
 fi
 

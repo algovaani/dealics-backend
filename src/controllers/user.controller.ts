@@ -864,12 +864,12 @@ export const updateUserProfile = async (req: Request, res: Response) => {
         if (profileResult.errors && profileResult.errors.length > 0) {
           const message = Array.isArray(profileResult.message) 
             ? profileResult.message.join(', ') 
-            : profileResult.message;
+            : String(profileResult.message);
           return sendApiResponse(res, 400, false, message, profileResult.errors);
         }
         const message = Array.isArray(profileResult.message) 
           ? profileResult.message.join(', ') 
-          : profileResult.message;
+          : String(profileResult.message);
         return sendApiResponse(res, 400, false, message, []);
       }
 

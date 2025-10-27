@@ -830,13 +830,13 @@ export class UserService {
       try {
         const { EmailHelperService } = await import('./emailHelper.service.js');
         
-        // Always send profile updated email (to current email - could be old or new)
-        await EmailHelperService.sendProfileUpdatedEmail(
-          user.email || '',
-          user.first_name || '',
-          user.last_name || ''
-        );
-        console.log('✅ Profile updated email sent successfully');
+        // // Always send profile updated email (to current email - could be old or new)
+        // await EmailHelperService.sendProfileUpdatedEmail(
+        //   user.email || '',
+        //   user.first_name || '',
+        //   user.last_name || ''
+        // );
+        // console.log('✅ Profile updated email sent successfully');
 
         // If email was updated, also send email verification to NEW email address
         if (emailUpdated) {

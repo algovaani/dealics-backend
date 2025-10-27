@@ -862,9 +862,15 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       if (!profileResult.success) {
         // If there are validation errors, return them
         if (profileResult.errors && profileResult.errors.length > 0) {
-          return sendApiResponse(res, 400, false, profileResult.message, profileResult.errors);
+          const message = Array.isArray(profileResult.message) 
+            ? profileResult.message.join(', ') 
+            : profileResult.message;
+          return sendApiResponse(res, 400, false, message, profileResult.errors);
         }
-        return sendApiResponse(res, 400, false, profileResult.message, []);
+        const message = Array.isArray(profileResult.message) 
+          ? profileResult.message.join(', ') 
+          : profileResult.message;
+        return sendApiResponse(res, 400, false, message, []);
       }
 
       // Update social media links

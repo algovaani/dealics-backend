@@ -569,6 +569,22 @@ export class EmailHelperService {
   }
 
   /**
+   * Send email verification when email is updated
+   */
+  public static async sendEmailUpdatedVerificationEmail(email: string, firstName: string, lastName: string, userId: number): Promise<boolean> {
+    // Create verification link (equivalent to Laravel encrypt and route)
+    const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify?id=${userId}&screen=email-updated`;
+    
+    const mailInputs = {
+      to: email,
+      name: this.setName(firstName, lastName),
+      verifylink: verifyLink,
+    };
+
+    return await this.executeMailSender('email-updated-verify-to-login', mailInputs);
+  }
+
+  /**
    * Send custom email with any template
    */
   public static async sendCustomEmail(templateAlias: string, emailData: any): Promise<boolean> {

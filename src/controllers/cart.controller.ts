@@ -240,16 +240,7 @@ const makeOfferAttempts = async (
   }
 
   // If there are previous offer attempts, validate the new offer
-  if (buyOfferAttempts && buyOfferAttempts.id) {
-    // Check if the new offer is lower than the previous one
-    if (offerAmtBuyer < buyOfferAttempts.offer_amount!) {
-      return {
-        status: false,
-        inValidOfferCounts: buyOfferAttempts.attempts,
-        remaining: 0,
-        message: `You cannot submit an offer lower than your previous amount of $${buyOfferAttempts.offer_amount}`
-      };
-    }
+  if (buyOfferAttempts && buyOfferAttempts.id) {    
 
     // Check if the offer limit is exceeded
     if (buyOfferAttempts.attempts >= 3) {
@@ -293,6 +284,16 @@ const makeOfferAttempts = async (
 
         let offerAmount = offerAmtBuyer;
         if (preOfferAmount > offerAmtBuyer) offerAmount = preOfferAmount;
+
+        // Check if the new offer is lower than the previous one
+        if (offerAmtBuyer < buyOfferAttempts.offer_amount!) {
+          return {
+            status: false,
+            inValidOfferCounts: buyOfferAttempts.attempts,
+            remaining: 0,
+            message: `You cannot submit an offer lower than your previous amount of $${buyOfferAttempts.offer_amount}`
+          };
+        }
 
         await buyOfferAttempts.update({
           attempts,
@@ -342,6 +343,15 @@ const makeOfferAttempts = async (
           let offerAmount = offerAmtBuyer;
           if (preOfferAmount > offerAmtBuyer) offerAmount = preOfferAmount;
 
+          // Check if the new offer is lower than the previous one
+          if (offerAmtBuyer < buyOfferAttempts.offer_amount!) {
+            return {
+              status: false,
+              inValidOfferCounts: buyOfferAttempts.attempts,
+              remaining: 0,
+              message: `You cannot submit an offer lower than your previous amount of $${buyOfferAttempts.offer_amount}`
+            };
+          }
           await buyOfferAttempts.update({
             attempts,
             offer_amount: offerAmount

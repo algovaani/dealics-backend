@@ -27,6 +27,12 @@ export class AuthService {
     if (!foundUser || !foundUser.password) return null;
     const ok = await bcrypt.compare(password, foundUser.password);
     if (!ok) return null;
+    
+    // Check if email is verified
+    if (foundUser.is_email_verified !== "1" || foundUser.user_status !== "1") {
+      return null; // Email not verified
+    }
+    
     return foundUser;
   }
 

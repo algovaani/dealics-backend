@@ -61,6 +61,16 @@ export const login = async (req: Request, res: Response) => {
       if (!exists) {
         return sendApiResponse(res, 404, false, "No account was found. Please register to proceed.", []);
       }
+      
+      // Check if email is not verified
+      if (exists.is_email_verified !== "1") {
+        return sendApiResponse(res, 403, false, "Please verify your email address before logging in.", []);
+      }
+
+      if (exists.user_status !== "1") {
+        return sendApiResponse(res, 403, false, "Error! Your account is not active. Please contact to support.", []);
+      }
+      
       return sendApiResponse(res, 401, false, "Invalid credentials", []);
     }
     
@@ -312,6 +322,46 @@ export const socialRegister = async (req: Request, res: Response) => {
   } catch (e: any) {
     console.error('Social register error:', e);
     return sendApiResponse(res, 500, false, "Server error", []);
+  }
+};
+
+/**
+ * Verify email address by user ID (no authentication required)
+ * PUT /api/auth/verify-email/:userId
+ */
+export const verifyEmail = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    
+    // Validate userId
+    if (!userId || isNaN(parseInt(userId))) {
+      return sendApiResponse(res, 400, false, "Invalid user ID", []);
+    }
+    
+    const userIdNum = parseInt(userId);
+    
+    // Find the user
+    const user = await User.findByPk(userIdNum);
+    if (!user) {
+      return sendApiResponse(res, 404, false, "User not found", []);
+    }
+    
+    // Check if email is already verified
+    if (user.is_email_verified === "1") {
+      return sendApiResponse(res, 200, true, "Email is already verified", []);
+    }
+    
+    // Update email verification status
+    await user.update({
+      is_email_verified: "1",
+      email_verified_at: new Date()
+    });
+    
+    return sendApiResponse(res, 200, true, "Email verified successfully", []);
+    
+  } catch (error: any) {
+    console.error("Email verification error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
   }
 };
 

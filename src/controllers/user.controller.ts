@@ -258,15 +258,42 @@ export const getTopTraders = async (req: Request, res: Response) => {
 
     if (result.success && result.data) {
       // Transform the response to include only necessary fields
-      const response = result.data.traders.map((trader: any) => ({
-        trader_id: trader.id,
-        profile_picture: trader.profile_picture,
+      // result.data is expected to be an object like { traders: [...], pagination: {...} }
+      const tradersArray = (result.data as any).traders || [];
+      const response = tradersArray.map((trader: any) => {
+      // Extract only filename from profile_picture path
+      let profilePictureName = '';
+      if (trader.profile_picture) {
+        const pathParts = trader.profile_picture.split('/');
+        profilePictureName = pathParts[pathParts.length - 1];
+      }
+
+      // Format joined_date to "Month Year" format
+      let joinedDateFormatted = '';
+      if (trader.created_at) {
+        const date = new Date(trader.created_at);
+        const monthNames = [
+          'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        joinedDateFormatted = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+      }
+
+      return {
+        id: trader.id,
         first_name: trader.first_name,
         last_name: trader.last_name,
-        ratings: trader.ratings,
         username: trader.username,
-        joinedDate: trader.created_at
-      }));
+        profile_picture: profilePictureName,
+        email: trader.email,
+        ratings: trader.ratings,
+        followers: trader.followers,
+        successful_trades: trader.completed_trades_count || 0,
+        products_count: trader.active_cards_count || 0,
+        joined_date: joinedDateFormatted,
+        following: trader.following === 1 ? true : false
+      };
+    });
 
       return sendApiResponse(res, 200, true, "Top traders retrieved successfully", response, result.data.pagination);
     } else {
@@ -862,9 +889,15 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       if (!profileResult.success) {
         // If there are validation errors, return them
         if (profileResult.errors && profileResult.errors.length > 0) {
-          return sendApiResponse(res, 400, false, profileResult.message, profileResult.errors);
+          const message = Array.isArray(profileResult.message) 
+            ? profileResult.message.join(', ') 
+            : String(profileResult.message);
+          return sendApiResponse(res, 400, false, message, profileResult.errors);
         }
-        return sendApiResponse(res, 400, false, profileResult.message, []);
+        const message = Array.isArray(profileResult.message) 
+          ? profileResult.message.join(', ') 
+          : String(profileResult.message);
+        return sendApiResponse(res, 400, false, message, []);
       }
 
       // Update social media links
@@ -2156,6 +2189,10 @@ export const changePassword = async (req: Request, res: Response) => {
 
     if (new_password !== confirm_password) {
       return sendApiResponse(res, 400, false, "New password and confirm password do not match", []);
+    }
+
+    if (old_password == new_password) {
+      return sendApiResponse(res, 400, false, "The new password cannot be same as the old password.", []);
     }
 
     const user = await User.findByPk(userId);

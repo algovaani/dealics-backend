@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { Certification } from "../models/certification.model.js";
 import { TradingCardService } from "../services/tradingcard.service.js";
-import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark, ExclusiveEventRetailer, Size } from "../models/index.js";
+import { Category, TradingCard, BuyOfferAttempt, CategoryField, ItemColumn, Year, Player, PublicationYear, VehicleYear, YearOfIssue, Publisher, Brand, Package, ConventionEvent, Country, CoinName, Denomination, Circulated, ItemType, Genre, Feature, SuperheroTeam, StorageCapacity, ConsoleModel, RegionCode, Edition, PlatformConsole, Speed, Type, RecordSize, MintMark, ExclusiveEventRetailer, Size, ReleaseYear } from "../models/index.js";
 import { ShoeSize } from "../models/shoeSize.model.js";
 import { Sequelize, QueryTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
@@ -584,6 +584,7 @@ const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint:
       'can_trade',  
       'can_buy',
       'title',
+      'brand_text'
     ];
     const fieldsToExclude = [      
       'seller_notes',
@@ -852,7 +853,8 @@ const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint:
         // year_date_of_issue -> years (+ year_date_of_issue_text)
         const ydoiField = filteredAdditionalFields.find((f: any) => f?.field_name === 'year_date_of_issue' && f.field_value);
         if (ydoiField && !isNaN(Number(ydoiField.field_value))) {
-          const yearRow = await Year.findByPk(Number(ydoiField.field_value));
+
+          const yearRow = await ReleaseYear.findByPk(Number(ydoiField.field_value));
           if (yearRow) {
             ydoiField.field_label = ydoiField.field_label || 'Release Year';
             ydoiField.related_field_name = 'years';
@@ -1385,13 +1387,23 @@ const getTradingCardForEdit = async (req: Request, res: Response, isUserEndpoint
         // year_date_of_issue -> years (+ year_date_of_issue_text)
         const ydoiField = filteredAdditionalFields.find((f: any) => f?.field_name === 'year_date_of_issue' && f.field_value);
         if (ydoiField && !isNaN(Number(ydoiField.field_value))) {
-          const yearRow = await Year.findByPk(Number(ydoiField.field_value));
-          if (yearRow) {
-            ydoiField.field_label = ydoiField.field_label || 'Release Year';
-            ydoiField.related_field_name = 'years';
-            ydoiField.related_field_value = yearRow.name;
-            (ydoiField as any).year_date_of_issue_text = yearRow.name;
-          }
+          if(tradingCard.parentCategory.slug === 'sneakers' || tradingCard.parentCategory.slug === 'vinyl-records') {
+           const yearRow = await ReleaseYear.findByPk(Number(ydoiField.field_value)); 
+           if (yearRow) {
+              ydoiField.field_label = ydoiField.field_label || 'Release Year';
+              ydoiField.related_field_name = 'years';
+              ydoiField.related_field_value = yearRow.name;
+              (ydoiField as any).year_date_of_issue_text = yearRow.name;
+            }
+          }else{
+            const yearRow = await Year.findByPk(Number(ydoiField.field_value));
+            if (yearRow) {
+              ydoiField.field_label = ydoiField.field_label || 'Release Year';
+              ydoiField.related_field_name = 'years';
+              ydoiField.related_field_value = yearRow.name;
+              (ydoiField as any).year_date_of_issue_text = yearRow.name;
+            }
+          }          
         }
 
         // speed -> speeds

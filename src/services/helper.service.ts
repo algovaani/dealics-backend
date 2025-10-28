@@ -315,9 +315,10 @@ export class HelperService {
           }
           replacements.categoryId = categoryId;
         }
+        query += ` ORDER BY card_condition_name ASC`;        
       }
       
-      query += ` ORDER BY id ASC`;
+      // query += ` ORDER BY id ASC`;
       
       let result = await sequelize.query(query, {
         replacements,
@@ -358,7 +359,7 @@ export class HelperService {
             fallbackQuery += ` WHERE status IN ('1', 1)`;
           }
         } catch {}
-        fallbackQuery += ` ORDER BY id ASC`;
+        fallbackQuery += ` ORDER BY card_condition_name ASC`;
         result = await sequelize.query(fallbackQuery, {
           type: QueryTypes.SELECT
         });

@@ -530,7 +530,7 @@ export class TradingCardService {
            const fieldType = fieldInfo.type;
            
            // Check if this field has a relationship (ends with _id) or known FK fields
-           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'year_date_of_issue' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'shoe_size' || fieldName === 'convention_event' || fieldName === 'brand' || fieldName === 'style_code' || fieldName === 'release_date' || fieldName === 'retail_price') {
+           if (fieldName.endsWith('_id') || fieldName === 'release_year' || fieldName === 'year_date_of_issue' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'shoe_size' || fieldName === 'convention_event' || fieldName === 'brand' ) {
               
               let relatedTableName: string;
               
@@ -569,25 +569,8 @@ export class TradingCardService {
               }
               
               let relatedValue = await this.getRelatedValue(relatedTableName, cardData[fieldName]);
-
-              // Fallback: if release_year or year_date_of_issue not found in the primary table, try the alternative table
-              if ((fieldName === 'release_year' || fieldName === 'year_date_of_issue') && (relatedValue === null || relatedValue === undefined)) {
-                const categorySlug = tradingCard.parentCategory?.slug;
-                let fallbackTableName: string;
-                
-                if (categorySlug === 'sneakers') {
-                  // For sneakers, if not found in release_years, try years
-                  fallbackTableName = 'years';
-                } else {
-                  // For other categories, if not found in years, try release_years
-                  fallbackTableName = 'release_years';
-                }
-                
-                const fallbackValue = await this.getRelatedValue(fallbackTableName, cardData[fieldName]);
-                if (fallbackValue !== null && fallbackValue !== undefined) {
-                  relatedValue = fallbackValue;
-                }
-              }
+             
+              // Fallback: if release_year or year_date_of_issue not found in the primary table, try the alternative table             
 
               // Ensure publication_year maps to publication_years
               if (fieldName === 'publication_year' && relatedTableName !== 'publication_years') {
@@ -602,24 +585,24 @@ export class TradingCardService {
                 field_value: cardData[fieldName],
                 field_label: fieldLabel,
                 related_field_name: relatedTableName,
-                related_field_value: relatedValue
+                related_field_value: relatedValue,
               });
-              
+              //  console.log(`=====Baint======Primary: Found related value for ${fieldName} in ${relatedTableName} === ${relatedValue}`);
               // Only add _text field if the field type is "autocomplete"
               // Special-cases: ensure release_year, publication_year, vehicle_year, size, convention_event, brand always expose _text when related value exists
-              if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'shoe_size' || fieldName === 'convention_event' || fieldName === 'brand') && relatedValue !== null && relatedValue !== undefined) {
-                additionalFields.push({
-                  field_name: `${fieldName}_text`,
-                  field_value: relatedValue,
-                  field_label: `${fieldLabel || fieldName}_text`
-                });
-                // Also inject directly to main data copy to guarantee presence
-                try {
-                  (cardData as any)[`${fieldName}_text`] = relatedValue;
-                } catch {}
-              } else {
+              // if ((fieldType === 'autocomplete' || fieldName === 'release_year' || fieldName === 'publication_year' || fieldName === 'vehicle_year' || fieldName === 'size' || fieldName === 'shoe_size' || fieldName === 'convention_event' || fieldName === 'brand') && relatedValue !== null && relatedValue !== undefined) {
+              //   additionalFields.push({
+              //     field_name: `${fieldName}_text`,
+              //     field_value: relatedValue,
+              //     field_label: `${fieldLabel || fieldName}_text`
+              //   });
+              //   // Also inject directly to main data copy to guarantee presence
+              //   try {
+              //     (cardData as any)[`${fieldName}_text`] = relatedValue;
+              //   } catch {}
+              // } else {
                
-              }
+              // }
             } else {
               additionalFields.push({
                 field_name: fieldName,
@@ -677,6 +660,14 @@ export class TradingCardService {
         const pubText = await this.getRelatedValue('publication_years', (cardData as any).publication_year);
         if (pubText) {
           (cardData as any).publication_year_text = pubText;
+        }
+      }
+    } catch {}
+    try {
+      if ((cardData as any).release_year && !(cardData as any).release_year_text) {
+        const pubText = await this.getRelatedValue('years', (cardData as any).release_year);
+        if (pubText) {
+          (cardData as any).release_year_text = pubText;
         }
       }
     } catch {}
@@ -751,6 +742,7 @@ export class TradingCardService {
         'player': { table: 'players', displayField: 'player_name', idField: 'id' },
         'team': { table: 'teams', displayField: 'team_name', idField: 'id' },
         'year': { table: 'years', displayField: 'name', idField: 'id' },
+        'years': { table: 'years', displayField: 'name', idField: 'id' },
         // Map release_year aliases to years
         'release_year': { table: 'years', displayField: 'name', idField: 'id' },
         'release_years': { table: 'release_years', displayField: 'name', idField: 'id' },

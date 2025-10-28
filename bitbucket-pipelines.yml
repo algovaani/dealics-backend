@@ -20,6 +20,8 @@ definitions:
           - ecosystem.config.cjs
           - deploy.sh
           - env.example
+          - env.staging
+          - env.production
 pipelines:
   branches:
     dev:
@@ -36,7 +38,7 @@ pipelines:
             - ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
             - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env.local" --exclude ".next/cache" --exclude "public/user/assets/**" ./ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH"
             - chmod +x deploy.sh
-            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deploy.sh && ./deploy.sh"
+            - ssh "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deploy.sh && ./deploy.sh staging"
     master:
       - step: *build-step
       - step:
@@ -51,4 +53,4 @@ pipelines:
             - ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
             - rsync -az --delete-after --exclude ".git" --exclude "node_modules" --exclude ".env" --exclude "public/user/assets/**" ./ "$SERVER_USER@$SERVER_HOST:$PRODUCTION_API_PATH"
             - chmod +x deploy.sh
-            - ssh "$SERVER_USER@$SERVER_HOST" "cd $PRODUCTION_API_PATH && export NODE_ENV=production && chmod +x deploy.sh && ./deploy.sh"
+            - ssh "$SERVER_USER@$SERVER_HOST" "cd $PRODUCTION_API_PATH && chmod +x deploy.sh && ./deploy.sh production"

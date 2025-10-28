@@ -107,44 +107,71 @@ if pm2 describe "$PM2_APP" > /dev/null 2>&1; then
     
     # Step 2: Graceful reload (zero downtime)
     echo "🔄 Performing graceful reload..."
-    pm2 reload "$PM2_APP" --update-env || {
+    if pm2 reload "$PM2_APP" --update-env; then
+        echo "✅ Reload command executed successfully"
+    else
         echo "⚠️ Graceful reload failed, trying restart..."
-        pm2 restart "$PM2_APP" --update-env || {
+        if pm2 restart "$PM2_APP" --update-env; then
+            echo "✅ Restart command executed successfully"
+        else
             echo "⚠️ Restart failed, trying stop and start..."
             pm2 stop "$PM2_APP" || true
-            pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env
-        }
-    }
-    
-    # Step 3: Wait for app to be ready
-    echo "⏳ Waiting for app to be ready..."
-    sleep 5
-    
-    # Step 4: Check if app is running
-    if pm2 describe "$PM2_APP" | grep -q "online"; then
-        echo "✅ App is running successfully!"
-    else
-        echo "❌ App failed to start, checking logs..."
-        pm2 logs "$PM2_APP" --lines 20
-        exit 1
+            sleep 2
+            if pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env; then
+                echo "✅ Fresh start command executed successfully"
+            else
+                echo "❌ All PM2 commands failed"
+                pm2 logs "$PM2_APP" --lines 20
+                exit 1
+            fi
+        fi
     fi
     
 else
     echo "🆕 PM2 app '$PM2_APP' doesn't exist, starting fresh..."
-    pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env
-    
-    # Wait for app to be ready
-    echo "⏳ Waiting for app to be ready..."
-    sleep 5
-    
-    # Check if app is running
-    if pm2 describe "$PM2_APP" | grep -q "online"; then
-        echo "✅ App started successfully!"
+    if pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env; then
+        echo "✅ Start command executed successfully"
     else
-        echo "❌ App failed to start, checking logs..."
+        echo "❌ Start command failed"
         pm2 logs "$PM2_APP" --lines 20
         exit 1
     fi
+fi
+
+# Step 3: Wait for app to be ready and check status multiple times
+echo "⏳ Waiting for app to be ready..."
+sleep 3
+
+# Check status with retries
+MAX_RETRIES=3
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    echo "Checking app status (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)..."
+    
+    # Get PM2 status in a more reliable way
+    PM2_STATUS=$(pm2 jlist | jq -r ".[] | select(.name==\"$PM2_APP\") | .pm2_env.status" 2>/dev/null || echo "unknown")
+    
+    if [ "$PM2_STATUS" = "online" ]; then
+        echo "✅ App is running successfully!"
+        break
+    elif [ "$PM2_STATUS" = "stopped" ] || [ "$PM2_STATUS" = "errored" ]; then
+        echo "❌ App is $PM2_STATUS, checking logs..."
+        pm2 logs "$PM2_APP" --lines 20
+        exit 1
+    else
+        echo "⏳ App status: $PM2_STATUS, waiting..."
+        sleep 3
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+    fi
+done
+
+# Final check
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ App failed to start after $MAX_RETRIES attempts, checking logs..."
+    pm2 logs "$PM2_APP" --lines 20
+    echo "📊 Current PM2 status:"
+    pm2 status
+    exit 1
 fi
 
 # Step 5: Save PM2 configuration

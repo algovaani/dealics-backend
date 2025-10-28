@@ -14,6 +14,7 @@ import { BuySellCard, BuyOfferStatus, TradeProposal, TradeProposalStatus, TradeT
 import { setTradeProposalStatus } from '../services/tradeStatus.service.js';
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
+import { request } from "http";
 
 export class UserService {
   // Format added_on date to DD.MM.YYYY H:MM AM/PM format
@@ -734,6 +735,7 @@ export class UserService {
           // Check if email is being changed
           const trimmedEmail = allowedFields.email.trim();
           if (user.email !== trimmedEmail) {
+            console.log("successs===Email");
             // Email is being changed, set verification status to unverified
             allowedFields.is_email_verified = "0";
             allowedFields.email_verified_at = null;
@@ -841,6 +843,7 @@ export class UserService {
         // If email was updated, also send email verification to NEW email address
         if (emailUpdated) {
           await EmailHelperService.sendEmailUpdatedVerificationEmail(
+            allowedFields.verifyLink,
             allowedFields.email.trim(), // NEW email address
             user.first_name || '',
             user.last_name || '',

@@ -56,14 +56,6 @@ export const payToChangeTradeStatus = async (req: Request, res: Response) => {
     
     // Verify status update by fetching fresh data
     const updatedTradeProposal = await TradeProposal.findByPk(tradeProposal.id);
-    console.log(`🔍 Final trade proposal status after update:`, {
-      id: updatedTradeProposal?.id,
-      trade_status: updatedTradeProposal?.trade_status,
-      trade_proposal_status_id: updatedTradeProposal?.trade_proposal_status_id,
-      add_cash: updatedTradeProposal?.add_cash,
-      ask_cash: updatedTradeProposal?.ask_cash,
-      trade_amount_paid_on: updatedTradeProposal?.trade_amount_paid_on
-    });
 
     // Initialize payment
     await tradeProposal.update({

@@ -2379,11 +2379,11 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
         const [shoeSize] = await (ShoeSize as any).findOrCreate({
           where: {
             name: String(requestData.shoe_size_text).trim(),
-            category_id: String(categoryIdNum)
+            category_id: Number(categoryIdNum)
           },
           defaults: {
             name: String(requestData.shoe_size_text).trim(),
-            category_id: String(categoryIdNum),
+            category_id: Number(categoryIdNum),
             status: '1'
           }
         });
@@ -2413,7 +2413,7 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
             console.log('SAVE: Shoe size ID not found in master table, creating new entry:', shoeSizeValue);
             const newShoeSize = await (ShoeSize as any).create({
               name: `Shoe Size ${shoeSizeValue}`,
-              category_id: String(categoryIdNum),
+              category_id: categoryIdNum,
               status: '1'
             });
             (requestData as any).shoe_size = newShoeSize.id;
@@ -2421,23 +2421,20 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
           }
         } else {
           // It's a string value, find or create in master table
-          console.log('SAVE: Processing new shoe_size value:', shoeSizeValue, 'for category:', categoryIdNum);
           
           const [shoeSize] = await (ShoeSize as any).findOrCreate({
             where: {
               name: shoeSizeValue,
-              category_id: String(categoryIdNum)
+              categoryId: Number(categoryIdNum)
             },
             defaults: {
               name: shoeSizeValue,
-              category_id: String(categoryIdNum),
+              categoryId: Number(categoryIdNum),
               status: '1'
             }
           });
-          
           if (shoeSize && shoeSize.id) {
             (requestData as any).shoe_size = shoeSize.id;
-            console.log('SAVE: Shoe size created/found with ID:', shoeSize.id);
           }
         }
       } catch (e) {
@@ -3014,31 +3011,29 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
             console.log('Shoe size ID not found in master table, creating new entry:', shoeSizeValue);
             const newShoeSize = await (ShoeSize as any).create({
               name: `Shoe Size ${shoeSizeValue}`,
-              category_id: String(effectiveCategoryId),
+              categoryId: effectiveCategoryId,
               status: '1'
             });
             (requestData as any).shoe_size = newShoeSize.id;
-            console.log('Created new shoe size with ID:', newShoeSize.id);
+            console.log('Created new shoe size with ID:1111111111', newShoeSize);
           }
         } else {
           // It's a string value, find or create in master table
-          console.log('Processing new shoe_size value:', shoeSizeValue, 'for category:', effectiveCategoryId);
           
           const [shoeSize] = await (ShoeSize as any).findOrCreate({
             where: {
               name: shoeSizeValue,
-              category_id: String(effectiveCategoryId)
+              categoryId: Number(effectiveCategoryId) 
             },
             defaults: {
               name: shoeSizeValue,
-              category_id: String(effectiveCategoryId),
+              categoryId: Number(effectiveCategoryId),
               status: '1'
             }
           });
           
           if (shoeSize && shoeSize.id) {
             (requestData as any).shoe_size = shoeSize.id;
-            console.log('Shoe size created/found with ID:', shoeSize.id);
           }
         }
       } catch (e) {
@@ -3048,19 +3043,16 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
 
     // Handle style_code field - direct assignment
     if (requestData.style_code !== undefined) {
-      console.log('UPDATE: Processing style_code field:', requestData.style_code);
       (requestData as any).style_code = requestData.style_code;
     }
 
     // Handle release_date field - direct assignment
     if (requestData.release_date !== undefined) {
-      console.log('UPDATE: Processing release_date field:', requestData.release_date);
       (requestData as any).release_date = requestData.release_date;
     }
 
     // Handle retail_price field - direct assignment
     if (requestData.retail_price !== undefined) {
-      console.log('UPDATE: Processing retail_price field:', requestData.retail_price);
       (requestData as any).retail_price = requestData.retail_price;
     }
 
@@ -3139,7 +3131,6 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
     }
 
     // Debug: Log the final requestData before calling service
-    console.log('Final requestData before service call - brand:', requestData.brand, 'convention_event:', requestData.convention_event);
     
     const result = await tradingcardService.updateTradingCard(cardIdNum, requestData, userId);
 

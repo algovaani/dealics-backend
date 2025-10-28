@@ -384,7 +384,7 @@ const makeOfferAttempts = async (
 };
 
 // Helper function to calculate cart amounts
-const calcCartAmounts = async (cartId: number, userId: number) => {
+const calcCartAmounts = async (cartId: number, userId: number, addressId: any) => {
   let cartAmount = 0;
   let shippingFee = 0;
   let totalAmount = 0;
@@ -404,15 +404,24 @@ const calcCartAmounts = async (cartId: number, userId: number) => {
 
     if (cart && cart.id) {
       // Get user default address
-      const userDefaultAddress = await sequelize.query(`
-        SELECT country FROM addresses 
-        WHERE mark_default = 1 
-        AND user_id = ${userId} 
-        AND is_deleted = '0'
-        LIMIT 1
-      `, { type: QueryTypes.SELECT }) as any[];
+      let userDefaultAddress: any[] = [];
+      if (addressId as any !== "") {
+        userDefaultAddress = await sequelize.query(`
+          SELECT country FROM addresses 
+          WHERE id = ${addressId} 
+          LIMIT 1
+        `, { type: QueryTypes.SELECT }) as any[];
+      } else {
+        userDefaultAddress = await sequelize.query(`
+          SELECT country FROM addresses 
+          WHERE mark_default = 1 
+          AND user_id = ${userId} 
+          AND is_deleted = '0'
+          LIMIT 1
+        `, { type: QueryTypes.SELECT }) as any[];
+      }
 
-      if (userDefaultAddress.length > 0 && userDefaultAddress[0].country) {
+      if (userDefaultAddress && userDefaultAddress.length > 0 && userDefaultAddress[0]?.country) {
         country = userDefaultAddress[0].country;
       }
 
@@ -540,6 +549,7 @@ const calcCartAmounts = async (cartId: number, userId: number) => {
     total_amount: totalAmount
   };
 };
+
 
 // Main cart offer function
 export const cartOffer = async (req: Request, res: Response) => {
@@ -691,7 +701,7 @@ export const cartOffer = async (req: Request, res: Response) => {
     }
 
     // Calculate cart amounts
-    const cartAmounts = await calcCartAmounts(currentCart.id, userId);
+    const cartAmounts = await calcCartAmounts(currentCart.id, userId, null);
     await currentCart.update(cartAmounts);
 
     // Deduct seller's coins
@@ -787,6 +797,8 @@ export const cartOffer = async (req: Request, res: Response) => {
 export const getCart = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
+    const { addressId } = req.query;
+    const addrId = addressId ? Number(addressId) : null;
 
     // Check if user is authenticated
     if (!userId) {
@@ -819,7 +831,7 @@ export const getCart = async (req: Request, res: Response) => {
 
     // If cart exists, calculate and update cart amounts
     if (cart && cart.id) {
-      const cartAmounts = await calcCartAmounts(cart.id, userId);
+      const cartAmounts = await calcCartAmounts(cart.id, userId, addrId);
       await cart.update(cartAmounts);
 
       // Get updated cart with fresh data
@@ -2204,6 +2216,9 @@ export const removeCartItem = async (req: Request, res: Response) => {
       }
     });
 
+    // Get addressId from request if available, otherwise set to null
+    const addressId = (req as any).addressId?.id || null;
+
     if (remainingItems.length === 0) {
       await Cart.destroy({
         where: {
@@ -2213,7 +2228,7 @@ export const removeCartItem = async (req: Request, res: Response) => {
       });
     } else {
       // Recalculate cart amounts
-      const cartAmounts = await calcCartAmounts(cartId, userId);
+      const cartAmounts = await calcCartAmounts(cartId, userId, addressId);
       await Cart.update(cartAmounts, {
         where: { id: cartId }
       });

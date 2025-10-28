@@ -2180,17 +2180,14 @@ export class TradingCardService {
       }
 
       if (requestData.style_code !== undefined) {
-        console.log('SERVICE UPDATE: Processing style_code field:', requestData.style_code);
         saveData.style_code = requestData.style_code;
       }
 
       if (requestData.release_date !== undefined) {
-        console.log('SERVICE UPDATE: Processing release_date field:', requestData.release_date);
         saveData.release_date = requestData.release_date;
       }
 
       if (requestData.retail_price !== undefined) {
-        console.log('SERVICE UPDATE: Processing retail_price field:', requestData.retail_price);
         saveData.retail_price = requestData.retail_price;
       }
 
@@ -2224,9 +2221,6 @@ export class TradingCardService {
       if (Object.keys(saveData).length === 0) {
         return { success: false, error: "No data provided for update" };
       }
-
-      // Debug: Log what we're about to save
-      console.log('SERVICE UPDATE: Final saveData before database update:', JSON.stringify(saveData, null, 2));
 
       // Update the trading card
       await TradingCard.update(saveData, { where: { id: cardId } });

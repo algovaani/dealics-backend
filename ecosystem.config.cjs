@@ -36,7 +36,7 @@ module.exports = {
         PORT: 8000,
         DB_HOST: 'localhost',
         DB_PORT: 3306,
-        DB_NAME: 'stagingtradeblock_new',
+        DB_NAME: 'dealicsProd',
         DB_USER: 'root',
         DB_PASSWORD: 'RockyLinux@DB1',
         JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',

@@ -1,13 +1,18 @@
 #!/bin/bash
 set -e
 
-echo "Starting Node.js backend deployment process..."
+echo "🚀 Starting SMOOTH backend deployment process..."
+
+# Determine environment from first arg if provided
+if [ -n "$1" ]; then
+    DEPLOYMENT_ENVIRONMENT="$1"
+fi
 
 # Debug: Show current directory and environment
 echo "Current working directory: $(pwd)"
 echo "SERVER_PATH: $SERVER_PATH"
+echo "DEPLOYMENT_ENVIRONMENT: $DEPLOYMENT_ENVIRONMENT"
 echo "HOME: $HOME"
-echo "NODE_ENV: $NODE_ENV"
 
 # If SERVER_PATH is not set, use current directory
 if [ -z "$SERVER_PATH" ]; then
@@ -36,41 +41,39 @@ echo "Setting up Node.js environment..."
 corepack enable
 corepack prepare npm@10.2.4 --activate
 
-# Check if build artifacts exist first
-if [ -d "dist" ] && [ -f "dist/server.js" ]; then
-    echo "✅ Build artifacts already exist from Bitbucket pipeline"
-    echo "Skipping dependency installation and build steps..."
-    SKIP_BUILD=true
-else
-    echo "❌ No build artifacts found, will need to build"
-    SKIP_BUILD=false
-    
-    # Clean npm cache and node_modules if they exist
-    echo "Cleaning previous installation..."
-    rm -rf node_modules
-    rm -rf dist
-    npm cache clean --force
+# Clean npm cache and node_modules if they exist
+echo "Cleaning previous installation..."
+rm -rf node_modules
+npm cache clean --force
 
-    # Install dependencies
-    echo "Installing dependencies..."
-    if [ -f "package-lock.json" ]; then
-        echo "package-lock.json found, using npm ci..."
-        npm ci --maxsockets=1 --maxconcurrent=1 --no-audit --no-fund || {
-            echo "npm ci failed, falling back to npm install..."
-            npm install --maxsockets=1 --maxconcurrent=1 --no-audit --no-fund
-        }
-    else
-        echo "package-lock.json not found, using npm install..."
-        npm install --maxsockets=1 --maxconcurrent=1 --no-audit --no-fund
-    fi
+# Install production dependencies (backend needs runtime deps)
+echo "Installing production dependencies..."
+if [ -f "package-lock.json" ]; then
+    echo "package-lock.json found, using npm ci..."
+    npm ci --only=production --maxsockets=1 --maxconcurrent=1 --no-audit --no-fund || {
+        echo "npm ci failed, falling back to npm install..."
+        npm install --only=production --maxsockets=1 --maxconcurrent=1 --no-audit --no-fund
+    }
+else
+    echo "package-lock.json not found, using npm install..."
+    npm install --only=production --maxsockets=1 --maxconcurrent=1 --no-audit --no-fund
 fi
 
-# Build the application only if needed
-if [ "$SKIP_BUILD" = "true" ]; then
-    echo "✅ Using existing build artifacts from Bitbucket pipeline"
-    echo "Build contents: $(ls -la dist/)"
+# Setup environment file based on deployment type
+echo "Setting up environment configuration..."
+if [ "$DEPLOYMENT_ENVIRONMENT" = "production" ]; then
+    cp env.production .env
+    echo "✅ Using production environment configuration"
 else
-    echo "🔨 Building application..."
+    cp env.staging .env
+    echo "✅ Using staging environment configuration"
+fi
+
+# Check if build artifacts exist (they should be transferred from CI)
+if [ -d "dist" ] && [ -f "dist/server.js" ]; then
+    echo "Build artifacts found, skipping build step..."
+else
+    echo "Build artifacts not found, building application..."
     npm run build
 fi
 
@@ -78,52 +81,86 @@ fi
 if [ ! -f "dist/server.js" ]; then
     echo "ERROR: Build failed - dist/server.js not found"
     echo "Build output:"
-    ls -la dist/
+    ls -la dist/ || true
     exit 1
 fi
 
-echo "Build completed successfully!"
-
-# Install production dependencies only (if not already installed)
-if [ "$SKIP_BUILD" = "false" ]; then
-    echo "Installing production dependencies..."
-    npm ci --only=production --maxsockets=1 --maxconcurrent=1 --no-audit --no-fund
+# Determine environment and PM2 app name
+if [ "$DEPLOYMENT_ENVIRONMENT" = "production" ]; then
+    echo "Deploying to PRODUCTION environment..."
+    PM2_APP="prod-dealics-backend"
+    ENV_TYPE="production"
 else
-    echo "✅ Skipping production dependencies installation (already done)"
+    echo "Deploying to STAGING environment..."
+    PM2_APP="staging-dealics-backend"
+    ENV_TYPE="staging"
 fi
 
-# Start/Reload PM2
-echo "Starting PM2 process..."
-if [ "$NODE_ENV" = "production" ]; then
-    echo "Deploying to production environment..."
-    pm2 startOrReload ecosystem.config.cjs --only prod-dealics-backend --update-env || {
-        echo "PM2 startOrReload failed, trying start..."
-        pm2 start ecosystem.config.cjs --only prod-dealics-backend
+echo "PM2 App: $PM2_APP"
+
+# SMOOTH PM2 Deployment Strategy
+echo "🔄 Starting SMOOTH PM2 deployment..."
+
+# Step 1: Check if PM2 app exists
+if pm2 describe "$PM2_APP" > /dev/null 2>&1; then
+    echo "✅ PM2 app '$PM2_APP' exists, performing graceful reload..."
+    
+    # Step 2: Graceful reload (zero downtime)
+    echo "🔄 Performing graceful reload..."
+    pm2 reload "$PM2_APP" --update-env || {
+        echo "⚠️ Graceful reload failed, trying restart..."
+        pm2 restart "$PM2_APP" --update-env || {
+            echo "⚠️ Restart failed, trying stop and start..."
+            pm2 stop "$PM2_APP" || true
+            pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env
+        }
     }
+    
+    # Step 3: Wait for app to be ready
+    echo "⏳ Waiting for app to be ready..."
+    sleep 5
+    
+    # Step 4: Check if app is running
+    if pm2 describe "$PM2_APP" | grep -q "online"; then
+        echo "✅ App is running successfully!"
+    else
+        echo "❌ App failed to start, checking logs..."
+        pm2 logs "$PM2_APP" --lines 20
+        exit 1
+    fi
+    
 else
-    echo "Deploying to staging environment..."
-    pm2 startOrReload ecosystem.config.cjs --only staging-dealics-backend --update-env || {
-        echo "PM2 startOrReload failed, trying start..."
-        pm2 start ecosystem.config.cjs --only staging-dealics-backend
-    }
+    echo "🆕 PM2 app '$PM2_APP' doesn't exist, starting fresh..."
+    pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env
+    
+    # Wait for app to be ready
+    echo "⏳ Waiting for app to be ready..."
+    sleep 5
+    
+    # Check if app is running
+    if pm2 describe "$PM2_APP" | grep -q "online"; then
+        echo "✅ App started successfully!"
+    else
+        echo "❌ App failed to start, checking logs..."
+        pm2 logs "$PM2_APP" --lines 20
+        exit 1
+    fi
 fi
 
-# Save PM2 configuration
-echo "Saving PM2 configuration..."
-pm2 save
+# Step 5: Save PM2 configuration
+echo "💾 Saving PM2 configuration..."
+pm2 save || echo "⚠️ Failed to save PM2 configuration"
 
-echo "🎉 Deployment completed successfully!"
-echo ""
-echo "📊 Deployment Summary:"
-if [ "$SKIP_BUILD" = "true" ]; then
-    echo "✅ Used existing build artifacts from Bitbucket pipeline"
-    echo "⚡ Skipped dependency installation and build steps"
-    echo "🚀 Fast deployment completed"
-else
-    echo "🔨 Created new build (fallback mode)"
-    echo "📦 Installed dependencies"
-    echo "🏗️ Built application from source"
-fi
-echo ""
-echo "📈 PM2 Status:"
+# Step 6: Show final status
+echo "📊 Final PM2 status:"
 pm2 status
+
+echo ""
+echo "🎉 SMOOTH deployment completed successfully!"
+echo "📋 App: $PM2_APP"
+echo "🌐 Environment: $ENV_TYPE"
+echo "📊 Status: $(pm2 describe "$PM2_APP" | grep "status" | awk '{print $4}')"
+echo ""
+echo "🔍 To check logs: pm2 logs $PM2_APP"
+echo "🔄 To restart: pm2 restart $PM2_APP"
+echo "⛔ To stop: pm2 stop $PM2_APP"

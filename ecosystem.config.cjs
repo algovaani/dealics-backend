@@ -9,14 +9,7 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'staging',
-        PORT: 5000,
-        DB_HOST: 'localhost',
-        DB_PORT: 3306,
-        DB_NAME: 'stagingtradeblock_new',
-        DB_USER: 'root',
-        DB_PASSWORD: 'RockyLinux@DB1',
-        JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',
-        FRONTEND_URL: 'https://staging.dealics.com/'
+        PORT: 5000
       },
       error_file: './logs/staging-err.log',
       out_file: './logs/staging-out.log',
@@ -33,14 +26,7 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 8000,
-        DB_HOST: 'localhost',
-        DB_PORT: 3306,
-        DB_NAME: 'dealicsProd',
-        DB_USER: 'root',
-        DB_PASSWORD: 'RockyLinux@DB1',
-        JWT_SECRET: 'my-super-secret-jwt-key-2024-dealics-backend-secure-random-string',
-        FRONTEND_URL: 'https://dealics.com/'
+        PORT: 8000
       },
       error_file: './logs/prod-err.log',
       out_file: './logs/prod-out.log',

@@ -300,6 +300,7 @@ export class TradingCardService {
           tc.can_trade,
           tc.can_buy,
           tc.trading_card_status,
+          tc.on_dealzone,
           tc.graded,
           CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
           CASE 
@@ -2587,6 +2588,48 @@ export class TradingCardService {
           dealzone_price: price,
           dealzone_expired: dealzoneEndTime,
           on_dealzone: '1'
+        } as any,
+        { where: { id: cardId } }
+      );
+
+      const updated = await TradingCard.findByPk(cardId);
+      // return { success: true, data: updated };
+      return {
+        success: true,
+        data: {
+          tradingCard: updated,
+          message: "DealZone Trading card updated successfully"
+        }
+      };
+    } catch (error: any) {
+      console.error('Error updating dealzone fields:', error);
+      return { success: false, error: error.message || 'Failed to update dealzone' };
+    }
+  }
+
+  async removeDealZone(
+    cardId: number,
+    userId: number,
+    on_dealzone: number
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      if (!cardId || isNaN(cardId) || cardId <= 0) {
+        return { success: false, error: 'Invalid card ID' };
+      }
+
+      const tradingCard = await TradingCard.findByPk(cardId, { attributes: ['id', 'trader_id'] });
+      if (!tradingCard) {
+        return { success: false, error: 'Trading card not found' };
+      }
+
+      if (tradingCard.trader_id !== userId) {
+        return { success: false, error: "You don't have permission to update this trading card" };
+      }
+
+      // Perform update
+      await TradingCard.update(
+        {
+          on_dealzone: on_dealzone
         } as any,
         { where: { id: cardId } }
       );

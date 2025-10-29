@@ -185,6 +185,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
           trade_card_status: card.trade_card_status,
           card_condition: card.card_condition || null,
           canTradeOrOffer: canTradeOrOffer,
+          on_dealzone: card.on_dealzone || '0',
           trader: {
             first_name: card.first_name || null,
             last_name: card.last_name || null,
@@ -4084,6 +4085,37 @@ export const updateDealzone = async (req: Request, res: Response) => {
     const dealzoneEndTime = new Date(Date.now() + minutes * 60 * 1000);
 
     const result = await tradingcardService.updateDealzone(cardIdNum, user.id, priceNum, dealzoneEndTime);
+
+    if (!result.success) {
+      return sendApiResponse(res, 400, false, result.error || 'Failed to update dealzone');
+    }
+
+    const updatedCardData = await tradingcardService.getTradingCardById(cardIdNum, user.id);
+    return sendApiResponse(res, 200, true, 'Dealzone updated successfully', updatedCardData);
+  } catch (error: any) {
+    console.error('Update dealzone error:', error);
+    return sendApiResponse(res, 500, false, 'Internal server error', []);
+  }
+};
+
+export const removeFromDealzone = async (req: Request, res: Response) => {
+  try {
+    const { cardId } = req.params;
+    const { on_dealzone } = req.body;
+
+    // Authenticated user
+    const user = req.user;
+    if (!user || !user.id) {
+      return sendApiResponse(res, 401, false, 'User not authenticated');
+    }
+
+    if (!cardId || isNaN(parseInt(cardId))) {
+      return sendApiResponse(res, 400, false, 'Valid card ID is required');
+    }
+
+    const cardIdNum = parseInt(cardId);  
+  
+    const result = await tradingcardService.removeDealZone(cardIdNum, user.id, on_dealzone );
 
     if (!result.success) {
       return sendApiResponse(res, 400, false, result.error || 'Failed to update dealzone');

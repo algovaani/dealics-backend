@@ -413,9 +413,11 @@ export const getTradingCards = async (req: Request, res: Response) => {
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
         trading_card_estimated_value: card.trading_card_estimated_value,
+        trade_value: card.trading_card_estimated_value,
         search_param: card.search_param || null,
         title: card.title,
         sport_name: card.sport_name || null,
+        category_slug: card.slug || null,
         sport_icon: card.sport_icon || null,
         trade_card_status: card.trade_card_status || null,
         trader_id: card.trader_id || null,
@@ -563,6 +565,7 @@ export const getDealzoneTradingCards = async (req: Request, res: Response) => {
         title: card.title,
         sport_name: card.sport_name || null,
         sport_icon: card.sport_icon || null,
+        category_slug: card.slug || null,
         trade_card_status: card.trade_card_status || null,
         trader_id: card.trader_id || null,
         trader_name: card.trader_name || null,
@@ -1184,10 +1187,12 @@ const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint:
 
     // Resolve category_name from category_id
     let category_name: string | null = null;
+    let slug: string | null = null;
     try {
       if (tradingCard.category_id) {
-        const cat = await Category.findByPk(tradingCard.category_id, { attributes: ['sport_name'] });
+        const cat = await Category.findByPk(tradingCard.category_id, { attributes: ['sport_name','slug'] });
         category_name = (cat as any)?.sport_name || null;
+        slug = (cat as any)?.slug || null;
       }
     } catch {}
 
@@ -1200,6 +1205,7 @@ const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint:
       search_param: tradingCard.search_param,
       title: tradingCard.title,
       trading_card_slug: tradingCard.trading_card_slug,
+      category_slug: slug,
       is_traded: tradingCard.is_traded,
       created_at: tradingCard.createdAt,
       is_demo: tradingCard.is_demo,
@@ -1207,6 +1213,7 @@ const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint:
       trader_name: tradingCard.trader ? tradingCard.trader.username : null,
       trading_card_asking_price: tradingCard.trading_card_asking_price,
       trading_card_estimated_value: tradingCard.trading_card_estimated_value,
+      trade_value: tradingCard.trading_card_estimated_value,
       trading_card_recent_sell_link: tradingCard.trading_card_recent_sell_link,
       trading_card_recent_trade_value: tradingCard.trading_card_recent_trade_value,
       can_trade: tradingCard.can_trade,
@@ -3491,6 +3498,7 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
             const baseResponse = {
          id: card.id,
          category_id: card.category_id,
+         category_slug: card.slug,
               title: (card as any).title ?? card.trading_card_slug,
          trader_id: card.trader_id,
          creator_id: card.creator_id,
@@ -3499,6 +3507,7 @@ export const getPublicProfileTradingCards = async (req: Request, res: Response) 
          trading_card_slug: card.trading_card_slug,
          trading_card_recent_trade_value: card.trading_card_recent_trade_value,
          trading_card_asking_price: card.trading_card_asking_price,
+         trade_value: card.trading_card_estimated_value,
          search_param: card.search_param  || null,
          sport_name: card.sport_name || null,
         sport_icon: card.sport_icon || null,
@@ -3631,6 +3640,7 @@ export const getLatestTradingCards = async (req: Request, res: Response) => {
         AND tc.is_demo = 0
         AND tc.is_traded != 1
         AND tc.trading_card_status = '1'
+        AND tc.on_dealzone = '0'
         ${excludeUserIdCondition}
     `;
     
@@ -3643,9 +3653,11 @@ export const getLatestTradingCards = async (req: Request, res: Response) => {
         tc.trading_card_slug,
         tc.trading_card_recent_trade_value,
         tc.trading_card_asking_price,
+        tc.trading_card_estimated_value,
         tc.search_param, 
         c.sport_name,
         c.sport_icon,
+        c.slug,
         tc.can_trade,
         tc.can_buy,
         tc.is_traded,
@@ -3705,9 +3717,11 @@ export const getLatestTradingCards = async (req: Request, res: Response) => {
         trading_card_img_back: card.trading_card_img_back,
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
+        trade_value: card.trading_card_estimated_value,
         search_param: card.search_param,
         sport_name: card.sport_name,
         sport_icon: card.sport_icon,
+        category_slug: card.slug,
         can_trade: card.can_trade,
         can_buy: card.can_buy,
         is_traded: card.is_traded,
@@ -3833,8 +3847,10 @@ export const mainSearch = async (req: Request, res: Response) => {
         title: card.title,
         trading_card_recent_trade_value: card.trading_card_recent_trade_value,
         trading_card_asking_price: card.trading_card_asking_price,
+        trade_value: card.trading_card_estimated_value,
         search_param: card.search_param,
         sport_name: card.sport_name,
+        category_slug: card.slug,
         can_trade: (card as any).can_trade ?? 0,
         can_buy: (card as any).can_buy ?? 0,
         is_traded: card.is_traded,
@@ -3934,12 +3950,14 @@ export const getSimilarTradingCards = async (req: Request, res: Response) => {
         const baseResponse = {
           id: card.id,
           category_id: card.category_id,
+          category_slug: card.slug,
           title: card.title ?? card.trading_card_slug,
           trading_card_img: card.trading_card_img,
           trading_card_img_back: card.trading_card_img_back,
           trading_card_slug: card.trading_card_slug,
           trading_card_recent_trade_value: card.trading_card_recent_trade_value,
           trading_card_asking_price: card.trading_card_asking_price,
+          trade_value: card.trading_card_estimated_value,
           search_param: card.search_param || null,
           sport_name: card.sport_name || null,
           sport_icon: card.sport_icon || null,

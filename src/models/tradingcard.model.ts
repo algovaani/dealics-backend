@@ -253,6 +253,24 @@ import {
     @AllowNull
     @Column(DataType.DOUBLE(12, 2))
     trading_card_offer_accept_above?: number;
+
+    // Dealzone fields
+    @AllowNull
+    @Column(DataType.DOUBLE(12, 2))
+    dealzone_price?: number;
+
+    @AllowNull
+    @Column(DataType.DATE)
+    dealzone_expired?: Date;
+
+    @AllowNull
+    @Default(0)
+    @Column({
+      type: DataType.TINYINT,
+      allowNull: true,
+      defaultValue: 0,
+    })
+    on_dealzone?: number | null;
   
     @Default("1")
     @Column(DataType.ENUM("1", "0"))

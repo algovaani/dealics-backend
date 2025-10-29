@@ -18,7 +18,7 @@ export class TradingCardService {
       
       // Build where clause - EXCLUDE user's own cards (match original structure)
       let whereClause = 'WHERE tc.mark_as_deleted IS NULL AND c.sport_status = 1 AND tc.is_demo=0 AND tc.is_traded!=1';
-      
+      whereClause +=` AND tc.on_dealzone = '0'`;
       // EXCLUDE user's own cards if logged in, otherwise show all active cards
       if (validLoggedInUserId) {
         whereClause += ` AND tc.trader_id != ${validLoggedInUserId} AND tc.trading_card_status = '1'`;
@@ -70,6 +70,132 @@ export class TradingCardService {
           tc.can_buy,
           tc.trading_card_status,
           tc.graded,
+          CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
+          CASE 
+            WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
+            WHEN (tc.trading_card_status = '1' AND tc.is_traded = '0') OR tc.is_traded IS NULL THEN 'Available'
+            WHEN tc.can_trade = '0' AND tc.can_buy = '0' THEN 'Not Available'
+            WHEN tc.is_traded = '0' THEN 'Offer Accepted'
+            WHEN tc.trading_card_status = '0' OR tc.trading_card_status IS NULL THEN 'Not Available'
+            ELSE 'Not Available'
+          END as trade_card_status,
+          CASE 
+            WHEN tc.card_condition_id IS NOT NULL THEN cc.card_condition_name
+            WHEN tc.video_game_condition IS NOT NULL THEN tc.video_game_condition
+            WHEN tc.console_condition IS NOT NULL THEN tc.console_condition
+            WHEN tc.gum_condition IS NOT NULL THEN tc.gum_condition
+            ELSE NULL
+          END as card_condition
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        LEFT JOIN users u ON tc.trader_id = u.id
+        LEFT JOIN card_conditions cc ON tc.card_condition_id = cc.id
+        ${interestedJoin}
+        ${whereClause}
+        ORDER BY tc.created_at DESC
+        LIMIT ${validPerPage} OFFSET ${offset}
+      `;
+      
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM trading_cards tc
+        LEFT JOIN categories c ON tc.category_id = c.id
+        ${whereClause}
+      `;
+
+
+      const countResult = await sequelize.query(countQuery, {
+        type: QueryTypes.SELECT,
+      }) as any[];
+
+      const totalCount = countResult[0]?.total || 0;
+      const totalPages = Math.ceil(totalCount / validPerPage);
+      
+
+      const tradingCards = await sequelize.query(rawQuery, {
+        type: QueryTypes.SELECT,
+      });
+
+
+      return {
+        success: true,
+        data: tradingCards as any[],
+        count: totalCount
+      };
+    } catch (error: any) {
+      console.error('Get all trading cards except own error:', error);
+      return { success: false, error: 'Failed to fetch trading cards' };
+    }
+  }
+
+  async getAllDealzoneTradingCardsExceptOwn(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number, graded?: string) {
+    try {
+    // Validate and sanitize input parameters
+    const validPage = isNaN(page) || page < 1 ? 1 : page;
+    const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
+    const validCategoryId = categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null;
+    const validLoggedInUserId = loggedInUserId && !isNaN(loggedInUserId) && loggedInUserId > 0 ? loggedInUserId : null;
+    const validGraded = graded && (graded === 'graded' || graded === 'ungraded') ? graded : null;
+    
+    const offset = (validPage - 1) * validPerPage;
+      
+      // Build where clause - EXCLUDE user's own cards (match original structure)
+      let whereClause = 'WHERE tc.mark_as_deleted IS NULL AND c.sport_status = 1 AND tc.is_demo=0 AND tc.is_traded!=1';
+      whereClause +=` AND tc.on_dealzone = '1'`;
+      // EXCLUDE user's own cards if logged in, otherwise show all active cards
+      if (validLoggedInUserId) {
+        whereClause += ` AND tc.trader_id != ${validLoggedInUserId} AND tc.trading_card_status = '1'`;
+      } else {
+        whereClause += ` AND tc.trading_card_status = '1'`;
+      }
+      
+    if (validCategoryId) {
+      whereClause += ` AND tc.category_id = ${validCategoryId}`;
+    }
+    
+    if (validGraded) {
+      if (validGraded === 'graded') {
+        whereClause += ` AND tc.graded = '1'`;
+      } else if (validGraded === 'ungraded') {
+        whereClause += ` AND (tc.graded = '0' OR tc.graded IS NULL)`;
+      }
+    }
+    
+      // Debug: Log the where clause
+
+      // Use raw SQL to get data with sport_name and interested_in status (match original structure)
+      let interestedJoin = '';
+    if (validLoggedInUserId) {
+        interestedJoin = `LEFT JOIN interested_in ii ON tc.id = ii.trading_card_id AND ii.user_id = ${validLoggedInUserId}`;
+      } else {
+        interestedJoin = 'LEFT JOIN interested_in ii ON 1=0'; // This will never match, so interested_in will always be false
+      }
+      
+      const rawQuery = `
+        SELECT 
+          tc.id,
+          tc.category_id,
+          tc.trading_card_img,
+          tc.trading_card_img_back,
+          tc.trading_card_slug,
+          tc.trading_card_recent_trade_value,
+          tc.trading_card_asking_price,
+          tc.trading_card_estimated_value,
+          tc.search_param,
+          tc.title,
+          c.sport_name,
+          c.sport_icon,
+          tc.trader_id,
+          u.username as trader_name,
+          tc.creator_id,
+          tc.is_traded,
+          tc.can_trade,
+          tc.can_buy,
+          tc.trading_card_status,
+          tc.graded,
+          tc.on_dealzone,
+          tc.dealzone_price,
+          tc.dealzone_expired,
           CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
           CASE 
             WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
@@ -2423,6 +2549,55 @@ export class TradingCardService {
         success: false,
         error: error.message || 'Unknown error occurred'
       };
+    }
+  }
+
+  /**
+   * Update dealzone fields for a trading card
+   * Sets dealzone_price and dealzone_expired (Date)
+   */
+  async updateDealzone(
+    cardId: number,
+    userId: number,
+    price: number,
+    dealzoneEndTime: Date
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      if (!cardId || isNaN(cardId) || cardId <= 0) {
+        return { success: false, error: 'Invalid card ID' };
+      }
+
+      const tradingCard = await TradingCard.findByPk(cardId, { attributes: ['id', 'trader_id'] });
+      if (!tradingCard) {
+        return { success: false, error: 'Trading card not found' };
+      }
+
+      if (tradingCard.trader_id !== userId) {
+        return { success: false, error: "You don't have permission to update this trading card" };
+      }
+
+      // Perform update
+      await TradingCard.update(
+        {
+          dealzone_price: price,
+          dealzone_expired: dealzoneEndTime,
+          on_dealzone: '1'
+        } as any,
+        { where: { id: cardId } }
+      );
+
+      const updated = await TradingCard.findByPk(cardId);
+      // return { success: true, data: updated };
+      return {
+        success: true,
+        data: {
+          tradingCard: updated,
+          message: "DealZone Trading card updated successfully"
+        }
+      };
+    } catch (error: any) {
+      console.error('Error updating dealzone fields:', error);
+      return { success: false, error: error.message || 'Failed to update dealzone' };
     }
   }
 

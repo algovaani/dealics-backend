@@ -9,6 +9,7 @@ import {
   getFormFieldsByCategory, 
   saveTradingCard,
   updateTradingCard,
+  updateDealzone,
   updateTradingCardStatus,
   deleteTradingCard,
   getDeletedTradingCards
@@ -43,6 +44,10 @@ router.put("/:cardId", upload.fields([
 
 // Update trading card status (on/off switch)
 router.put("/:cardId/status", userAuth, updateTradingCardStatus);
+
+// Update dealzone (price + end time). Body expects { time: minutes, price }
+// Dedicated endpoint: PUT /api/user/tradingcards/:cardId/dealzone
+router.put("/dealzone/:cardId", userAuth, updateDealzone);
 
 router.delete("/:id", deleteTradingCard);
 

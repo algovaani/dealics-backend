@@ -188,7 +188,9 @@ export const getUserProfile = async (req: Request, res: Response) => {
       tradeCount: profileData.tradeCount,
       followingCount: profileData.followingCount,
       following: profileData.following || false,  // ✅ NEW: Following status
-      social_links: profileData.socialLinks  // ✅ NEW: Social media links
+      social_links: profileData.socialLinks,  // ✅ NEW: Social media links
+      bio: profileData.user.bio, 
+      about_user: profileData.user.about_user 
     };
 
     return sendApiResponse(res, 200, true, "User profile retrieved successfully", [response]);

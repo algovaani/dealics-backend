@@ -62,6 +62,7 @@ export class TradingCardService {
           tc.title,
           c.sport_name,
           c.sport_icon,
+          c.slug,
           tc.trader_id,
           u.username as trader_name,
           tc.creator_id,
@@ -185,6 +186,7 @@ export class TradingCardService {
           tc.title,
           c.sport_name,
           c.sport_icon,
+          c.slug,
           tc.trader_id,
           u.username as trader_name,
           tc.creator_id,
@@ -290,6 +292,7 @@ export class TradingCardService {
           tc.title,
           c.sport_name,
           c.sport_icon,
+          c.slug,
           tc.trader_id,
           u.username as trader_name,
           tc.creator_id,
@@ -1021,7 +1024,7 @@ export class TradingCardService {
       ],
       attributes: [
         'id', 'code', 'category_id', 'trading_card_img','search_param', 
-        'trading_card_slug', 'trading_card_estimated_value', 'is_demo',
+        'trading_card_slug', 'trading_card_estimated_value', 'trading_card_estimated_value', 'is_demo',
         [haveItemSubQuery, 'haveitem']
       ],
       order: [['is_demo', 'ASC']],
@@ -1194,6 +1197,7 @@ export class TradingCardService {
         tc.title,
         c.sport_name,
         c.sport_icon,
+        c.slug,
         tc.trader_id,
         tc.creator_id,
         tc.is_traded,
@@ -1223,6 +1227,7 @@ export class TradingCardService {
         AND tc.trading_card_status = '1'
         AND tc.mark_as_deleted IS NULL
         AND tc.is_traded != '1'
+        AND tc.on_dealzone = '0'
         ${validCategoryId ? `AND tc.category_id = ${validCategoryId}` : ''}
       ORDER BY tc.created_at DESC
       LIMIT ${validPerPage} OFFSET ${offset}
@@ -1874,7 +1879,7 @@ export class TradingCardService {
       if (requestData.release_year !== undefined && requestData.release_year !== null) {
         saveData.release_year = requestData.release_year;
       }
-
+      saveData.on_dealzone = '0';
       // Create trading card first - exactly like Laravel
       const tradingCard = await TradingCard.create(saveData);
 
@@ -2806,6 +2811,7 @@ export class TradingCardService {
         AND tc.mark_as_deleted IS NULL
         AND tc.is_traded = '0'
         AND tc.is_demo = '0'
+        AND tc.on_dealzone = '0'
         AND c.sport_status = '1'
         AND (tc.can_trade = 1 OR tc.can_buy = 1)
         AND (${likeConditions})
@@ -2833,6 +2839,7 @@ export class TradingCardService {
           tc.trader_id,
           u.username as trader_name,
           c.sport_name,
+          c.slug,
           tc.can_trade,
           tc.can_buy,
         c.sport_icon,
@@ -2859,6 +2866,7 @@ export class TradingCardService {
         AND tc.mark_as_deleted IS NULL
         AND tc.is_traded = '0'
         AND tc.is_demo = '0'
+        AND tc.on_dealzone = '0'
         AND c.sport_status = '1'
         AND (tc.can_trade = 1 OR tc.can_buy = 1)
         AND (${likeConditions})
@@ -2952,6 +2960,7 @@ export class TradingCardService {
         AND c.sport_status = '1'
         AND tc.is_demo = '0'
         AND tc.is_traded != '1'
+        AND tc.on_dealzone = '0'
         ${excludeCondition}
       `;
 
@@ -2975,6 +2984,7 @@ export class TradingCardService {
           tc.search_param,
           tc.title,
           c.sport_name,
+          c.slug,
         c.sport_icon,
           tc.trader_id,
           tc.creator_id,
@@ -3016,6 +3026,7 @@ export class TradingCardService {
         AND tc.trading_card_status = '1'
         AND c.sport_status = '1'
         AND tc.is_demo = '0'
+        AND tc.on_dealzone = '0'
         AND tc.is_traded != '1'
         ${excludeCondition}
         ORDER BY tc.created_at DESC

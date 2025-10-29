@@ -277,7 +277,7 @@ export class UserService {
         attributes: [
           'id', 'first_name', 'last_name', 'username', 'profile_picture', 
           'email', 'followers', 'trade_transactions', 'trading_cards', 'ratings',
-          'ebay_store_url', 'created_at', 'updated_at'
+          'ebay_store_url', 'created_at', 'updated_at','about_user', 'bio'
         ]
       });
 

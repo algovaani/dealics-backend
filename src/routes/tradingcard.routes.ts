@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { 
   getTradingCards, 
+  getDealzoneTradingCards,
   getTradingCard, 
   getTradingCardsByCategoryName,
   getAllCardConditions,
@@ -23,6 +24,7 @@ const router = Router();
 router.use(noCache);
 
 router.get("/", getTradingCards);
+router.get("/dealzone", getDealzoneTradingCards);
 // Keep same API path but serve latest 8
 router.get("/popularTradingCards", getLatestTradingCards);
 router.get("/similar-trading-cards", getSimilarTradingCards);

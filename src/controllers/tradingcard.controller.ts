@@ -459,6 +459,155 @@ export const getTradingCards = async (req: Request, res: Response) => {
   }
 };
 
+
+
+export const getDealzoneTradingCards = async (req: Request, res: Response) => {
+  try {
+    // Get pagination parameters from query
+    const pageParam = req.query.page as string;
+    const perPageParam = req.query.perPage as string;
+    const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
+    const gradedParam = req.query.graded as string;
+    
+    // Extract user ID from JWT token if available
+    let authenticatedUserId: number | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        authenticatedUserId = decoded.user_id || decoded.sub || decoded.id;
+      } catch (jwtError) {
+        // Token is invalid, but we'll continue without authentication
+      }
+    }
+    
+    const page = pageParam ? parseInt(pageParam, 10) : 1;
+    const perPage = perPageParam ? parseInt(perPageParam, 10) : 100;
+    const categoryId: number | undefined = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
+    const graded: string | undefined = gradedParam;
+    const loggedInUserId: number | undefined = authenticatedUserId;
+
+    // Validate pagination parameters
+    if (isNaN(page) || page < 1) {
+      return sendApiResponse(res, 400, false, "Page must be a valid number greater than 0", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+    }
+
+    if (isNaN(perPage) || perPage < 1 || perPage > 100) {
+      return sendApiResponse(res, 400, false, "PerPage must be a valid number between 1 and 100", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+    }
+
+    if (categoryIdParam) {
+      if (categoryId === undefined || isNaN(categoryId) || categoryId < 1) {
+        return sendApiResponse(
+          res,
+          400,
+          false,
+          "Category ID must be a valid positive number",
+          [],
+          {
+            current_page: 1,
+            per_page: 100,
+            total: 0,
+            total_pages: 0,
+            has_next_page: false,
+            has_prev_page: false
+          }
+        );
+      }
+    }
+
+    // Duplicate flag: when true, include the logged-in user's own cards as well
+    const duplicateParam = req.query.duplicate as string | undefined;
+    const includeOwnCards = duplicateParam && duplicateParam.toString().toLowerCase() === 'true';
+
+    // Use the method that normally excludes user's own cards. When duplicate=true, pass undefined to avoid exclusion.
+    const result = await tradingcardService.getAllDealzoneTradingCardsExceptOwn(
+      page,
+      perPage,
+      categoryId,
+      includeOwnCards ? undefined : loggedInUserId,
+      graded
+    );
+
+    // Transform the data - result.data contains the trading cards array
+    const tradingCards = (result.data || []).map((card: any) => {
+      // Add canTradeOrOffer logic
+      let canTradeOrOffer = true;
+      
+      // If loggedInUserId is provided and matches the card's trader_id, user can't trade with themselves
+      if (loggedInUserId && card.trader_id === loggedInUserId) {
+        canTradeOrOffer = false;
+      }
+      
+      // If card is already traded, user can't trade
+      if (card.is_traded === '1') {
+        canTradeOrOffer = false;
+      }
+      
+      // If can_buy and can_trade are both 0, user can't trade or make offers
+      if (card.can_buy === 0 && card.can_trade === 0) {
+        canTradeOrOffer = false;
+      }
+
+      const baseResponse = {
+        id: card.id,
+        category_id: card.category_id,
+        trading_card_img: card.trading_card_img,
+        trading_card_img_back: card.trading_card_img_back,
+        trading_card_slug: card.trading_card_slug,
+        trading_card_recent_trade_value: card.trading_card_recent_trade_value,
+        trading_card_asking_price: card.trading_card_asking_price,
+        trading_card_estimated_value: card.trading_card_estimated_value,
+        search_param: card.search_param || null,
+        title: card.title,
+        sport_name: card.sport_name || null,
+        sport_icon: card.sport_icon || null,
+        trade_card_status: card.trade_card_status || null,
+        trader_id: card.trader_id || null,
+        trader_name: card.trader_name || null,
+        card_condition: card.card_condition || null,
+        graded: card.graded || '0',
+        can_trade: card.can_trade,
+        can_buy: card.can_buy,
+        canTradeOrOffer: canTradeOrOffer,
+        on_dealzone: card.on_dealzone,
+        dealzone_price: card.dealzone_price,
+        dealzone_expired: card.dealzone_expired,
+      };
+
+      // Only add interested_in field if loggedInUserId is provided
+      if (loggedInUserId) {
+        return {
+          ...baseResponse,
+          interested_in: Boolean(card.interested_in)
+        };
+      }
+
+      return baseResponse;
+    });
+
+    // Only include pagination if pagination parameters were provided
+    const hasPaginationParams = pageParam || perPageParam;
+    
+    if (hasPaginationParams) {
+      return sendApiResponse(res, 200, true, "Dealzone Trading cards retrieved successfully", tradingCards, {
+        current_page: page,
+        per_page: perPage,
+        total: result.count || 0,
+        total_pages: Math.ceil((result.count || 0) / perPage),
+        has_next_page: page < Math.ceil((result.count || 0) / perPage),
+        has_prev_page: page > 1
+      });
+    } else {
+      return sendApiResponse(res, 200, true, "Dealzone Trading cards retrieved successfully", tradingCards);
+    }
+  } catch (error: any) {
+    console.error(error);
+    return sendApiResponse(res, 500, false, "Internal server error", [], { current_page: 1, per_page: 100, total: 0, total_pages: 0, has_next_page: false, has_prev_page: false });
+  }
+};
+
 // Common function for both public and user trading card endpoints
 const getTradingCardCommon = async (req: Request, res: Response, isUserEndpoint: boolean = false) => {
   try {
@@ -3878,6 +4027,55 @@ export const updateTradingCardStatus = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Update trading card status error:", error);
     return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+/**
+ * Update dealzone fields for a trading card
+ * PUT /api/user/tradingcards/:cardId/dealzone
+ * body: { time: number (minutes), price: number }
+ */
+export const updateDealzone = async (req: Request, res: Response) => {
+  try {
+    const { cardId } = req.params;
+    const { time, price } = req.body;
+
+    // Authenticated user
+    const user = req.user;
+    if (!user || !user.id) {
+      return sendApiResponse(res, 401, false, 'User not authenticated');
+    }
+
+    if (!cardId || isNaN(parseInt(cardId))) {
+      return sendApiResponse(res, 400, false, 'Valid card ID is required');
+    }
+
+    const cardIdNum = parseInt(cardId);
+
+    const minutes = Number(time);
+    const priceNum = Number(price);
+
+    if (isNaN(minutes) || minutes < 0) {
+      return sendApiResponse(res, 400, false, 'time must be a non-negative number (minutes)');
+    }
+
+    if (isNaN(priceNum) || priceNum < 0) {
+      return sendApiResponse(res, 400, false, 'price must be a non-negative number');
+    }
+
+    const dealzoneEndTime = new Date(Date.now() + minutes * 60 * 1000);
+
+    const result = await tradingcardService.updateDealzone(cardIdNum, user.id, priceNum, dealzoneEndTime);
+
+    if (!result.success) {
+      return sendApiResponse(res, 400, false, result.error || 'Failed to update dealzone');
+    }
+
+    const updatedCardData = await tradingcardService.getTradingCardById(cardIdNum, user.id);
+    return sendApiResponse(res, 200, true, 'Dealzone updated successfully', updatedCardData);
+  } catch (error: any) {
+    console.error('Update dealzone error:', error);
+    return sendApiResponse(res, 500, false, 'Internal server error', []);
   }
 };
 

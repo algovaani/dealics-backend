@@ -1694,10 +1694,10 @@ export const feedPayPalPaymentReturn = async (req: Request, res: Response) => {
       }
     } else if (type === 'cancel') {
       // Handle cancel case
-      await buyOffer.update({
-        buying_status: 'cancelled',
-        is_payment_init: 0
-      });
+      // await buyOffer.update({
+      //   buying_status: 'cancelled',
+      //   is_payment_init: 0
+      // });
 
       return sendApiResponse(res, 200, true, "User declined the payment", {
         redirect_url: `/bought-and-sold-products`
@@ -1724,7 +1724,7 @@ export const feedPayPalPaymentNotify = async (req: Request, res: Response) => {
     if (!buyOffer) {
       return sendApiResponse(res, 404, false, "Buy offer not found", []);
     }
-
+console.log("shipment Cancel1");
     // Update buy offer status to cancelled
     await buyOffer.update({
       buying_status: 'cancelled',
@@ -2278,6 +2278,7 @@ export const tradeProposal = async (req: Request, res: Response) => {
         can_trade: '1',
         trading_card_status: '1',
         is_traded: '0',
+        on_dealzone: '0',
         mark_as_deleted: null
       },
       attributes: [
@@ -2310,6 +2311,7 @@ export const tradeProposal = async (req: Request, res: Response) => {
         can_trade: '1',
         trading_card_status: '1',
         is_traded: '0',
+        on_dealzone: '0',
         mark_as_deleted: null
       },
       attributes: [
@@ -6743,7 +6745,7 @@ export const saveParcelBuysell = async (req: Request, res: Response) => {
     // Validate required fields (allow weightInput_oz = 0)
     const ozMissing = (weightInput_oz === undefined || weightInput_oz === null || weightInput_oz === '');
     if (!lengthInput || !widthInput || !heightInput || !weightInput_lbs || ozMissing || !packageSelect || !buy_id) {
-      return sendApiResponse(res, 400, false, "Missing required fields: lengthInput, widthInput, heightInput, weightInput_lbs, weightInput_oz, packageSelect, buy_id", []);
+      return sendApiResponse(res, 400, false, "Enter the required fields correctly", []);
     }
 
     // Validate numeric values

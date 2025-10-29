@@ -5527,6 +5527,7 @@ export class UserService {
       await TradeProposal.update(
         {
           is_payment_received: 1,
+          //trade_status: "counter_accepted",
           payment_received_on: new Date()
         },
         {

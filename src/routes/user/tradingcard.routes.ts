@@ -10,6 +10,7 @@ import {
   saveTradingCard,
   updateTradingCard,
   updateDealzone,
+  removeFromDealzone,
   updateTradingCardStatus,
   deleteTradingCard,
   getDeletedTradingCards
@@ -48,6 +49,7 @@ router.put("/:cardId/status", userAuth, updateTradingCardStatus);
 // Update dealzone (price + end time). Body expects { time: minutes, price }
 // Dedicated endpoint: PUT /api/user/tradingcards/:cardId/dealzone
 router.put("/dealzone/:cardId", userAuth, updateDealzone);
+router.put("/status-update-dealzone/:cardId", userAuth, removeFromDealzone);
 
 router.delete("/:id", deleteTradingCard);
 

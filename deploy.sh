@@ -99,43 +99,23 @@ fi
 echo "PM2 App: $PM2_APP"
 
 # SMOOTH PM2 Deployment Strategy
-echo "🔄 Starting SMOOTH PM2 deployment..."
+echo "🔄 Starting SMOOTH PM2 deployment (force recreate)..."
 
-# Step 1: Check if PM2 app exists
+# Always delete existing app to avoid stale/saved state conflicts
 if pm2 describe "$PM2_APP" > /dev/null 2>&1; then
-    echo "✅ PM2 app '$PM2_APP' exists, performing graceful reload..."
-    
-    # Step 2: Graceful reload (zero downtime)
-    echo "🔄 Performing graceful reload..."
-    if pm2 reload "$PM2_APP" --update-env; then
-        echo "✅ Reload command executed successfully"
-    else
-        echo "⚠️ Graceful reload failed, trying restart..."
-        if pm2 restart "$PM2_APP" --update-env; then
-            echo "✅ Restart command executed successfully"
-        else
-            echo "⚠️ Restart failed, trying stop and start..."
-            pm2 stop "$PM2_APP" || true
-            sleep 2
-            if pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env; then
-                echo "✅ Fresh start command executed successfully"
-            else
-                echo "❌ All PM2 commands failed"
-                pm2 logs "$PM2_APP" --lines 20
-                exit 1
-            fi
-        fi
-    fi
-    
+    echo "🧹 Deleting existing PM2 app '$PM2_APP'..."
+    pm2 delete "$PM2_APP" || true
+    sleep 2
+fi
+
+# Start fresh from ecosystem
+echo "▶️ Starting PM2 app from ecosystem: $PM2_APP"
+if pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env; then
+    echo "✅ Start command executed successfully"
 else
-    echo "🆕 PM2 app '$PM2_APP' doesn't exist, starting fresh..."
-    if pm2 start ecosystem.config.cjs --only "$PM2_APP" --update-env; then
-        echo "✅ Start command executed successfully"
-    else
-        echo "❌ Start command failed"
-        pm2 logs "$PM2_APP" --lines 20
-        exit 1
-    fi
+    echo "❌ Start command failed"
+    pm2 logs "$PM2_APP" --lines 200 || true
+    exit 1
 fi
 
 # Step 3: Wait for app to be ready and check status multiple times
@@ -156,7 +136,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         break
     elif [ "$PM2_STATUS" = "stopped" ] || [ "$PM2_STATUS" = "errored" ]; then
         echo "❌ App is $PM2_STATUS, checking logs..."
-        pm2 logs "$PM2_APP" --lines 20
+        pm2 logs "$PM2_APP" --lines 200
         exit 1
     else
         echo "⏳ App status: $PM2_STATUS, waiting..."
@@ -168,7 +148,7 @@ done
 # Final check
 if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
     echo "❌ App failed to start after $MAX_RETRIES attempts, checking logs..."
-    pm2 logs "$PM2_APP" --lines 20
+    pm2 logs "$PM2_APP" --lines 200
     echo "📊 Current PM2 status:"
     pm2 status
     exit 1

@@ -3,7 +3,7 @@ import { getUserProfile, getUserById, updateUser, deleteUser, getMyProfile, getT
 import { getTradeDetail as getTradeDetailNew } from "../controllers/tradeDetail.controller.js";
 import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, handlePayPalResponse, payToChangeTradeStatusCounterOffer } from "../controllers/payment.controller.js";
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
-import { cartOffer, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess, confirmPaymentReceived, completeTradeSender, getShippingAddressDetails, shippingBuysellInitialize, getShippingParcelBuysell, saveParcelBuysell, getShipmentCarrierBuysell, shippingCheckoutBuysell, getShippingCheckoutBuysell, makeCheckoutBuysell, shipmentCostPaymentSuccessForBuySell, receiveShipment, insureShipment, getAndUpdateShipmentStatus, getTradeProposalStatuses, markAsDefaultDeliveryAddress } from "../controllers/cart.controller.js";
+import { cartOffer, cartOfferDealzone, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess, confirmPaymentReceived, completeTradeSender, getShippingAddressDetails, shippingBuysellInitialize, getShippingParcelBuysell, saveParcelBuysell, getShipmentCarrierBuysell, shippingCheckoutBuysell, getShippingCheckoutBuysell, makeCheckoutBuysell, shipmentCostPaymentSuccessForBuySell, receiveShipment, insureShipment, getAndUpdateShipmentStatus, getTradeProposalStatuses, markAsDefaultDeliveryAddress } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { upload } from "../utils/fileUpload.js";
 
@@ -115,6 +115,8 @@ router.post("/submit-rating", userAuth, submitRating);
 
 // Make offer API (requires authentication)
 router.post("/make-offer/:id", userAuth, cartOffer);
+
+router.post("/make-offer-dealzone/:id", userAuth, cartOfferDealzone);
 
 // Get cart API (requires authentication)
 router.get("/my-cart", userAuth, getCart);

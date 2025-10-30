@@ -5,6 +5,7 @@ import { payToChangeTradeStatus, payPalPaymentSuccess, payPalPaymentCancel, hand
 import { getCopyProductFormFields } from "../controllers/tradingcard.controller.js";
 import { cartOffer, cartOfferDealzone, getCart, processCheckout, payNowPayment, feedPayPalPaymentReturn, feedPayPalPaymentNotify, removeCartItem, tradeProposal, proposeTrade, cancelTrade, editTradeProposalDetail, editTradeProposal, reviewTradeProposal, acceptTrade, getShippingAddress, shipmentInitialize, getShippingParcel, saveParcel, getShippingCarrier, getShippingCheckout, shippingCheckout, shippingConfirmOrder, getTradeCounterDetail, shippingTradeSuccess, confirmPaymentReceived, completeTradeSender, getShippingAddressDetails, shippingBuysellInitialize, getShippingParcelBuysell, saveParcelBuysell, getShipmentCarrierBuysell, shippingCheckoutBuysell, getShippingCheckoutBuysell, makeCheckoutBuysell, shipmentCostPaymentSuccessForBuySell, receiveShipment, insureShipment, getAndUpdateShipmentStatus, getTradeProposalStatuses, markAsDefaultDeliveryAddress } from "../controllers/cart.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
+import { purchaseMembership } from "../controllers/membership.controller.js";
 import { upload } from "../utils/fileUpload.js";
 
 const router = Router();
@@ -107,6 +108,8 @@ router.get("/my-tickets", userAuth, getMyTickets);
 
 // Payment confirmation API
 router.post("/confirm-payment", userAuth, confirmPayment);
+// Purchase membership (authenticated) - body: { paymentId, membership_id, amount }
+router.post("/membership/purchase", userAuth, purchaseMembership);
 // Buy/Sell review submission (authenticated)
 router.post("/boughtsoldfeedback", userAuth, buyCardCollectionReview);
 

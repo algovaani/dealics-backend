@@ -32,6 +32,7 @@ import sliderRoutes from "./routes/slider.routes.js";
 import emailRoutes from "./routes/email.routes.js";
 import supportRoutes from "./routes/support.routes.js";
 import blockRoutes from "./routes/block.routes.js";
+import membershipRoutes from "./routes/membership.routes.js";
 
 // Import middleware
 import { noCache } from "./middlewares/noCache.middleware.js";
@@ -111,6 +112,7 @@ app.use("/api/sliders", sliderRoutes);
 app.use("/api/email", emailRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/blocks", blockRoutes);
+app.use("/api/memberships", membershipRoutes);
 
 // Add a 404 handler for unmatched routes
 app.use((req, res) => {

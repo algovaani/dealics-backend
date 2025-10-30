@@ -71,7 +71,7 @@ export const login = async (req: Request, res: Response) => {
         return sendApiResponse(res, 403, false, "Error! Your account is not active. Please contact to support.", []);
       }
       
-      return sendApiResponse(res, 401, false, "Invalid credentials", []);
+      return sendApiResponse(res, 401, false, "The password you entered is incorrect.", []);
     }
     
     const token = authService.issueToken(user);

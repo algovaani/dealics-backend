@@ -2991,6 +2991,10 @@ export class TradingCardService {
         excludeCondition = `AND tc.id != ${excludeTradingCardId}`;
       }
 
+      if (loggedInUserId) {
+        excludeCondition += ` AND tc.trader_id != ${loggedInUserId}`;
+      }
+
       // Get total count
       const countQuery = `
         SELECT COUNT(DISTINCT tc.id) as total

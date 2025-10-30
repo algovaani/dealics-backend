@@ -4,6 +4,8 @@ import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
 import { exit } from "process";
 import { EmailHelperService } from "../services/emailHelper.service.js";
+import { setTradersNotificationOnVariousActionBasis, setNotificationContext } from '../services/notification.service.js';
+import { time } from "console";
 
 /**
  * Timezone utility functions for server-native time handling
@@ -380,6 +382,163 @@ const makeOfferAttempts = async (
     };
   }
 
+  return returnData;
+};
+
+const makeOfferDealzoneAttempts = async (
+  productId: number,
+  offerAmtBuyer: number,
+  tradingCardOfferAcceptAbove: number,
+  userId: number
+) => {
+  const remainingAttempts = 3;
+  const returnData = {
+    status: true,
+    inValidOfferCounts: 0,
+    remaining: remainingAttempts
+  };
+
+  // Retrieve previous offer attempts
+  const buyOfferAttempts = await BuyOfferAttempt.findOne({
+    where: {
+      user_id: userId,
+      product_id: productId
+    },
+    attributes: ['id', 'attempts', 'offer_amount']
+  });
+
+  let inValidOfferCounts = 0;
+  let remaining = remainingAttempts;
+  
+  if (buyOfferAttempts && buyOfferAttempts.id) {
+    inValidOfferCounts = buyOfferAttempts.attempts;
+    remaining = remainingAttempts - buyOfferAttempts.attempts;
+  }
+
+   // If there are previous offer attempts, validate the new offer
+  if (buyOfferAttempts && buyOfferAttempts.id) {    
+
+    // Check if the offer limit is exceeded
+    if (buyOfferAttempts.attempts >= 3) {
+        return {
+          status: false,
+          inValidOfferCounts: buyOfferAttempts.attempts,
+          remaining: 0,
+          message: 'No more attempts left — this deal can’t accept any more offers.'
+        };
+    }
+  }
+
+  // Case when the offer is below the acceptable threshold
+  if (offerAmtBuyer < tradingCardOfferAcceptAbove) {
+    if (buyOfferAttempts && buyOfferAttempts.id) {
+      // If offer attempts exceed the limit
+      if (buyOfferAttempts.attempts >= 3) {
+        return {
+          status: false,
+          inValidOfferCounts: buyOfferAttempts.attempts,
+          remaining: 0,
+          message: 'No more attempts left — this deal can’t accept any more offers.'
+        };
+      } else {
+        // Update the attempts and offer amount
+        const preOfferAmount = buyOfferAttempts.offer_amount!;
+        const attempts = buyOfferAttempts.attempts + 1;
+
+        let offerAmount = offerAmtBuyer;
+        if (preOfferAmount > offerAmtBuyer) offerAmount = preOfferAmount;
+
+        // Check if the new offer is lower than the previous one
+        if (offerAmtBuyer < buyOfferAttempts.offer_amount!) {
+          return {
+            status: false,
+            inValidOfferCounts: buyOfferAttempts.attempts,
+            remaining: 0,
+            message: `You cannot submit an offer lower than your previous amount of $${buyOfferAttempts.offer_amount}`
+          };
+        }
+
+        await buyOfferAttempts.update({
+          attempts,
+          offer_amount: offerAmount
+        });
+
+        return {
+          status: false,
+          inValidOfferCounts: attempts,
+          remaining: remainingAttempts - attempts,
+          message: `Your offer is below the seller's deal price. Try a higher amount.`
+        };
+      }
+    } else {
+      // If no previous attempts, create a new offer attempt
+      await BuyOfferAttempt.create({
+        user_id: userId,
+        product_id: productId,
+        attempts: 1,
+        offer_amount: offerAmtBuyer
+      } as any);
+
+      return {
+        status: false,
+        inValidOfferCounts: 1,
+        remaining: remainingAttempts - 1,
+        message: 'Insufficient amount. Offer Limit: 1/3'
+      };
+    }
+  } else {
+    // Case when the offer is greater than or equal to the threshold but less than the asking price
+    if (offerAmtBuyer >= tradingCardOfferAcceptAbove) {
+      if (buyOfferAttempts && buyOfferAttempts.id) {
+        // Check if the offer limit is exceeded
+        if (buyOfferAttempts.attempts >= 3) {
+          return {
+            status: false,
+            inValidOfferCounts: buyOfferAttempts.attempts,
+            remaining: 0,
+            message: 'No more attempts left — this deal can’t accept any more offers.'
+          };
+        } else {
+          // Update the attempt count and offer amount
+          const preOfferAmount = buyOfferAttempts.offer_amount!;
+          const attempts = buyOfferAttempts.attempts + 1;
+
+          let offerAmount = offerAmtBuyer;
+          if (preOfferAmount > offerAmtBuyer) offerAmount = preOfferAmount;
+
+          // Check if the new offer is lower than the previous one
+          if (offerAmtBuyer < buyOfferAttempts.offer_amount!) {
+            return {
+              status: false,
+              inValidOfferCounts: buyOfferAttempts.attempts,
+              remaining: 0,
+              message: `You cannot submit an offer lower than your previous amount of $${buyOfferAttempts.offer_amount}`
+            };
+          }
+          await buyOfferAttempts.update({
+            attempts,
+            offer_amount: offerAmount
+          });
+        }
+      } else {
+        // Create a new offer attempt if none exists
+        await BuyOfferAttempt.create({
+          user_id: userId,
+          product_id: productId,
+          attempts: 1,
+          offer_amount: offerAmtBuyer
+        } as any);        
+      }
+    }
+  }
+    // If the offer is equal to or greater than the asking price
+  if (offerAmtBuyer >= tradingCardOfferAcceptAbove) {
+    return {
+      status: true,
+      message: 'Successful offer, item added to cart.',
+      remaining_coins: 0 // This will be updated with actual user coins
+    };
+  }
   return returnData;
 };
 
@@ -793,6 +952,247 @@ export const cartOffer = async (req: Request, res: Response) => {
   }
 };
 
+
+export const cartOfferDealzone = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { offer_amt_buyer } = req.body;
+    const userId = req.user?.id;
+
+    // Check if user is authenticated
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Validate input
+    if (!id || !offer_amt_buyer) {
+      return sendApiResponse(res, 400, false, "Trading card ID and offer amount are required", []);
+    }
+
+    const tradingCardId = parseInt(id);
+    const offerAmount = parseFloat(offer_amt_buyer);
+
+    if (isNaN(tradingCardId) || isNaN(offerAmount)) {
+      return sendApiResponse(res, 400, false, "Invalid trading card ID or offer amount", []);
+    }
+
+    // Get trading card
+    const tradingCard = await TradingCard.findByPk(tradingCardId);
+    if (!tradingCard) {
+      return sendApiResponse(res, 404, false, "Trading card not found", []);
+    }
+
+    // Get user's cart
+    const cart = await Cart.findOne({
+      where: { user_id: userId }
+    });
+
+    const cartProductCount = await CartDetail.count({
+      where: { user_id: userId }
+    });
+
+    // Get seller
+    const seller = await User.findByPk(tradingCard.trader_id!);
+    if (!seller) {
+      return sendApiResponse(res, 404, false, "Seller not found", []);
+    }
+
+    // Check seller's coins
+    // if (seller.cxp_coins! <= 0) {
+    //   return sendApiResponse(res, 400, false, "You can not submit this offer. The seller needs more els coins for this transaction.", [], {
+    //     action: 'contact_seller',
+    //     seller_id: seller.id
+    //   });
+    // }
+
+    // Validate offer attempts
+    const makeOfferAttemptsResult = await makeOfferDealzoneAttempts(
+      tradingCardId,
+      offerAmount,
+      tradingCard.dealzone_price ?? 0,
+      userId
+    );
+
+    if (!makeOfferAttemptsResult.status) {
+      const message = 'message' in makeOfferAttemptsResult ? makeOfferAttemptsResult.message : 'Offer validation failed';
+      return sendApiResponse(res, 400, false, message, [], {
+        inValidOfferCounts: makeOfferAttemptsResult.inValidOfferCounts,
+        tradingCardId: tradingCardId,
+        remaining: makeOfferAttemptsResult.remaining
+      });
+    }
+
+    // Check if user is trying to buy their own product
+    if (tradingCard.trader_id === userId) {
+      return sendApiResponse(res, 400, false, "You can't buy your own product.", []);
+    }
+
+    // Check if product is available for sale
+    if (tradingCard.can_buy !== '1') {
+      return sendApiResponse(res, 400, false, "The product is not available for sale.", []);
+    }
+
+    // Check if product is already traded
+    if (tradingCard.is_traded === '1') {
+      return sendApiResponse(res, 400, false, "This product is already in a transaction.", []);
+    }
+
+    // Check cart seller consistency
+    if (cart && cart.id && cart.seller_id !== tradingCard.trader_id) {
+      return sendApiResponse(res, 400, false, "You cannot add this product to your cart. You have already added a product from another seller.", []);
+    }
+
+    let currentCart = cart;
+
+    // Create cart if it doesn't exist
+    if (!currentCart) {
+      currentCart = await Cart.create({
+        user_id: userId,
+        seller_id: tradingCard.trader_id!,
+        cart_amount: 0,
+        shipping_fee: 0,
+        total_amount: 0
+      } as any);
+    }
+
+    // Check if product is already in cart
+    const existingCartDetail = await CartDetail.findOne({
+      where: {
+        user_id: userId,
+        product_id: tradingCardId
+      }
+    });
+
+    let cartDetail;
+
+    if (!existingCartDetail) {
+      // Add product to cart - previous (UTC-based) timer behavior
+      const holdExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      
+      cartDetail = await CartDetail.create({
+        cart_id: currentCart.id,
+        user_id: userId,
+        product_id: tradingCardId,
+        product_amount: offerAmount,
+        hold_expires_at: holdExpiresAt
+      } as any);
+
+      // Mark trading card as traded
+      await tradingCard.update({ is_traded: '1' });
+
+      // Update or create buy offer attempt
+      const existingOfferAttempt = await BuyOfferAttempt.findOne({
+        where: {
+          user_id: userId,
+          product_id: tradingCardId
+        }
+      });
+
+      if (existingOfferAttempt) {
+        await existingOfferAttempt.update({ offer_amount: offerAmount });
+      } else {
+        await BuyOfferAttempt.create({
+          user_id: userId,
+          product_id: tradingCardId,
+          attempts: 1,
+          offer_amount: offerAmount
+        } as any);
+      }
+    }
+
+    // Calculate cart amounts
+    const cartAmounts = await calcCartAmounts(currentCart.id, userId, null);
+    await currentCart.update(cartAmounts);
+
+    // Deduct seller's coins
+    await seller.update({ cxp_coins: seller.cxp_coins! - 1 });
+
+    // Create credit deduction log
+    await CreditDeductionLog.create({
+      trade_status: 'Completed',
+      sent_to: seller.id,
+      coin: 1,
+      buy_sell_id: 0,
+      cart_detail_id: cartDetail?.id,
+      status: 'Success',
+      deduction_from: 'Seller'
+    } as any);
+
+    // Send emails to buyer and seller
+    try {
+      // Get buyer details
+      const buyer = await User.findByPk(userId);
+      if (buyer && seller) {
+        // Generate card name for email
+        const cardName = tradingCard.title || `Trading Card #${tradingCard.id}`;
+        
+        // Calculate amounts
+        const itemAmount = offerAmount;
+        const shippingFee = 0; // Default shipping fee, can be updated based on business logic
+        const totalAmount = itemAmount + shippingFee;
+        
+        // Generate transaction ID (using cart detail ID or trading card code)
+        const transactionId = cartDetail?.id?.toString() || tradingCard.code || `TXN-${Date.now()}`;
+        
+        // Generate transaction list URL
+        const transactionListUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile/coin-purchase-history`;
+        
+        // Send email to buyer (purchase successful)
+        await EmailHelperService.sendPurchaseSuccessfulEmail(
+          buyer.email || '',
+          buyer.first_name || '',
+          buyer.last_name || '',
+          cardName,
+          itemAmount,
+          shippingFee,
+          totalAmount,
+          transactionId,
+          EmailHelperService.setName(seller.first_name || '', seller.last_name || ''),
+          transactionListUrl
+        );
+        
+        // Send email to seller (card sold)
+        await EmailHelperService.sendCardSoldEmail(
+          seller.email || '',
+          seller.first_name || '',
+          seller.last_name || '',
+          EmailHelperService.setName(buyer.first_name || '', buyer.last_name || ''),
+          cardName,
+          itemAmount,
+          shippingFee,
+          totalAmount,
+          transactionId,
+          transactionListUrl
+        );
+        
+        console.log('✅ Offer emails sent successfully to buyer and seller');
+      }
+
+      // Send Laravel-style payment completed notification
+      if (cartDetail?.id) {
+        await setTradersNotificationOnVariousActionBasis(
+          'payment-completed',
+          userId, // buyer
+          seller.id, // seller
+          cartDetail.id, // buy_offer->id
+          'Offer'
+        );
+      }
+    } catch (emailError: any) {
+      console.error('❌ Failed to send offer emails:', emailError);
+      // Don't fail the request if email sending fails
+    }
+
+    return sendApiResponse(res, 200, true, "Successful offer, item added to cart.", [], {
+      remaining_coins: seller.cxp_coins! - 1
+    });
+
+  } catch (error: any) {
+    console.error('Cart offer error:', error);
+    return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+  }
+};
+
 // Get user's cart with details and addresses
 export const getCart = async (req: Request, res: Response) => {
   try {
@@ -1004,10 +1404,6 @@ const setTradeAndOfferStatus = async (alias: string, setFor: string, triggerId: 
 };
 
 // Helper function to create notifications (Enhanced based on Laravel __setTradersNotificationOnVariousActionBasis)
-import { setTradersNotificationOnVariousActionBasis, setNotificationContext } from '../services/notification.service.js';
-import { time } from "console";
-
-
 // Fallback map if no template found (kept for safety)
 const getNotificationData = (act: string, setFor: string) => {
   const notificationMap: any = {

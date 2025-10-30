@@ -5116,7 +5116,7 @@ export const saveParcel = async (req: Request, res: Response) => {
     // Validation (allow weightInput_oz = 0)
     const ozMissingForTrade = (weightInput_oz === undefined || weightInput_oz === null || weightInput_oz === '');
     if (!trade_id || !lengthInput || !widthInput || !heightInput || !weightInput_lbs || ozMissingForTrade) {
-      return sendApiResponse(res, 400, false, "All parcel dimensions and weight fields are required", []);
+      return sendApiResponse(res, 400, false, "Enter the required fields correctly.", []);
     }
 
     // Validate numeric values

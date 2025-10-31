@@ -12,7 +12,8 @@ import {
   updateDealzone,
   updateTradingCardStatus,
   deleteTradingCard,
-  getDeletedTradingCards
+  getDeletedTradingCards,
+  tradingCardViewed
 } from "../../controllers/tradingcard.controller.js";
 import { userAuth } from "../../middlewares/auth.middleware.js";
 import { noCache } from "../../middlewares/noCache.middleware.js";
@@ -53,6 +54,7 @@ router.delete("/:id", deleteTradingCard);
 
 // Catch-all route must be last
 router.get("/:id", getUserTradingCard);
+router.put("/viewed/:type", tradingCardViewed);
 
 
 export default router;

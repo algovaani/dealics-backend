@@ -554,6 +554,11 @@ export const getDealzoneTradingCards = async (req: Request, res: Response) => {
         canTradeOrOffer = false;
       }
 
+      // Compute viewed count from comma-separated dealzone_view_count
+      const viewedCount = card.dealzone_view_count && typeof card.dealzone_view_count === 'string'
+        ? card.dealzone_view_count.split(',').map((s: string) => s.trim()).filter((s: string) => s !== '').length
+        : 0;
+
       const baseResponse = {
         id: card.id,
         category_id: card.category_id,
@@ -576,6 +581,7 @@ export const getDealzoneTradingCards = async (req: Request, res: Response) => {
         can_trade: card.can_trade,
         can_buy: card.can_buy,
         canTradeOrOffer: canTradeOrOffer,
+        viewed: viewedCount,
         on_dealzone: card.on_dealzone,
         dealzone_price: card.dealzone_price,
         dealzone_expired: card.dealzone_expired,
@@ -1884,6 +1890,68 @@ export const toggleTradingCardDeleteStatus = async (req: Request, res: Response)
     } else if (action === 'restore') {
       await tradingCard.update({ mark_as_deleted: null });
       return sendApiResponse(res, 200, true, "Trading Card restored successfully", []);
+    }
+    
+  } catch (error: any) {
+    console.error("Toggle trading card delete status error:", error);
+    return sendApiResponse(res, 500, false, "Internal server error", []);
+  }
+};
+
+
+export const tradingCardViewed = async (req: Request, res: Response) => {
+  try {
+    // Get user ID from authenticated token
+    const userId = req.user?.id || req.user?.user_id || req.user?.sub;
+    const type = req.params.type as string;
+    if (!userId) {
+      return sendApiResponse(res, 401, false, "User not authenticated", []);
+    }
+
+    // Validate the ID parameter
+    const cardId = Number(req.body.trading_card_id);
+    if (!req.body.trading_card_id || isNaN(cardId) || cardId <= 0) {
+      return sendApiResponse(res, 400, false, "Valid trading card ID is required", []);
+    }
+
+    // Check if the trading card exists
+    const tradingCard = await TradingCard.findByPk(cardId);
+    if (!tradingCard) {
+      return sendApiResponse(res, 404, false, "Trading Card not found", []);
+    }
+    
+    
+    // Update the mark_as_deleted status based on action
+    if (type === 'tradingcard') {
+      // Split existing view_count into array, filter out empty strings
+      const existingViews = tradingCard.view_count 
+        ? tradingCard.view_count.split(',').filter(id => id.trim())
+        : [];
+      
+      // Only add userId if it's not already in the list
+      if (!existingViews.includes(String(userId))) {
+        existingViews.push(String(userId));
+      }
+      
+      // Join back to comma-separated string
+      await tradingCard.update({ view_count: existingViews.join(',') });
+
+      return sendApiResponse(res, 200, true, "Trading Card viewed successfully", []);
+    } else if (type === 'dealzone') {
+      // Split existing dealzone_view_count into array, filter out empty strings
+      const existingViews = tradingCard.dealzone_view_count 
+        ? tradingCard.dealzone_view_count.split(',').filter(id => id.trim())
+        : [];
+      
+      // Only add userId if it's not already in the list
+      if (!existingViews.includes(String(userId))) {
+        existingViews.push(String(userId));
+      }
+      
+      // Join back to comma-separated string
+      await tradingCard.update({ dealzone_view_count: existingViews.join(',') });
+
+      return sendApiResponse(res, 200, true, "Trading Card viewed successfully", []);
     }
     
   } catch (error: any) {

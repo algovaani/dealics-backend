@@ -71,6 +71,7 @@ export class TradingCardService {
           tc.can_buy,
           tc.trading_card_status,
           tc.graded,
+          tc.dealzone_view_count,
           CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
           CASE 
             WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'
@@ -198,6 +199,7 @@ export class TradingCardService {
           tc.on_dealzone,
           tc.dealzone_price,
           tc.dealzone_expired,
+          tc.dealzone_view_count,
           CASE WHEN ii.id IS NOT NULL THEN true ELSE false END as interested_in,
           CASE 
             WHEN tc.trading_card_status = '1' AND tc.is_traded = '1' THEN 'Trade Pending'

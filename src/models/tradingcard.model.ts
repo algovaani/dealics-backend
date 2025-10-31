@@ -959,6 +959,14 @@ import {
     @Column(DataType.DOUBLE(12, 2))
     retail_price?: number;
 
+    @AllowNull
+    @Column(DataType.TEXT)
+    view_count?: string;
+
+    @AllowNull
+    @Column(DataType.TEXT)
+    dealzone_view_count?: string;
+
     // Virtual properties for associations (will be populated by Sequelize)
     trader?: any;
     creatorUser?: any;

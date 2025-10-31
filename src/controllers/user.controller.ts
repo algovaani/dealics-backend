@@ -98,6 +98,10 @@ export const getMyProfile = async (req: Request, res: Response) => {
       country_code: profileData.user.country_code,
       about_user: profileData.user.about_user,
       bio: profileData.user.bio,
+      membership: {
+        ...(profileData.user as any).membership,
+        membership_details: (profileData.user as any).membership?.membership_details || null
+      },
       ratings: profileData.user.ratings,
       ebay_store_url: profileData.user.ebay_store_url,
       cxp_coins: profileData.user.cxp_coins,

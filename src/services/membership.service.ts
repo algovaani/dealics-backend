@@ -56,6 +56,7 @@ export class MembershipService {
       // Create membership_user entry
       const membershipUser = await MembershipUser.create({
         user_id: userId,
+        membership_id: membershipId,
         expired_date: expiredDate,
         type: membership.type,
         status: '1'

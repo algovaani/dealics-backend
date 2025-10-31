@@ -402,6 +402,7 @@ export class TradingCardService {
         tc.title,
         c.sport_name,
         c.sport_icon,
+        c.slug,
         tc.trader_id,
         u.username as trader_name,
         tc.creator_id,
@@ -2609,7 +2610,6 @@ export class TradingCardService {
 
   async removeDealZone(
     cardId: number,
-    userId: number,
     on_dealzone: number
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
@@ -2622,9 +2622,9 @@ export class TradingCardService {
         return { success: false, error: 'Trading card not found' };
       }
 
-      if (tradingCard.trader_id !== userId) {
-        return { success: false, error: "You don't have permission to update this trading card" };
-      }
+      // if (tradingCard.trader_id !== userId) {
+      //   return { success: false, error: "You don't have permission to update this trading card" };
+      // }
 
       // Perform update
       await TradingCard.update(

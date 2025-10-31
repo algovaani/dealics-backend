@@ -7,7 +7,9 @@ import {
   AutoIncrement,
   CreatedAt,
   UpdatedAt,
+  ForeignKey,
 } from 'sequelize-typescript';
+import { User } from './user.model.js';
 
 @Table({
   tableName: 'transactions',
@@ -54,6 +56,13 @@ export class Transaction extends Model<Transaction> {
   })
   status!: '1' | '0';
 
+  @ForeignKey(() => User)
+  @Column({
+    type: DataType.BIGINT,
+    allowNull: true,
+  })
+  user_id?: number;
+
   @CreatedAt
   @Column({
     field: 'created_at',
@@ -67,4 +76,6 @@ export class Transaction extends Model<Transaction> {
     type: DataType.DATE,
   })
   updatedAt?: Date;
+
+  // Relations are registered centrally in `models/index.ts` to avoid duplicate aliases
 }

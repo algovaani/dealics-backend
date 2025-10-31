@@ -15,7 +15,8 @@ import {
   mainSearch,
   getSimilarTradingCards,
   deleteTradingCard,
-  toggleTradingCardDeleteStatus
+  toggleTradingCardDeleteStatus,
+  removeFromDealzone
 } from "../controllers/tradingcard.controller.js";
 import { userAuth } from "../middlewares/auth.middleware.js";
 import { noCache } from "../middlewares/noCache.middleware.js";
@@ -37,6 +38,7 @@ router.post("/populate-search-params", populateSearchParams);
 router.post("/interested-in-card", userAuth, interestedInCard);
 router.post("/main-search", mainSearch);
 router.get("/:id", getTradingCard);
+router.put("/status-update-dealzone/:cardId", removeFromDealzone);
 // router.post("/", createTradingCard);
 // router.put("/:id", updateTradingCard);
 router.delete("/:id", userAuth, deleteTradingCard);

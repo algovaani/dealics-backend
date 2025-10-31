@@ -150,6 +150,17 @@ export const models = [
 
 // Function to set up all associations
 export function setupAssociations() {
+  // MembershipUser associations
+  MembershipUser.belongsTo(Membership, {
+    foreignKey: 'membership_id',
+    as: 'membership'
+  });
+
+  Membership.hasMany(MembershipUser, {
+    foreignKey: 'membership_id',
+    as: 'memberships'
+  });
+
   // User associations
   User.hasMany(TradingCard, {
     foreignKey: 'trader_id',
@@ -572,6 +583,18 @@ export function setupAssociations() {
     foreignKey: 'product_id',
     as: 'buyOfferAttempts'
   });
+
+  // Transaction associations
+  Transaction.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'transactionUser'
+  });
+
+  User.hasMany(Transaction, {
+    foreignKey: 'user_id',
+    as: 'transactions'
+  });
+
 }
 
 // Export all models for easy importing

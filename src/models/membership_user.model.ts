@@ -10,11 +10,23 @@ import {
   ForeignKey,
 } from 'sequelize-typescript';
 
+export interface IMembershipUser {
+  id: number;
+  user_id?: number;
+  membership_id?: number;
+  expired_date?: string;
+  type: 'Free' | 'Pro Collector';
+  status: '1' | '0';
+  createdAt?: Date;
+  updatedAt?: Date;
+  membership?: any; // This will be typed as the Membership model
+}
+
 @Table({
   tableName: 'membership_user',
-  timestamps: true, // Sequelize created_at & updated_at ko manage karega
+  timestamps: true,
 })
-export class MembershipUser extends Model<MembershipUser> {
+export class MembershipUser extends Model<IMembershipUser> {
   @PrimaryKey
   @AutoIncrement
   @Column({
@@ -27,6 +39,18 @@ export class MembershipUser extends Model<MembershipUser> {
     allowNull: true,
   })
   user_id?: number;
+
+  @Column({
+    type: DataType.BIGINT,
+    allowNull: true,
+  })
+  membership_id?: number;
+
+   @Column({
+    type: DataType.BIGINT,
+    allowNull: true,
+  })
+  transaction_id?: number;
 
   @Column({
     type: DataType.DATEONLY, // SQL 'date' type ke liye

@@ -3,6 +3,8 @@ import { Category } from "../models/category.model.js";
 import { TradingCard } from "../models/tradingcard.model.js";
 import { Follower } from "../models/follower.model.js";
 import { InterestedIn } from "../models/interestedIn.model.js";
+import { MembershipUser, IMembershipUser } from "../models/membership_user.model.js";
+import { Membership } from "../models/membership.model.js";
 import { CreditPurchaseLog } from "../models/creditPurchaseLog.model.js";
 import { CreditDeductionLog } from "../models/creditDeductionLog.model.js";
 import { UserSocialMedia } from "../models/userSocialMedia.model.js";
@@ -948,11 +950,45 @@ export class UserService {
         joinedDate = "01-01-2024"; // Fallback
       }
       
-      // Create formatted user object with joined_date and address_exist
+      // Get active membership with membership details
+      const now = new Date().toISOString();
+      const activeMembership = await MembershipUser.findOne({
+        where: sequelize.and(
+          { user_id: userId },
+          { status: '1' },
+          sequelize.or(
+            { expired_date: null },
+            sequelize.where(sequelize.col('expired_date'), '>', now)
+          )
+        ),
+        include: [{
+          model: Membership,
+          as: 'membership',
+          required: false
+        }],
+        order: [['created_at', 'DESC']]
+      });
+
+      // Create formatted user object with joined_date, address_exist and membership
+      const membershipData = activeMembership ? {
+        type: (activeMembership as IMembershipUser).type,
+        expired_date: (activeMembership as IMembershipUser).expired_date,
+        status: (activeMembership as IMembershipUser).status,
+        membership_id: (activeMembership as IMembershipUser).membership_id,
+        membership_details: (activeMembership as IMembershipUser).membership
+      } : {
+        type: 'Free',
+        expired_date: null,
+        status: '1',
+        membership_id: null,
+        membership_details: null
+      };
+      
       const formattedUser = {
         ...userData,
         joined_date: joinedDate,
-        address_exist
+        address_exist,
+        membership: membershipData
       };
       
 

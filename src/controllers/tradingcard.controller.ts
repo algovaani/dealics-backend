@@ -2807,7 +2807,7 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
       }
     }
 
-    if (!requestData.trading_card_asking_price && !requestData.trading_card_estimated_value) {
+    if ((requestData.trading_card_asking_price != 0 || requestData.trading_card_estimated_value != 0) && !requestData.trading_card_asking_price && !requestData.trading_card_estimated_value) {
       return sendApiResponse(res, 400, false, "Trade value or asking price required to submit product.");
     }
     
@@ -3361,7 +3361,7 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
     }
 
     // Debug: Log the final requestData before calling service
-    if (requestData.trading_card_asking_price == undefined && requestData.trading_card_estimated_value == undefined) {
+    if ((requestData.trading_card_asking_price != 0 || requestData.trading_card_estimated_value != 0) && requestData.trading_card_asking_price == undefined && requestData.trading_card_estimated_value == undefined) {
       return sendApiResponse(res, 400, false, `Trade value or asking price required to submit product.`);
     }
     

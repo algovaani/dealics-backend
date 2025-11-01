@@ -1,7 +1,28 @@
 import { sequelize } from "../config/db.js";
 import { QueryTypes } from "sequelize";
+import { EarnCredit } from "../models/earn_credits.model.js";
 
 export class HelperService {
+  /**
+   * Get credit amount based on type from earn_credits table
+   * @param type Type of credit to earn
+   * @returns Promise with the amount or null if not found
+   */
+  static async getEarnCreditAmount(type: string): Promise<number | null> {
+    try {
+      const creditRecord = await EarnCredit.findOne({
+        where: {
+          type: type,
+          status: '1' // Only get active records
+        },
+        attributes: ['amount']
+      });
+      return creditRecord?.amount || null;
+    } catch (error) {
+      console.error('Error fetching earn credit amount:', error);
+      return null;
+    }
+  }
   /**
    * Map table names from item_columns to actual database table names
    */

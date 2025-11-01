@@ -755,9 +755,9 @@ export const cartOffer = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "Seller not found", []);
     }
 
-    // Check seller's coins
-    if (seller.cxp_coins! <= 0) {
-      return sendApiResponse(res, 400, false, "You can not submit this offer. The seller needs more els coins for this transaction.", [], {
+    // Check seller's credit
+    if (seller.credit! <= 0) {
+      return sendApiResponse(res, 400, false, "You can not submit this offer. The seller needs more credits for this transaction.", [], {
         action: 'contact_seller',
         seller_id: seller.id
       });
@@ -863,8 +863,8 @@ export const cartOffer = async (req: Request, res: Response) => {
     const cartAmounts = await calcCartAmounts(currentCart.id, userId, null);
     await currentCart.update(cartAmounts);
 
-    // Deduct seller's coins
-    await seller.update({ cxp_coins: seller.cxp_coins! - 1 });
+    // Deduct seller's credits
+    await seller.update({ credit: seller.credit! - 1 });
 
     // Create credit deduction log
     await CreditDeductionLog.create({
@@ -943,7 +943,7 @@ export const cartOffer = async (req: Request, res: Response) => {
     }
 
     return sendApiResponse(res, 200, true, "Successful offer, item added to cart.", [], {
-      remaining_coins: seller.cxp_coins! - 1
+      remaining_coins: seller.credit! - 1
     });
 
   } catch (error: any) {
@@ -998,8 +998,8 @@ export const cartOfferDealzone = async (req: Request, res: Response) => {
     }
 
     // Check seller's coins
-    // if (seller.cxp_coins! <= 0) {
-    //   return sendApiResponse(res, 400, false, "You can not submit this offer. The seller needs more els coins for this transaction.", [], {
+    // if (seller.credit! <= 0) {
+    //   return sendApiResponse(res, 400, false, "You can not submit this offer. The seller needs more credit for this transaction.", [], {
     //     action: 'contact_seller',
     //     seller_id: seller.id
     //   });
@@ -1104,8 +1104,8 @@ export const cartOfferDealzone = async (req: Request, res: Response) => {
     const cartAmounts = await calcCartAmounts(currentCart.id, userId, null);
     await currentCart.update(cartAmounts);
 
-    // Deduct seller's coins
-    await seller.update({ cxp_coins: seller.cxp_coins! - 1 });
+    // Deduct seller's credits
+    await seller.update({ credit: seller.credit! - 1 });
 
     // Create credit deduction log
     await CreditDeductionLog.create({
@@ -1184,7 +1184,7 @@ export const cartOfferDealzone = async (req: Request, res: Response) => {
     }
 
     return sendApiResponse(res, 200, true, "Successful offer, item added to cart.", [], {
-      remaining_coins: seller.cxp_coins! - 1
+      remaining_coins: seller.credit! - 1
     });
 
   } catch (error: any) {
@@ -2574,7 +2574,7 @@ export const removeCartItem = async (req: Request, res: Response) => {
       if (seller) {
         // Refund 1 coin to seller
         await seller.update({
-          cxp_coins: (seller.cxp_coins || 0) + 1
+          credit: (seller.credit || 0) + 1
         });
 
         // Update credit deduction log to refund status
@@ -2878,7 +2878,7 @@ export const proposeTrade = async (req: Request, res: Response) => {
 
     // Check user's CXP coins
     const userCoins = await User.findByPk(userId, {
-      attributes: ['id', 'cxp_coins']
+      attributes: ['id', 'credit']
     });
 
     if (!userCoins) {
@@ -2906,8 +2906,8 @@ export const proposeTrade = async (req: Request, res: Response) => {
     });
 
     if (monthlyTransactions > 0) {
-      if (!userCoins.cxp_coins || userCoins.cxp_coins <= 0) {
-        return sendApiResponse(res, 400, false, "You need els coins to complete this trade.", []);
+      if (!userCoins.credit || userCoins.credit <= 0) {
+        return sendApiResponse(res, 400, false, "You need more credits to complete this trade.", []);
       }
     }
 
@@ -2970,9 +2970,9 @@ export const proposeTrade = async (req: Request, res: Response) => {
     // Set trade proposal status
     await setTradeProposalStatus(tradeProposal.id, 'trade-sent');
 
-    // Deduct user's coins if needed
-    if (monthlyTransactions > 0 && userCoins.cxp_coins && userCoins.cxp_coins > 0) {
-      await userCoins.update({ cxp_coins: userCoins.cxp_coins - 1 });
+    // Deduct user's credits if needed
+    if (monthlyTransactions > 0 && userCoins.credit && userCoins.credit > 0) {
+      await userCoins.update({ credit: userCoins.credit - 1 });
 
       // Create credit deduction log
       await CreditDeductionLog.create({
@@ -3615,16 +3615,16 @@ export const cancelTrade = async (req: Request, res: Response) => {
     });
 
     if (creditLog) {
-      const userTo = await User.findByPk(creditLog.sent_to, { attributes: ['id', 'cxp_coins'] });
-      const userBy = await User.findByPk(creditLog.sent_by, { attributes: ['id', 'cxp_coins'] });
+      const userTo = await User.findByPk(creditLog.sent_to, { attributes: ['id', 'credit'] });
+      const userBy = await User.findByPk(creditLog.sent_by, { attributes: ['id', 'credit'] });
 
       if (creditLog.deduction_from === 'Both') {
-        if (userTo && userTo.cxp_coins && creditLog.coin) await userTo.update({ cxp_coins: userTo.cxp_coins + creditLog.coin });
-        if (userBy && userBy.cxp_coins && creditLog.coin) await userBy.update({ cxp_coins: userBy.cxp_coins + creditLog.coin });
+        if (userTo && userTo.credit && creditLog.coin) await userTo.update({ credit: userTo.credit + creditLog.coin });
+        if (userBy && userBy.credit && creditLog.coin) await userBy.update({ credit: userBy.credit + creditLog.coin });
       } else if (creditLog.deduction_from === 'Sender') {
-        if (userBy && userBy.cxp_coins && creditLog.coin) await userBy.update({ cxp_coins: userBy.cxp_coins + creditLog.coin });
+        if (userBy && userBy.credit && creditLog.coin) await userBy.update({ credit: userBy.credit + creditLog.coin });
       } else if (creditLog.deduction_from === 'Receiver') {
-        if (userTo && userTo.cxp_coins && creditLog.coin) await userTo.update({ cxp_coins: userTo.cxp_coins + creditLog.coin });
+        if (userTo && userTo.credit && creditLog.coin) await userTo.update({ credit: userTo.credit + creditLog.coin });
       }
 
       // Update credit log status

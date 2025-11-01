@@ -911,7 +911,7 @@ export class UserService {
           'is_email_verified', 'email_verified_at', 'user_status', 'user_role',
           'ebay_store_url', 'is_ebay_store_verified', 'ebay_store_verified_at',
           'paypal_business_email', 'is_free_shipping', 'shipping_flat_rate',
-          'cxp_coins', 'is_veteran_user', 'gmail_login',
+          'cxp_coins', 'credit', 'is_veteran_user', 'gmail_login',
           'created_at', 'updated_at'
         ]
       });

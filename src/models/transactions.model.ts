@@ -30,6 +30,24 @@ export class Transaction extends Model<Transaction> {
   payment_id?: string;
 
   @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  burn_address?: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  transaction_hash?: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  block_no?: string;
+  
+  @Column({
     type: DataType.DOUBLE,
     allowNull: true,
   })
@@ -48,6 +66,13 @@ export class Transaction extends Model<Transaction> {
     field: 'Note', // since MySQL column name is capitalized
   })
   note?: string;
+
+  @Column({
+    type: DataType.ENUM('Pending', 'Rejected', 'Completed'),
+    allowNull: false,
+    defaultValue: 'Pending',
+  })
+  transaction_status!: 'Pending' | 'Rejected' | 'Completed';
 
   @Column({
     type: DataType.ENUM('1', '0'),

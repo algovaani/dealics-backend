@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { AuthService } from "../services/auth.service.js";
 import { User, CreditPurchaseLog } from "../models/index.js";
 import { EmailHelperService } from "../services/emailHelper.service.js";
+import { HelperService } from "../services/helper.service.js";
+import { Transaction } from "../models/transactions.model.js";
 import bcrypt from "bcryptjs";
 
 const authService = new AuthService();
@@ -89,15 +91,25 @@ export const register = async (req: Request, res: Response) => {
     if (req.file) {
       profileImageName = req.file.filename; // Save only filename, not full URL
     }
-
+    const creditAmount = await HelperService.getEarnCreditAmount('Registration');
     // Prepare registration data
     const registrationData = {
       ...req.body,
-      cxp_coins:50,
+      credit: creditAmount || 0,
       profile_image: profileImageName
-    };
+    };    
 
     const user = await authService.register(registrationData);
+    // Create transaction record (use Purchase type to satisfy enum if needed)
+    const tx = await Transaction.create({
+      payment_id: null,
+      amount: creditAmount || 0,
+      type: 'DLX Redemption',
+      note: `Earned credit for Registration`,
+      status: '1',
+      transaction_status: 'Completed',
+      user_id: user.id
+    } as any);
     const token = authService.issueToken(user);
     return sendApiResponse(res, 201, true, "Registration successful", [{ token }]);
   } catch (err: any) {
@@ -249,6 +261,7 @@ export const socialRegister = async (req: Request, res: Response) => {
     let user = await authService.findUserByEmail(cleanEmail);
     let isNewUser = false;
     if (!user) {
+      const creditAmount = await HelperService.getEarnCreditAmount('Registration'); 
       const randomPassword = await bcrypt.hash(String(Math.floor(100000 + Math.random() * 900000)), 10);
       user = await User.create({
         first_name: givenFirst || cleanEmail.split('@')[0],
@@ -262,10 +275,19 @@ export const socialRegister = async (req: Request, res: Response) => {
         email_verified_at: new Date(),
         user_role: "user",
         user_status: "1",
-        cxp_coins: 50,
+        credit: creditAmount || 0,
         password: randomPassword
       } as any);
       // Ensure a username exists
+      const tx = await Transaction.create({
+        payment_id: null,
+        amount: creditAmount || 0,
+        type: 'DLX Redemption',
+        note: `Earned credit for Registration`,
+        status: '1',
+        transaction_status: 'Completed',
+        user_id: user.id
+      } as any);
       const baseName = (givenFirst || cleanEmail.split('@')[0] || 'user').replace(/\s+/g, '');
       await user.update({ username: `${baseName}${user.id}` } as any);
       isNewUser = true;
@@ -295,23 +317,23 @@ export const socialRegister = async (req: Request, res: Response) => {
       const invoiceNumber = `INV${rand}${randStr}`;
       const transactionId = `TXN${rand}${randStr}`;
 
-      try {
-        await CreditPurchaseLog.create({
-          invoice_number: invoiceNumber,
-          user_id: (user as any).id,
-          amount: 0,
-          coins: 50,
-          transaction_id: transactionId,
-          payment_status: "Success",
-          payee_email_address: "Reward",
-          merchant_id: "N/A",
-          payment_source: "Reward",
-          payer_id: "N/A",
-          payer_full_name: "N/A",
-          payer_email_address: "N/A",
-          payer_address: "N/A",
-          payer_country_code: "N/A"
-        } as any);
+      try {   
+        // await CreditPurchaseLog.create({
+        //   invoice_number: invoiceNumber,
+        //   user_id: (user as any).id,
+        //   amount: 0,
+        //   coins: 50,
+        //   transaction_id: transactionId,
+        //   payment_status: "Success",
+        //   payee_email_address: "Reward",
+        //   merchant_id: "N/A",
+        //   payment_source: "Reward",
+        //   payer_id: "N/A",
+        //   payer_full_name: "N/A",
+        //   payer_email_address: "N/A",
+        //   payer_address: "N/A",
+        //   payer_country_code: "N/A"
+        // } as any);
       } catch (e) {
         console.error('Failed to record reward coins for social register:', e);
       }

@@ -532,8 +532,8 @@ const deductCoins = async (tradeSentTo: number, tradeSentBy: number, tradePropos
   try {
     // Get both users' coin information
     const [userTo, userBy] = await Promise.all([
-      User.findByPk(tradeSentTo, { attributes: ['id', 'cxp_coins'] }),
-      User.findByPk(tradeSentBy, { attributes: ['id', 'cxp_coins'] })
+      User.findByPk(tradeSentTo, { attributes: ['id', 'credit'] }),
+      User.findByPk(tradeSentBy, { attributes: ['id', 'credit'] })
     ]);
 
     if (!userTo || !userBy) {
@@ -542,12 +542,12 @@ const deductCoins = async (tradeSentTo: number, tradeSentBy: number, tradePropos
     }
 
     console.log(`📊 User coin status:`, {
-      userTo: { id: userTo.id, coins: userTo.cxp_coins },
-      userBy: { id: userBy.id, coins: userBy.cxp_coins }
+      userTo: { id: userTo.id, coins: userTo.credit },
+      userBy: { id: userBy.id, coins: userBy.credit }
     });
 
     // Check if both users have enough coins
-    if ((userTo.cxp_coins || 0) < 1) {
+    if ((userTo.credit || 0) < 1) {
       console.log(`❌ User ${tradeSentTo} doesn't have enough coins`);
       return { 
         status: false, 
@@ -556,7 +556,7 @@ const deductCoins = async (tradeSentTo: number, tradeSentBy: number, tradePropos
       };
     }
 
-    if ((userBy.cxp_coins || 0) < 1) {
+    if ((userBy.credit || 0) < 1) {
       console.log(`❌ User ${tradeSentBy} doesn't have enough coins`);
       return { 
         status: false, 
@@ -567,8 +567,8 @@ const deductCoins = async (tradeSentTo: number, tradeSentBy: number, tradePropos
 
     // Deduct coins from both users
     await Promise.all([
-      userTo.update({ cxp_coins: Math.max(0, (userTo.cxp_coins || 0) - 1) }),
-      userBy.update({ cxp_coins: Math.max(0, (userBy.cxp_coins || 0) - 1) })
+      userTo.update({ credit: Math.max(0, (userTo.credit || 0) - 1) }),
+      userBy.update({ credit: Math.max(0, (userBy.credit || 0) - 1) })
     ]);
 
     // Create credit deduction logs for both users
@@ -606,8 +606,8 @@ const deductCoins = async (tradeSentTo: number, tradeSentBy: number, tradePropos
 const checkCXPCoinsBeforeTradeStatusUpdate = async (tradeSentBy: number, tradeSentTo: number, tradeProposalId: number) => {
   try {
     // Get both users' CXP coins
-    const sender = await User.findByPk(tradeSentBy, { attributes: ['id', 'cxp_coins'] });
-    const receiver = await User.findByPk(tradeSentTo, { attributes: ['id', 'cxp_coins'] });
+    const sender = await User.findByPk(tradeSentBy, { attributes: ['id', 'credit'] });
+    const receiver = await User.findByPk(tradeSentTo, { attributes: ['id', 'credit'] });
 
     if (!sender || !receiver) {
       return { success: false, message: "User not found", action: "error" };
@@ -616,7 +616,7 @@ const checkCXPCoinsBeforeTradeStatusUpdate = async (tradeSentBy: number, tradeSe
     // Check if both users have sufficient coins
     const requiredCoins = 1; // Assuming 1 coin per trade
 
-    if ((sender.cxp_coins || 0) < requiredCoins) {
+    if ((sender.credit || 0) < requiredCoins) {
       return {
         success: false,
         message: `You need ${requiredCoins} CXP coins to complete this trade. Please purchase coins to continue.`,
@@ -624,7 +624,7 @@ const checkCXPCoinsBeforeTradeStatusUpdate = async (tradeSentBy: number, tradeSe
       };
     }
 
-    if ((receiver.cxp_coins || 0) < requiredCoins) {
+    if ((receiver.credit || 0) < requiredCoins) {
       return {
         success: false,
         message: `The trading partner needs ${requiredCoins} CXP coins to complete this trade. Please contact them to purchase coins.`,
@@ -949,12 +949,12 @@ export const payToChangeTradeStatusCounterOffer = async (req: Request, res: Resp
         {
           model: User,
           as: 'tradeSender',
-          attributes: ['id', 'paypal_business_email', 'email', 'first_name', 'last_name', 'cxp_coins']
+          attributes: ['id', 'paypal_business_email', 'email', 'first_name', 'last_name', 'credit']
         },
         {
           model: User,
           as: 'tradeReceiver',
-          attributes: ['id', 'paypal_business_email', 'email', 'first_name', 'last_name', 'cxp_coins']
+          attributes: ['id', 'paypal_business_email', 'email', 'first_name', 'last_name', 'credit']
         }
       ]
     });

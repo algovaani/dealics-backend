@@ -148,6 +148,10 @@ import {
     @AllowNull
     @Column(DataType.INTEGER)
     cxp_coins?: number;
+
+    @AllowNull
+    @Column(DataType.INTEGER)
+    credit?: number;
   
     @AllowNull
     @Column(DataType.STRING(3))

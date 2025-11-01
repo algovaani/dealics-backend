@@ -34,6 +34,7 @@ import supportRoutes from "./routes/support.routes.js";
 import blockRoutes from "./routes/block.routes.js";
 import membershipRoutes from "./routes/membership.routes.js";
 import transactionRoutes from "./routes/transaction.routes.js";
+import earnCreditRoutes from "./routes/earnCredit.routes.js";
 
 // Import middleware
 import { noCache } from "./middlewares/noCache.middleware.js";
@@ -115,6 +116,7 @@ app.use("/api/support", supportRoutes);
 app.use("/api/blocks", blockRoutes);
 app.use("/api/memberships", membershipRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/earn-credits", earnCreditRoutes);
 
 // Add a 404 handler for unmatched routes
 app.use((req, res) => {

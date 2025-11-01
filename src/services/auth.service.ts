@@ -4,6 +4,7 @@ import { Op } from "sequelize";
 import { User, CreditPurchaseLog } from "../models/index.js";
 import { sequelize } from "../config/db.js";
 import crypto from "crypto";
+import { HelperService } from "./helper.service.js";
 
 export class AuthService {
   // Helper function to generate invoice number and transaction ID
@@ -98,7 +99,7 @@ export class AuthService {
     }
 
     const hashed = await bcrypt.hash(input.password, 10);
-
+    const creditAmount = await HelperService.getEarnCreditAmount('Registration'); 
     return await sequelize.transaction(async (t) => {
       const user = await User.create(
         {
@@ -108,7 +109,7 @@ export class AuthService {
           email: input.email,
           country_code: input.country_code ?? null,
           profile_picture: input.profile_image ?? null,
-          cxp_coins: 50,
+          credit: creditAmount || 0,
           phone_number: input.phone_number,
           password: hashed,
           is_email_verified: "1",

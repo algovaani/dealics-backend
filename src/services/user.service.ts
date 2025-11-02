@@ -6050,4 +6050,125 @@ export class UserService {
       };
     }
   }
+  
+  // Get users grouped by categories (based on their trading cards)
+  static async getUsersGroupedByCategories() {
+    try {
+      // Use raw SQL with explicit NULL handling
+      const query = `
+        SELECT 
+          c.id as category_id,
+          c.sport_name as category_name,
+          c.slug as category_slug,
+          c.sport_icon as category_icon,
+          u.id as user_id,
+          u.first_name,
+          u.last_name,
+          u.username,
+          u.profile_picture,
+          u.email,
+          u.ratings,
+          u.followers,
+          u.trade_transactions,
+          u.trading_cards,
+          COUNT(DISTINCT tc.id) as card_count
+        FROM categories c
+        INNER JOIN trading_cards tc ON tc.category_id = c.id
+        INNER JOIN users u ON u.id = tc.trader_id
+        WHERE c.sport_status = '1'
+          AND u.user_status = '1'
+          AND u.user_role = 'user'
+          AND (tc.mark_as_deleted IS NULL OR tc.mark_as_deleted = 0)
+          AND tc.trading_card_status = '1'
+          AND (tc.is_traded IS NULL OR tc.is_traded = '0' OR tc.is_traded = 0)
+          AND tc.trader_id IS NOT NULL
+          AND tc.category_id IS NOT NULL
+          AND c.id IS NOT NULL
+          AND u.id IS NOT NULL
+        GROUP BY 
+          c.id, c.sport_name, c.slug, c.sport_icon,
+          u.id, u.first_name, u.last_name, u.username, u.profile_picture,
+          u.email, u.ratings, u.followers, u.trade_transactions, u.trading_cards
+        ORDER BY c.sport_name ASC, u.first_name ASC
+      `;
+
+      // Execute query with explicit type casting
+      const results = await sequelize.query(query.trim(), {
+        type: QueryTypes.SELECT,
+        raw: true
+      });
+
+      // Group results by category
+      const categoriesMap = new Map();
+
+      (results as any[]).forEach((row: any) => {
+        const categoryId = row.category_id;
+        
+        if (!categoriesMap.has(categoryId)) {
+          categoriesMap.set(categoryId, {
+            category_id: row.category_id,
+            category_name: row.category_name,
+            category_slug: row.category_slug,
+            category_icon: row.category_icon,
+            users: [],
+            user_count: 0
+          });
+        }
+
+        const category = categoriesMap.get(categoryId);
+        
+        // Check if user already exists in this category (avoid duplicates)
+        const userExists = category.users.find((u: any) => u.user_id === row.user_id);
+        
+        if (!userExists) {
+          category.users.push({
+            user_id: row.user_id,
+            first_name: row.first_name || null,
+            last_name: row.last_name || null,
+            username: row.username || null,
+            profile_picture: row.profile_picture || null,
+            email: row.email || null,
+            ratings: row.ratings || null,
+            followers: row.followers || 0,
+            trade_transactions: row.trade_transactions || 0,
+            trading_cards: row.trading_cards || 0,
+            card_count: Number(row.card_count) || 0
+          });
+          category.user_count++;
+        }
+      });
+
+      // Convert map to array
+      const categories = Array.from(categoriesMap.values());
+
+      return {
+        success: true,
+        data: {
+          categories: categories,
+          total_categories: categories.length,
+          total_users: categories.reduce((sum: number, cat: any) => sum + cat.user_count, 0)
+        }
+      };
+    } catch (error: any) {
+      console.error('Error getting users grouped by categories:', error);
+      console.error('Error details:', {
+        message: error.message,
+        sql: error.sql,
+        sqlMessage: error.sqlMessage,
+        original: error.original
+      });
+      return {
+        success: false,
+        error: {
+          message: error.message || error.sqlMessage || 'Failed to get users grouped by categories',
+          details: process.env.NODE_ENV === 'development' ? {
+            sql: error.sql,
+            original: error.original
+          } : undefined
+        }
+      };
+    }
+  }
+
+
 }

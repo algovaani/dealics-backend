@@ -46,6 +46,10 @@ export class CategoryService {
 
   // Get Category by ID
   async getCategoryById(id: number) {
+	// Validate ID to prevent NaN errors
+    if (!id || isNaN(id) || id <= 0) {
+      throw new Error('Invalid category ID');
+    }
     return await Category.findByPk(id);
   }
 

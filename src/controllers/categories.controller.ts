@@ -39,13 +39,31 @@ export const getCategories = async (req: Request, res: Response) => {
 
 export const getCategory = async (req: Request, res: Response) => {
   try {
-    const category = await categoriesService.getCategoryById(Number(req.params.id));
+    const idParam = req.params.id;
+    
+    // Early validation - check if param is a valid number string before converting
+    if (!idParam || idParam.trim() === '' || isNaN(Number(idParam)) || Number(idParam) <= 0) {
+      return sendApiResponse(res, 400, false, "Invalid category ID", []);
+    }
+    
+    const id = parseInt(idParam, 10);
+    
+    // Double check after conversion
+    if (isNaN(id) || id <= 0) {
+      return sendApiResponse(res, 400, false, "Invalid category ID", []);
+    }
+    
+    const category = await categoriesService.getCategoryById(id);
     if (!category) {
       return sendApiResponse(res, 404, false, "Category not found", []);
     }
     return sendApiResponse(res, 200, true, "Category retrieved successfully", [category]);
   } catch (error: any) {
     console.error("Error getting category:", error);
+    // Check if error is related to NaN
+    if (error.message && error.message.includes('NaN')) {
+      return sendApiResponse(res, 400, false, "Invalid category ID - NaN detected", []);
+    }
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
 };

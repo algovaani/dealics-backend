@@ -89,7 +89,10 @@ export const login = async (req: Request, res: Response) => {
     };
     
     // Return token and user data for external app compatibility
-    return sendApiResponse(res, 200, true, "Login successful", [{ token }]);
+    return sendApiResponse(res, 200, true, "Login successful", [{ 
+      token,
+      user: userData
+    }]);
   } catch (error: any) {
     console.error("Login error:", error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);

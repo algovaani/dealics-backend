@@ -66,6 +66,79 @@ declare global {
   }
 }
 
+// GET /api/user/profile - Public endpoint to verify token and return user data (for external apps)
+export const verifyTokenAndGetProfile = async (req: Request, res: Response) => {
+  try {
+    // Extract token from request
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return sendApiResponse(res, 401, false, "Access token required", []);
+    }
+    
+    try {
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+      const userId = decoded.user_id || decoded.sub || decoded.id;
+      
+      if (!userId) {
+        return sendApiResponse(res, 401, false, "Invalid token - user ID not found", []);
+      }
+      
+      // Get user data
+      const profileData = await UserService.getMyProfile(userId);
+      
+      if (!profileData) {
+        return sendApiResponse(res, 404, false, "User not found", []);
+      }
+      
+      // Return user data in format expected by external apps
+      const userData = {
+        id: profileData.user.id,
+        username: profileData.user.username,
+        email: profileData.user.email,
+        first_name: profileData.user.first_name,
+        last_name: profileData.user.last_name,
+        name: `${profileData.user.first_name || ''} ${profileData.user.last_name || ''}`.trim() || profileData.user.username,
+        profile_image: profileData.user.profile_picture || null,
+        profile_picture: profileData.user.profile_picture || null
+      };
+      
+      // Return in format that matches the expected API structure
+      return res.status(200).json({
+        success: true,
+        status: true, // Some APIs use 'status' instead of 'success'
+        data: userData
+      });
+      
+    } catch (jwtError: any) {
+      if (jwtError.name === 'TokenExpiredError') {
+        return res.status(403).json({
+          success: false,
+          status: false,
+          message: 'Token expired',
+          data: []
+        });
+      }
+      return res.status(403).json({
+        success: false,
+        status: false,
+        message: 'Invalid or expired token',
+        data: []
+      });
+    }
+  } catch (error: any) {
+    console.error("Verify token error:", error);
+    return res.status(500).json({
+      success: false,
+      status: false,
+      message: error.message || "Internal server error",
+      data: []
+    });
+  }
+};
+
 // GET /api/user/my-profile - Get authenticated user's profile details
 export const getMyProfile = async (req: Request, res: Response) => {
   try {
@@ -2238,5 +2311,21 @@ export const changePassword = async (req: Request, res: Response) => {
     console.error("Change password error:", error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
   }
+};
+  
+// GET /api/users/by-categories - Get users grouped by categories
+export const getUsersGroupedByCategories = async (req: Request, res: Response) => {
+	  try {
+		const result = await UserService.getUsersGroupedByCategories();
+		
+		if (result.success && result.data) {
+		  return sendApiResponse(res, 200, true, "Users grouped by categories retrieved successfully", result.data);
+		} else {
+		  return sendApiResponse(res, 500, false, result.error?.message || "Failed to retrieve users grouped by categories", []);
+		}
+	  } catch (error: any) {
+		console.error("Get users grouped by categories error:", error);
+		return sendApiResponse(res, 500, false, error.message || "Internal server error", []);
+	  }
 };
 

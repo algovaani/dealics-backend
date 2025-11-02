@@ -77,7 +77,24 @@ export const login = async (req: Request, res: Response) => {
     }
     
     const token = authService.issueToken(user);
-    return sendApiResponse(res, 200, true, "Login successful", [{ token }]);
+	
+	// Include user data in response for external app redirects
+    const userData = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
+      profile_image: user.profile_picture || null,
+      profile_picture: user.profile_picture || null
+    };
+    
+    // Return token and user data for external app compatibility
+    return sendApiResponse(res, 200, true, "Login successful", [{ 
+      token,
+      user: userData
+    }]);
   } catch (error: any) {
     console.error("Login error:", error);
     return sendApiResponse(res, 500, false, error.message || "Internal server error", []);

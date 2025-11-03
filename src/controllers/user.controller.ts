@@ -157,7 +157,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "User profile not found", []);
     }
 
-
+    
     // Transform the response to include only required user details
     const response = {
       id: profileData.user.id,
@@ -176,6 +176,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
         membership_details: (profileData.user as any).membership?.membership_details || null
       },
       ratings: profileData.user.ratings,
+      is_ebay_store_verified: profileData.user.is_ebay_store_verified,
       ebay_store_url: profileData.user.ebay_store_url,
       credit: profileData.user.credit,
       joined_date: profileData.user.joined_date,
@@ -1027,6 +1028,7 @@ export const updateUserProfile = async (req: Request, res: Response) => {
         bio: updatedProfileData.user.bio,
         ratings: updatedProfileData.user.ratings,
         ebay_store_url: updatedProfileData.user.ebay_store_url,
+        is_ebay_store_verified: updatedProfileData.user.is_ebay_store_verified,
         credit: updatedProfileData.user.credit,
         joined_date: updatedProfileData.user.createdAt,
         updated_at: updatedProfileData.user.updatedAt,

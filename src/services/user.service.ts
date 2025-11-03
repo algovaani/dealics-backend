@@ -791,7 +791,7 @@ export class UserService {
         'first_name', 'last_name', 'email', 'is_email_verified', 'email_verified_at', 'profile_picture', 'phone_number', 
         'country_code', 'about_user', 'bio', 'shipping_address', 
         'shipping_city', 'shipping_state', 'shipping_zip_code',
-        'ebay_store_url', 'paypal_business_email', 'is_free_shipping',
+        'ebay_store_url', 'paypal_business_email', 'is_free_shipping', "is_ebay_store_verified", 
         'shipping_flat_rate'
       ];
 
@@ -877,6 +877,7 @@ export class UserService {
           shipping_state: user.shipping_state,
           shipping_zip_code: user.shipping_zip_code,
           ebay_store_url: user.ebay_store_url,
+          is_ebay_store_verified: user.is_ebay_store_verified,
           paypal_business_email: user.paypal_business_email,
           is_free_shipping: user.is_free_shipping,
           shipping_flat_rate: user.shipping_flat_rate,

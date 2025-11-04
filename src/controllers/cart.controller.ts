@@ -564,7 +564,7 @@ const calcCartAmounts = async (cartId: number, userId: number, addressId: any) =
     if (cart && cart.id) {
       // Get user default address
       let userDefaultAddress: any[] = [];
-      if (addressId as any !== "") {
+      if (addressId as any !== "" && addressId as any !== null && addressId as any !== undefined) {
         userDefaultAddress = await sequelize.query(`
           SELECT country FROM addresses 
           WHERE id = ${addressId} 
@@ -573,17 +573,15 @@ const calcCartAmounts = async (cartId: number, userId: number, addressId: any) =
       } else {
         userDefaultAddress = await sequelize.query(`
           SELECT country FROM addresses 
-          WHERE mark_default = 1 
+          WHERE mark_default = 1
           AND user_id = ${userId} 
           AND is_deleted = '0'
           LIMIT 1
         `, { type: QueryTypes.SELECT }) as any[];
       }
-
       if (userDefaultAddress && userDefaultAddress.length > 0 && userDefaultAddress[0]?.country) {
         country = userDefaultAddress[0].country;
       }
-
       // Get cart details with product information
       const cartDetails = await CartDetail.findAll({
         where: {
@@ -638,7 +636,6 @@ const calcCartAmounts = async (cartId: number, userId: number, addressId: any) =
         }
       }
     }
-
     // Calculate shipping fees
     if (Object.keys(shippingFlatFeeArr).length > 0) {
       for (const catId in shippingFlatFeeArr) {

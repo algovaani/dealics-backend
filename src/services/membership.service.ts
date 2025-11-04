@@ -64,6 +64,7 @@ export class MembershipService {
 
       // Create transaction record
       const tx = await Transaction.create({
+        user_id: userId,
         payment_id: paymentId,
         amount: amount,
         type: 'Purchase',

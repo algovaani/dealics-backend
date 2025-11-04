@@ -1,3 +1,5 @@
+import { TradingCard } from "./tradingcard.model.js"; // ✅ make sure the path is correct
+import { BelongsTo, ForeignKey } from "sequelize-typescript";
 import {
     Table,
     Column,
@@ -24,6 +26,7 @@ import {
     @Column(DataType.BIGINT)
     buy_sell_id?: number;
   
+    @ForeignKey(() => TradingCard)
     @AllowNull
     @Column(DataType.BIGINT)
     main_card?: number;
@@ -39,5 +42,8 @@ import {
     @AllowNull
     @Column(DataType.DECIMAL(12, 2))
     offer_amt_buyer?: number;
+
+    @BelongsTo(() => TradingCard, { as: "tradingCard", foreignKey: "main_card" })
+    tradingCard?: TradingCard;
   }
   

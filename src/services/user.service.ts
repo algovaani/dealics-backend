@@ -12,7 +12,7 @@ import { SocialMedia } from "../models/socialMedia.model.js";
 import { Shipment } from "../models/shipment.model.js";
 import { Address } from "../models/address.model.js";
 import { CategoryShippingRate } from "../models/categoryShippingRates.model.js";
-import { BuySellCard, BuyOfferStatus, TradeProposal, TradeProposalStatus, TradeTransaction, TradeNotification, ReviewCollection, Review, Support } from "../models/index.js";
+import { BuySellCard, BuyOfferStatus, BuyOfferProduct, TradeProposal, TradeProposalStatus, TradeTransaction, TradeNotification, ReviewCollection, Review, Support } from "../models/index.js";
 import { setTradeProposalStatus } from '../services/tradeStatus.service.js';
 import { sequelize } from "../config/db.js";
 import { QueryTypes, Op } from "sequelize";
@@ -3372,183 +3372,434 @@ export class UserService {
   }
 
   // Get bought and sold products for authenticated user
+  // static async getBoughtAndSoldProducts(userId: number, filters: any = {}, page: number = 1, perPage: number = 5) {
+  //   try {
+  //     // Validate userId
+  //     if (!userId || isNaN(userId) || userId <= 0) {
+  //       return {
+  //         success: false,
+  //         error: {
+  //           message: 'Valid user ID is required'
+  //         }
+  //       };
+  //     }
+
+  //     // Build where clause based on trade_type
+  //     let whereClause: any = {
+  //       id: { [Op.ne]: 0 }
+  //     };
+
+  //     let requestData = 'all';
+  //     const filterData: any = {};
+
+  //     // Handle trade_type filtering (following Laravel logic)
+  //     if (filters.trade_type === 'purchased') {
+  //       whereClause.buyer = userId;
+  //       whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
+  //       requestData = 'purchased';
+  //       filterData.trade_type = filters.trade_type;
+  //     } else if (filters.trade_type === 'sold') {
+  //       whereClause.seller = userId;
+  //       whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
+  //       whereClause[Op.or] = [
+  //         { buyer: userId },
+  //         { seller: userId }
+  //       ];
+  //       requestData = 'sold';
+  //       filterData.trade_type = filters.trade_type;
+  //     } else if (filters.trade_type === 'cancelled') {
+  //       whereClause.buying_status = { [Op.in]: ['declined', 'cancelled'] };
+  //       requestData = 'cancelled';
+  //       filterData.trade_type = filters.trade_type;
+  //     } else {
+  //       // Default: all offers where user is buyer or seller, excluding cancelled
+  //       whereClause[Op.or] = [
+  //         { buyer: userId },
+  //         { seller: userId }
+  //       ];
+  //       whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
+  //       requestData = 'all';
+  //     }
+
+  //     // Handle specific ID filter
+  //     if (filters.id && filters.id > 0) {
+  //       whereClause.id = filters.id;
+  //     } else {
+  //       whereClause.buying_status = { [Op.ne]: '' };
+  //     }
+
+  //     // Handle buy_sell_id filter
+  //     if (filters.buy_sell_id && filters.buy_sell_id > 0) {
+  //       whereClause.id = filters.buy_sell_id;
+  //       filterData.buy_sell_id = filters.buy_sell_id;
+  //     }
+
+  //     // Handle trade_with filter (username search)
+  //     if (filters.trade_with && filters.trade_with.trim() !== '') {
+  //       filterData.trade_with = filters.trade_with;
+  //       // This will be handled in the include section with User associations
+  //     }
+
+  //     // Handle code filter
+  //     if (filters.code && filters.code.trim() !== '') {
+  //       whereClause.code = { [Op.like]: `%${filters.code}%` };
+  //       filterData.code = filters.code;
+  //     }
+
+  //     // Handle status_id filter
+  //     if (filters.status_id && filters.status_id > 0) {
+  //       whereClause.buy_offer_status_id = filters.status_id;
+  //       filterData.status_id = filters.status_id;
+  //     }
+
+  //     // Handle date filters
+  //     if (filters.from_date && filters.from_date.trim() !== '') {
+  //       try {
+  //         const fromDate = new Date(filters.from_date);
+  //         if (!isNaN(fromDate.getTime())) {
+  //           // Normalize to start of day
+  //           fromDate.setHours(0, 0, 0, 0);
+  //           whereClause.created_at = { [Op.gte]: fromDate };
+  //           filterData.from_date = filters.from_date;
+  //         }
+  //       } catch (error) {
+  //         console.error('Invalid from_date format:', filters.from_date);
+  //       }
+  //     }
+
+  //     if (filters.to_date && filters.to_date.trim() !== '') {
+  //       try {
+  //         const toDate = new Date(filters.to_date);
+  //         if (!isNaN(toDate.getTime())) {
+  //           // Normalize to end of day
+  //           toDate.setHours(23, 59, 59, 999);
+  //           if (whereClause.created_at) {
+  //             whereClause.created_at[Op.lte] = toDate;
+  //           } else {
+  //             whereClause.created_at = { [Op.lte]: toDate };
+  //           }
+  //           filterData.to_date = filters.to_date;
+  //         }
+  //       } catch (error) {
+  //         console.error('Invalid to_date format:', filters.to_date);
+  //       }
+  //     }
+
+  //     // Calculate pagination
+  //     const offset = (page - 1) * perPage;
+  //     const limit = perPage;
+
+  //     // Get total count
+  //     const totalCount = await BuySellCard.count({
+  //       where: whereClause
+  //     });
+
+  //     // Prepare includes with conditional where clauses for trade_with filter
+  //     const includes: any[] = [
+  //       {
+  //         model: User,
+  //         as: 'sellerUser',
+  //         attributes: ['id', 'username', 'first_name', 'last_name'],
+  //         required: false
+  //       },
+  //       {
+  //         model: User,
+  //         as: 'buyerUser',
+  //         attributes: ['id', 'username', 'first_name', 'last_name'],
+  //         required: false
+  //       },
+  //       // Removed Shipment include - using separate query instead
+  //       {
+  //         model: TradingCard,
+  //         as: 'tradingCard',
+  //         attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'search_param', 'category_id', 'title'],
+  //         required: false
+  //       },
+  //       {
+  //         model: BuyOfferStatus,
+  //         as: 'buyOfferStatus',
+  //         attributes: ['id', 'to_sender', 'to_receiver'],
+  //         required: false
+  //       },
+  //       {
+  //         model: Shipment,
+  //         as: 'shipmentDetails',
+  //         attributes: ['id', 'estimated_delivery_date', 'cron_shipment_date', 'tracking_id', 'shipment_status', 'created_at'],
+  //         required: false
+  //       }
+  //     ];
+
+  //     // Add trade_with filter to user associations if needed
+  //     if (filters.trade_with && filters.trade_with.trim() !== '') {
+  //       const tradeWithPattern = `%${filters.trade_with}%`;
+        
+  //       // Update seller and buyer includes to include username search
+  //       includes[0].where = { username: { [Op.like]: tradeWithPattern } };
+  //       includes[1].where = { username: { [Op.like]: tradeWithPattern } };
+        
+  //       // Add OR condition to main where clause for trade_with
+  //       whereClause[Op.or] = [
+  //         ...(whereClause[Op.or] || []),
+  //         { '$sellerUser.username$': { [Op.like]: tradeWithPattern } },
+  //         { '$buyerUser.username$': { [Op.like]: tradeWithPattern } }
+  //       ];
+  //     }
+
+  //     // Get buy/sell cards with all required associations
+  //     const buySellCards = await BuySellCard.findAll({
+  //       where: whereClause,
+  //       include: includes,
+  //       attributes: [
+  //         'id', 'code', 'seller', 'buyer', 'main_card', 'trading_card_asking_price', 
+  //         'offer_amt_buyer', 'paid_amount', 'amount_paid_on', 'amount_pay_id', 
+  //         'amount_payer_id', 'amount_pay_status', 'buying_status', 'track_id', 
+  //         'shipped_on', 'buyer_rating', 'buyer_review', 'reviewed_on', 'seller_rating', 
+  //         'seller_review', 'reviewed_by_seller_on', 'is_received', 'received_on', 
+  //         'is_payment_received', 'payment_received_on', 'invalid_offer_count', 
+  //         'is_payment_init', 'payment_init_date', 'buy_offer_status_id', 
+  //         'products_offer_amount', 'shipment_amount', 'total_amount', 'created_at', 'updated_at'
+  //       ],
+  //       order: [['id', 'DESC']],
+  //       limit: limit,
+  //       offset: offset
+  //     });
+
+  //     // Transform the data according to requirements
+  //     const transformedBuySellCards = await Promise.all(buySellCards.map(async (card: any) => {
+  //       const cardData = card.toJSON();
+        
+  //       // Determine seller_name or buyer_name based on user role
+  //       let seller_name = null;
+  //       let buyer_name = null;
+        
+  //       if (cardData.sellerUser) {
+  //         seller_name = cardData.sellerUser.username || 
+  //           `${cardData.sellerUser.first_name || ''} ${cardData.sellerUser.last_name || ''}`.trim();
+  //       }
+        
+  //       if (cardData.buyerUser) {
+  //         buyer_name = cardData.buyerUser.username || 
+  //           `${cardData.buyerUser.first_name || ''} ${cardData.buyerUser.last_name || ''}`.trim();
+  //       }
+
+  //       // Get shipment details separately to avoid duplicates
+  //       const shipments = await Shipment.findAll({
+  //         where: { buy_sell_id: cardData.id },
+  //         attributes: ['id', 'user_id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'cron_shipment_date', 'created_at'],
+  //         order: [['created_at', 'DESC']]
+  //       });
+
+  //       // Format shipment details according to Laravel structure
+  //       const shipmentDetail = shipments.map((shipment: any) => ({
+  //         id: shipment.id,
+  //         estimated_delivery_date: shipment.estimated_delivery_date 
+  //           ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) 
+  //           : shipment.cron_shipment_date 
+  //             ? UserService.formatDateToMMDDYY(shipment.cron_shipment_date)
+  //             : shipment.created_at 
+  //               ? UserService.formatDateToMMDDYY(shipment.created_at)
+  //               : null,
+  //         tracking_number: shipment.tracking_id,
+  //         status: shipment.shipment_status,
+  //         user_id: shipment.user_id
+  //       }));
+
+  //       // Get category name if trading card exists
+  //       let category_name = null;
+  //       if (cardData.tradingCard && cardData.tradingCard.category_id) {
+  //         try {
+  //           const category = await Category.findByPk(cardData.tradingCard.category_id);
+  //           category_name = category ? category.sport_name : null;
+  //         } catch (error) {
+  //           console.error('Error fetching category:', error);
+  //           category_name = null;
+  //         }
+  //       }
+
+  //       return {
+  //         id: cardData.id,
+  //         code: cardData.code,
+  //         seller: cardData.seller,
+  //         buyer: cardData.buyer,
+  //         seller_name: seller_name,
+  //         buyer_name: buyer_name,
+  //         trading_card_asking_price: cardData.trading_card_asking_price,
+  //         offer_amt_buyer: cardData.offer_amt_buyer,
+  //         paid_amount: cardData.paid_amount,
+  //         amount_paid_on: cardData.amount_paid_on ? UserService.formatDateToMMDDYY(cardData.amount_paid_on) : null,
+  //         buying_status: cardData.buying_status,
+  //         track_id: cardData.track_id,
+  //         shipped_on: cardData.shipped_on,
+  //         is_received: cardData.is_received,
+  //         received_on: cardData.received_on,
+  //         is_payment_received: cardData.is_payment_received,
+  //         payment_received_on: cardData.payment_received_on,
+  //         created_at: UserService.formatDateToMMDDYY(cardData.created_at),
+  //         updated_at: cardData.updated_at,
+  //         buy_offer_status_id: cardData.buy_offer_status_id,
+  //         buy_offer_status: cardData.buyOfferStatus ? {
+  //           id: cardData.buyOfferStatus.id,
+  //           to_sender: cardData.buyOfferStatus.to_sender,
+  //           to_receiver: cardData.buyOfferStatus.to_receiver
+  //         } : null,
+  //         shipmentDetail: shipmentDetail,
+  //         tradingCard: cardData.tradingCard ? {
+  //           id: cardData.tradingCard.id,
+  //           trading_card_img: cardData.tradingCard.trading_card_img,
+  //           trading_card_slug: cardData.tradingCard.trading_card_slug,
+  //           trading_card_asking_price: cardData.tradingCard.trading_card_asking_price,
+  //           search_param: cardData.tradingCard.search_param,
+  //           title: cardData.tradingCard.title || null,
+  //           category_name: category_name
+  //         } : null,
+  //         payment_detail: {
+  //           products_offer_amount: cardData.products_offer_amount || 0,
+  //           shipment_amount: cardData.shipment_amount || 0,
+  //           total_amount: cardData.total_amount || 0,
+  //           paid_amount: cardData.paid_amount || 0,
+  //           amount_paid_on: cardData.amount_paid_on ? UserService.formatDateToMMDDYY(cardData.amount_paid_on) : null
+  //         },
+  //         // Ratings array in requested format (omit entries with 0 or missing rating)
+  //         ratings: (() => {
+  //           const ratingsArr: any[] = [];
+  //           const sellerRatingVal = (cardData.seller_rating !== null && cardData.seller_rating !== undefined) ? Number(cardData.seller_rating) : 0;
+  //           const buyerRatingVal = (cardData.buyer_rating !== null && cardData.buyer_rating !== undefined) ? Number(cardData.buyer_rating) : 0;
+
+  //           if (sellerRatingVal > 0) {
+  //             ratingsArr.push({
+  //               user_id: cardData.seller || null,
+  //               username: seller_name,
+  //               rating: sellerRatingVal,
+  //               review: cardData.seller_review || '',
+  //               type: 'sender'
+  //             });
+  //           }
+
+  //           if (buyerRatingVal > 0) {
+  //             ratingsArr.push({
+  //               user_id: cardData.buyer || null,
+  //               username: buyer_name,
+  //               rating: buyerRatingVal,
+  //               review: cardData.buyer_review || '',
+  //               type: 'receiver'
+  //             });
+  //           }
+
+  //           return ratingsArr;
+  //         })()
+  //       };
+  //     }));
+
+  //     // Check if amount_paid_on is null for specific ID (buyer only)
+  //     let amountPaidOn = false;
+  //     if (filters.id && filters.id > 0) {
+  //       const specificCard = await BuySellCard.findOne({
+  //         where: {
+  //           id: filters.id,
+  //           buyer: userId
+  //         }
+  //       });
+  //       amountPaidOn = specificCard ? !specificCard.amount_paid_on : false;
+  //     }
+
+  //     // Calculate pagination metadata
+  //     const totalPages = Math.ceil(totalCount / perPage);
+  //     const hasNextPage = page < totalPages;
+  //     const hasPrevPage = page > 1;
+
+  //     return {
+  //       success: true,
+  //       data: {
+  //         buySellCards: transformedBuySellCards,
+  //         requestData,
+  //         amountPaidOn,
+  //         filterData
+  //       },
+  //       pagination: {
+  //         currentPage: page,
+  //         perPage: perPage,
+  //         totalCount: totalCount,
+  //         totalPages: totalPages,
+  //         hasNextPage: hasNextPage,
+  //         hasPrevPage: hasPrevPage
+  //       }
+  //     };
+
+  //   } catch (error: any) {
+  //     console.error('Error getting bought and sold products:', error);
+  //     return {
+  //       success: false,
+  //       error: {
+  //         message: error.message || 'Failed to get bought and sold products'
+  //       }
+  //     };
+  //   }
+  // }
+
   static async getBoughtAndSoldProducts(userId: number, filters: any = {}, page: number = 1, perPage: number = 5) {
     try {
-      // Validate userId
       if (!userId || isNaN(userId) || userId <= 0) {
-        return {
-          success: false,
-          error: {
-            message: 'Valid user ID is required'
-          }
-        };
+        return { success: false, error: { message: 'Valid user ID is required' } };
       }
 
-      // Build where clause based on trade_type
-      let whereClause: any = {
-        id: { [Op.ne]: 0 }
-      };
-
+      let whereClause: any = { id: { [Op.ne]: 0 } };
       let requestData = 'all';
       const filterData: any = {};
 
-      // Handle trade_type filtering (following Laravel logic)
       if (filters.trade_type === 'purchased') {
         whereClause.buyer = userId;
         whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
         requestData = 'purchased';
-        filterData.trade_type = filters.trade_type;
       } else if (filters.trade_type === 'sold') {
         whereClause.seller = userId;
         whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
-        whereClause[Op.or] = [
-          { buyer: userId },
-          { seller: userId }
-        ];
         requestData = 'sold';
-        filterData.trade_type = filters.trade_type;
       } else if (filters.trade_type === 'cancelled') {
         whereClause.buying_status = { [Op.in]: ['declined', 'cancelled'] };
         requestData = 'cancelled';
-        filterData.trade_type = filters.trade_type;
       } else {
-        // Default: all offers where user is buyer or seller, excluding cancelled
-        whereClause[Op.or] = [
-          { buyer: userId },
-          { seller: userId }
-        ];
+        whereClause[Op.or] = [{ buyer: userId }, { seller: userId }];
         whereClause.buying_status = { [Op.notIn]: ['declined', 'cancelled'] };
-        requestData = 'all';
       }
 
-      // Handle specific ID filter
-      if (filters.id && filters.id > 0) {
-        whereClause.id = filters.id;
-      } else {
-        whereClause.buying_status = { [Op.ne]: '' };
-      }
+      if (filters.id && filters.id > 0) whereClause.id = filters.id;
+      if (filters.buy_sell_id && filters.buy_sell_id > 0) whereClause.id = filters.buy_sell_id;
+      if (filters.code && filters.code.trim() !== '') whereClause.code = { [Op.like]: `%${filters.code}%` };
+      if (filters.status_id && filters.status_id > 0) whereClause.buy_offer_status_id = filters.status_id;
 
-      // Handle buy_sell_id filter
-      if (filters.buy_sell_id && filters.buy_sell_id > 0) {
-        whereClause.id = filters.buy_sell_id;
-        filterData.buy_sell_id = filters.buy_sell_id;
-      }
-
-      // Handle trade_with filter (username search)
-      if (filters.trade_with && filters.trade_with.trim() !== '') {
-        filterData.trade_with = filters.trade_with;
-        // This will be handled in the include section with User associations
-      }
-
-      // Handle code filter
-      if (filters.code && filters.code.trim() !== '') {
-        whereClause.code = { [Op.like]: `%${filters.code}%` };
-        filterData.code = filters.code;
-      }
-
-      // Handle status_id filter
-      if (filters.status_id && filters.status_id > 0) {
-        whereClause.buy_offer_status_id = filters.status_id;
-        filterData.status_id = filters.status_id;
-      }
-
-      // Handle date filters
-      if (filters.from_date && filters.from_date.trim() !== '') {
-        try {
-          const fromDate = new Date(filters.from_date);
-          if (!isNaN(fromDate.getTime())) {
-            // Normalize to start of day
-            fromDate.setHours(0, 0, 0, 0);
-            whereClause.created_at = { [Op.gte]: fromDate };
-            filterData.from_date = filters.from_date;
-          }
-        } catch (error) {
-          console.error('Invalid from_date format:', filters.from_date);
-        }
-      }
-
-      if (filters.to_date && filters.to_date.trim() !== '') {
-        try {
-          const toDate = new Date(filters.to_date);
-          if (!isNaN(toDate.getTime())) {
-            // Normalize to end of day
-            toDate.setHours(23, 59, 59, 999);
-            if (whereClause.created_at) {
-              whereClause.created_at[Op.lte] = toDate;
-            } else {
-              whereClause.created_at = { [Op.lte]: toDate };
-            }
-            filterData.to_date = filters.to_date;
-          }
-        } catch (error) {
-          console.error('Invalid to_date format:', filters.to_date);
-        }
-      }
-
-      // Calculate pagination
       const offset = (page - 1) * perPage;
       const limit = perPage;
 
-      // Get total count
-      const totalCount = await BuySellCard.count({
-        where: whereClause
-      });
+      const totalCount = await BuySellCard.count({ where: whereClause });
 
-      // Prepare includes with conditional where clauses for trade_with filter
-      const includes: any[] = [
-        {
-          model: User,
-          as: 'sellerUser',
-          attributes: ['id', 'username', 'first_name', 'last_name'],
-          required: false
-        },
-        {
-          model: User,
-          as: 'buyerUser',
-          attributes: ['id', 'username', 'first_name', 'last_name'],
-          required: false
-        },
-        // Removed Shipment include - using separate query instead
-        {
-          model: TradingCard,
-          as: 'tradingCard',
-          attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'search_param', 'category_id', 'title'],
-          required: false
-        },
-        {
-          model: BuyOfferStatus,
-          as: 'buyOfferStatus',
-          attributes: ['id', 'to_sender', 'to_receiver'],
-          required: false
-        },
-        {
-          model: Shipment,
-          as: 'shipmentDetails',
-          attributes: ['id', 'estimated_delivery_date', 'cron_shipment_date', 'tracking_id', 'shipment_status', 'created_at'],
-          required: false
-        }
-      ];
-
-      // Add trade_with filter to user associations if needed
-      if (filters.trade_with && filters.trade_with.trim() !== '') {
-        const tradeWithPattern = `%${filters.trade_with}%`;
-        
-        // Update seller and buyer includes to include username search
-        includes[0].where = { username: { [Op.like]: tradeWithPattern } };
-        includes[1].where = { username: { [Op.like]: tradeWithPattern } };
-        
-        // Add OR condition to main where clause for trade_with
-        whereClause[Op.or] = [
-          ...(whereClause[Op.or] || []),
-          { '$sellerUser.username$': { [Op.like]: tradeWithPattern } },
-          { '$buyerUser.username$': { [Op.like]: tradeWithPattern } }
-        ];
-      }
-
-      // Get buy/sell cards with all required associations
       const buySellCards = await BuySellCard.findAll({
         where: whereClause,
-        include: includes,
+        include: [
+          {
+            model: User,
+            as: 'sellerUser',
+            attributes: ['id', 'username', 'first_name', 'last_name'],
+            required: false
+          },
+          {
+            model: User,
+            as: 'buyerUser',
+            attributes: ['id', 'username', 'first_name', 'last_name'],
+            required: false
+          },
+          {
+            model: BuyOfferStatus,
+            as: 'buyOfferStatus',
+            attributes: ['id', 'to_sender', 'to_receiver'],
+            required: false
+          },
+          {
+            model: Shipment,
+            as: 'shipmentDetails',
+            attributes: ['id', 'estimated_delivery_date', 'cron_shipment_date', 'tracking_id', 'shipment_status', 'created_at'],
+            required: false
+          }
+        ],
         attributes: [
           'id', 'code', 'seller', 'buyer', 'main_card', 'trading_card_asking_price', 
           'offer_amt_buyer', 'paid_amount', 'amount_paid_on', 'amount_pay_id', 
@@ -3560,183 +3811,198 @@ export class UserService {
           'products_offer_amount', 'shipment_amount', 'total_amount', 'created_at', 'updated_at'
         ],
         order: [['id', 'DESC']],
-        limit: limit,
-        offset: offset
+        limit,
+        offset
       });
 
-      // Transform the data according to requirements
-      const transformedBuySellCards = await Promise.all(buySellCards.map(async (card: any) => {
-        const cardData = card.toJSON();
-        
-        // Determine seller_name or buyer_name based on user role
-        let seller_name = null;
-        let buyer_name = null;
-        
-        if (cardData.sellerUser) {
-          seller_name = cardData.sellerUser.username || 
-            `${cardData.sellerUser.first_name || ''} ${cardData.sellerUser.last_name || ''}`.trim();
-        }
-        
-        if (cardData.buyerUser) {
-          buyer_name = cardData.buyerUser.username || 
-            `${cardData.buyerUser.first_name || ''} ${cardData.buyerUser.last_name || ''}`.trim();
-        }
+      const transformedBuySellCards = await Promise.all(
+        buySellCards.map(async (card: any) => {
+          const cardData = card.toJSON();
 
-        // Get shipment details separately to avoid duplicates
-        const shipments = await Shipment.findAll({
-          where: { buy_sell_id: cardData.id },
-          attributes: ['id', 'user_id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'cron_shipment_date', 'created_at'],
-          order: [['created_at', 'DESC']]
-        });
+          let seller_name = cardData.sellerUser
+            ? cardData.sellerUser.username ||
+              `${cardData.sellerUser.first_name || ''} ${cardData.sellerUser.last_name || ''}`.trim()
+            : null;
 
-        // Format shipment details according to Laravel structure
-        const shipmentDetail = shipments.map((shipment: any) => ({
-          id: shipment.id,
-          estimated_delivery_date: shipment.estimated_delivery_date 
-            ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date) 
-            : shipment.cron_shipment_date 
+          let buyer_name = cardData.buyerUser
+            ? cardData.buyerUser.username ||
+              `${cardData.buyerUser.first_name || ''} ${cardData.buyerUser.last_name || ''}`.trim()
+            : null;
+
+          const shipments = await Shipment.findAll({
+            where: { buy_sell_id: cardData.id },
+            attributes: ['id', 'user_id', 'tracking_id', 'shipment_status', 'estimated_delivery_date', 'cron_shipment_date', 'created_at'],
+            order: [['created_at', 'DESC']]
+          });
+
+          const shipmentDetail = shipments.map((shipment: any) => ({
+            id: shipment.id,
+            estimated_delivery_date: shipment.estimated_delivery_date
+              ? UserService.formatDateToMMDDYY(shipment.estimated_delivery_date)
+              : shipment.cron_shipment_date
               ? UserService.formatDateToMMDDYY(shipment.cron_shipment_date)
-              : shipment.created_at 
-                ? UserService.formatDateToMMDDYY(shipment.created_at)
-                : null,
-          tracking_number: shipment.tracking_id,
-          status: shipment.shipment_status,
-          user_id: shipment.user_id
-        }));
+              : shipment.created_at
+              ? UserService.formatDateToMMDDYY(shipment.created_at)
+              : null,
+            tracking_number: shipment.tracking_id,
+            status: shipment.shipment_status,
+            user_id: shipment.user_id
+          }));
 
-        // Get category name if trading card exists
-        let category_name = null;
-        if (cardData.tradingCard && cardData.tradingCard.category_id) {
-          try {
-            const category = await Category.findByPk(cardData.tradingCard.category_id);
-            category_name = category ? category.sport_name : null;
-          } catch (error) {
-            console.error('Error fetching category:', error);
-            category_name = null;
+          // 🟢 NEW LOGIC HERE
+          let tradingCardData: any = null;
+
+          // CASE 1: main_card == 0 → multiple entries from BuyOfferProduct
+          if (cardData.main_card === 0) {
+            const buyOfferProducts = await BuyOfferProduct.findAll({
+              where: { buy_sell_id: cardData.id },
+              include: [
+                {
+                  model: TradingCard,
+                  as: 'tradingCard',
+                  attributes: ['id', 'trading_card_img', 'trading_card_slug', 'trading_card_asking_price', 'search_param', 'category_id', 'title'],
+                  required: false
+                }
+              ]
+            });
+
+            tradingCardData = await Promise.all(
+              buyOfferProducts.map(async (bop: any) => {
+                const bopData = bop.toJSON();
+                let category_name = null;
+                if (bopData.tradingCard && bopData.tradingCard.category_id) {
+                  const category = await Category.findByPk(bopData.tradingCard.category_id);
+                  category_name = category ? category.sport_name : null;
+                }
+
+                return {
+                  id: bopData.tradingCard?.id || null,
+                  trading_card_img: bopData.tradingCard?.trading_card_img || null,
+                  trading_card_slug: bopData.tradingCard?.trading_card_slug || null,
+                  trading_card_asking_price: bopData.tradingCard?.trading_card_asking_price || 0,
+                  search_param: bopData.tradingCard?.search_param || null,
+                  title: bopData.tradingCard?.title || null,
+                  category_name
+                };
+              })
+            );
           }
-        }
+          // CASE 2: main_card != 0 → single TradingCard
+          else if (cardData.main_card) {
+            const mainTradingCard = await TradingCard.findByPk(cardData.main_card);
+            if (mainTradingCard) {
+              const category = await Category.findByPk(mainTradingCard.category_id);
+              const category_name = category ? category.sport_name : null;
 
-        return {
-          id: cardData.id,
-          code: cardData.code,
-          seller: cardData.seller,
-          buyer: cardData.buyer,
-          seller_name: seller_name,
-          buyer_name: buyer_name,
-          trading_card_asking_price: cardData.trading_card_asking_price,
-          offer_amt_buyer: cardData.offer_amt_buyer,
-          paid_amount: cardData.paid_amount,
-          amount_paid_on: cardData.amount_paid_on ? UserService.formatDateToMMDDYY(cardData.amount_paid_on) : null,
-          buying_status: cardData.buying_status,
-          track_id: cardData.track_id,
-          shipped_on: cardData.shipped_on,
-          is_received: cardData.is_received,
-          received_on: cardData.received_on,
-          is_payment_received: cardData.is_payment_received,
-          payment_received_on: cardData.payment_received_on,
-          created_at: UserService.formatDateToMMDDYY(cardData.created_at),
-          updated_at: cardData.updated_at,
-          buy_offer_status_id: cardData.buy_offer_status_id,
-          buy_offer_status: cardData.buyOfferStatus ? {
-            id: cardData.buyOfferStatus.id,
-            to_sender: cardData.buyOfferStatus.to_sender,
-            to_receiver: cardData.buyOfferStatus.to_receiver
-          } : null,
-          shipmentDetail: shipmentDetail,
-          tradingCard: cardData.tradingCard ? {
-            id: cardData.tradingCard.id,
-            trading_card_img: cardData.tradingCard.trading_card_img,
-            trading_card_slug: cardData.tradingCard.trading_card_slug,
-            trading_card_asking_price: cardData.tradingCard.trading_card_asking_price,
-            search_param: cardData.tradingCard.search_param,
-            title: cardData.tradingCard.title || null,
-            category_name: category_name
-          } : null,
-          payment_detail: {
-            products_offer_amount: cardData.products_offer_amount || 0,
-            shipment_amount: cardData.shipment_amount || 0,
-            total_amount: cardData.total_amount || 0,
-            paid_amount: cardData.paid_amount || 0,
-            amount_paid_on: cardData.amount_paid_on ? UserService.formatDateToMMDDYY(cardData.amount_paid_on) : null
-          },
-          // Ratings array in requested format (omit entries with 0 or missing rating)
-          ratings: (() => {
-            const ratingsArr: any[] = [];
-            const sellerRatingVal = (cardData.seller_rating !== null && cardData.seller_rating !== undefined) ? Number(cardData.seller_rating) : 0;
-            const buyerRatingVal = (cardData.buyer_rating !== null && cardData.buyer_rating !== undefined) ? Number(cardData.buyer_rating) : 0;
-
-            if (sellerRatingVal > 0) {
-              ratingsArr.push({
-                user_id: cardData.seller || null,
-                username: seller_name,
-                rating: sellerRatingVal,
-                review: cardData.seller_review || '',
-                type: 'sender'
-              });
+              tradingCardData = [
+                {
+                  id: mainTradingCard.id,
+                  trading_card_img: mainTradingCard.trading_card_img,
+                  trading_card_slug: mainTradingCard.trading_card_slug,
+                  trading_card_asking_price: mainTradingCard.trading_card_asking_price,
+                  search_param: mainTradingCard.search_param,
+                  title: mainTradingCard.title,
+                  category_name
+                }
+              ];
             }
+          }
 
-            if (buyerRatingVal > 0) {
-              ratingsArr.push({
-                user_id: cardData.buyer || null,
-                username: buyer_name,
-                rating: buyerRatingVal,
-                review: cardData.buyer_review || '',
-                type: 'receiver'
-              });
-            }
+          return {
+            id: cardData.id,
+            code: cardData.code,
+            seller: cardData.seller,
+            buyer: cardData.buyer,
+            seller_name,
+            buyer_name,            
+            offer_amt_buyer: cardData.offer_amt_buyer,
+            paid_amount: cardData.paid_amount,
+            amount_paid_on: cardData.amount_paid_on ? UserService.formatDateToMMDDYY(cardData.amount_paid_on) : null,
+            buying_status: cardData.buying_status,
+            track_id: cardData.track_id,
+            shipped_on: cardData.shipped_on,
+            is_received: cardData.is_received,
+            received_on: cardData.received_on,
+            is_payment_received: cardData.is_payment_received,
+            payment_received_on: cardData.payment_received_on,
+            created_at: UserService.formatDateToMMDDYY(cardData.created_at),
+            updated_at: cardData.updated_at,
+            buy_offer_status_id: cardData.buy_offer_status_id,
+            buy_offer_status: cardData.buyOfferStatus
+              ? {
+                  id: cardData.buyOfferStatus.id,
+                  to_sender: cardData.buyOfferStatus.to_sender,
+                  to_receiver: cardData.buyOfferStatus.to_receiver
+                }
+              : null,
+            shipmentDetail,
+            tradingCard: tradingCardData, // always array for consistent structure
+            payment_detail: {
+              products_offer_amount: cardData.products_offer_amount || 0,
+              shipment_amount: cardData.shipment_amount || 0,
+              total_amount: cardData.total_amount || 0,
+              paid_amount: cardData.paid_amount || 0
+            },
+            ratings: (() => {
+              const ratingsArr: any[] = [];
+              const sellerRatingVal = (cardData.seller_rating !== null && cardData.seller_rating !== undefined) ? Number(cardData.seller_rating) : 0;
+              const buyerRatingVal = (cardData.buyer_rating !== null && cardData.buyer_rating !== undefined) ? Number(cardData.buyer_rating) : 0;
 
+              if (sellerRatingVal > 0) {
+                ratingsArr.push({
+                  user_id: cardData.seller || null,
+                  username: seller_name,
+                  rating: sellerRatingVal,
+                  review: cardData.seller_review || '',
+                  type: 'sender'
+                });
+              }
+
+              if (buyerRatingVal > 0) {
+                ratingsArr.push({
+                  user_id: cardData.buyer || null,
+                  username: buyer_name,
+                  rating: buyerRatingVal,
+                  review: cardData.buyer_review || '',
+                  type: 'receiver'
+                });
+              }
             return ratingsArr;
           })()
-        };
-      }));
+          };
+        })
+      );
 
-      // Check if amount_paid_on is null for specific ID (buyer only)
-      let amountPaidOn = false;
-      if (filters.id && filters.id > 0) {
-        const specificCard = await BuySellCard.findOne({
-          where: {
-            id: filters.id,
-            buyer: userId
-          }
-        });
-        amountPaidOn = specificCard ? !specificCard.amount_paid_on : false;
-      }
-
-      // Calculate pagination metadata
       const totalPages = Math.ceil(totalCount / perPage);
-      const hasNextPage = page < totalPages;
-      const hasPrevPage = page > 1;
 
       return {
         success: true,
         data: {
           buySellCards: transformedBuySellCards,
           requestData,
-          amountPaidOn,
           filterData
         },
         pagination: {
           currentPage: page,
-          perPage: perPage,
-          totalCount: totalCount,
-          totalPages: totalPages,
-          hasNextPage: hasNextPage,
-          hasPrevPage: hasPrevPage
+          perPage,
+          totalCount,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
         }
       };
-
     } catch (error: any) {
       console.error('Error getting bought and sold products:', error);
-      return {
-        success: false,
-        error: {
-          message: error.message || 'Failed to get bought and sold products'
-        }
-      };
+      return { success: false, error: { message: error.message || 'Failed to get bought and sold products' } };
     }
   }
 
+
   // Get ongoing trades for authenticated user
+  
+  
+  
+  
   static async getOngoingTrades(userId: number, filters: any = {}, page: number = 1, perPage: number = 5) {
     try {
       // Validate userId

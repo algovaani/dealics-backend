@@ -1641,9 +1641,17 @@ export const processCheckout = async (req: Request, res: Response) => {
     );
 
     // Create buy offer products for multiple items
-    if (buyOfferAttemptProducts.length > 0) {
-      // Note: You'll need to create BuyOfferproduct model for this
-      // For now, we'll skip this part as the model doesn't exist
+    if (cartWithDetails.cartDetails && cartWithDetails.cartDetails.length > 1) {
+      // Multiple items checkout
+      for (const cartDetail of cartWithDetails.cartDetails) {
+        await BuyOfferProduct.create({
+           buy_sell_id: buyOffer.id,
+           main_card: cartDetail.product_id,
+           trading_card_asking_price: cartDetail.product.trading_card_asking_price || 0,
+           trading_card_offer_accept_above: cartDetail.product.trading_card_offer_accept_above || 0,
+           offer_amt_buyer: cartDetail.product_amount || 0
+         } as any);         
+      }
     }
 
     // Create notifications

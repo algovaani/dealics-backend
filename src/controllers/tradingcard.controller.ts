@@ -2807,9 +2807,13 @@ export const saveTradingCard = async (req: RequestWithFiles, res: Response) => {
       }
     }
 
-    if ((requestData.trading_card_asking_price != 0 || requestData.trading_card_estimated_value != 0) && !requestData.trading_card_asking_price && !requestData.trading_card_estimated_value) {
-      return sendApiResponse(res, 400, false, "Trade value or asking price required to submit product.");
-    }
+
+    if ((!requestData.trading_card_asking_price && !requestData.trading_card_estimated_value) || 
+    (Number(requestData.trading_card_asking_price) === 0 && !requestData.trading_card_estimated_value) ||
+    (!requestData.trading_card_asking_price && Number(requestData.trading_card_estimated_value) === 0) ||
+    (Number(requestData.trading_card_asking_price) === 0 && Number(requestData.trading_card_estimated_value) === 0)) {
+      return sendApiResponse(res, 400, false, "Trade value or asking price required to submit product.");    
+  }
     
     // Call service to save trading card
     const result = await tradingcardService.saveTradingCard(requestData, categoryIdNum, userId);
@@ -3360,15 +3364,16 @@ export const updateTradingCard = async (req: RequestWithFiles, res: Response) =>
       }
     }
 
-    // Debug: Log the final requestData before calling service
-    if ((requestData.trading_card_asking_price != 0 || requestData.trading_card_estimated_value != 0) && requestData.trading_card_asking_price == undefined && requestData.trading_card_estimated_value == undefined) {
-      return sendApiResponse(res, 400, false, `Trade value or asking price required to submit product.`);
-    }
-    
+  if ((!requestData.trading_card_asking_price && !requestData.trading_card_estimated_value) || 
+  (Number(requestData.trading_card_asking_price) === 0 && !requestData.trading_card_estimated_value) ||
+  (!requestData.trading_card_asking_price && Number(requestData.trading_card_estimated_value) === 0) ||
+  (Number(requestData.trading_card_asking_price) === 0 && Number(requestData.trading_card_estimated_value) === 0)) {
+    return sendApiResponse(res, 400, false, `Trade value or asking price required to submit product.`);
+  }    
     const result = await tradingcardService.updateTradingCard(cardIdNum, requestData, userId);
 
     if (!result.success) {
-      return sendApiResponse(res, 400, false, result.error || "Failed to update trading card 22");
+      return sendApiResponse(res, 400, false, result.error || "Failed to update trading card");
     }
 
     // Get the updated trading card with enhanced data (including _text fields)

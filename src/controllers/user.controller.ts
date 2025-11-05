@@ -438,7 +438,7 @@ export const getTradersList = async (req: Request, res: Response) => {
       excludeUserId = undefined;
     }
 
-    const result = await UserService.getTradersList(page, perPage, excludeUserId);
+    const result = await UserService.getTradersList(page, perPage, excludeUserId, req.query.search as string || undefined);
 
     if (!result.data || result.data.length === 0) {
       return sendApiResponse(res, 200, true, "No traders found", [], {

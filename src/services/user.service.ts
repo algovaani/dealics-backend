@@ -1121,9 +1121,10 @@ export class UserService {
   }
 
   // Get traders list with pagination (excludes authenticated user if token provided)
-  static async getTradersList(page: number = 1, perPage: number = 10, excludeUserId?: number) {
+  static async getTradersList(page: number = 1, perPage: number = 10, excludeUserId?: number, searchTerm?: string) {
     try {
       const offset = (page - 1) * perPage;
+      const searchQuery = searchTerm ? `%${searchTerm}%` : null;
 
       const query = `
         SELECT
@@ -1139,31 +1140,34 @@ export class UserService {
           u.trading_cards,
           u.created_at,
           u.updated_at,
-          COALESCE(tc_stats.trading_cards_count, 0) as trading_cards_count,
-          COALESCE(tc_stats.active_cards_count, 0) as active_cards_count,
-          COALESCE(tc_stats.completed_trades_count, 0) as completed_trades_count,
+          COALESCE(tc_stats.trading_cards_count, 0) AS trading_cards_count,
+          COALESCE(tc_stats.active_cards_count, 0) AS active_cards_count,
+          COALESCE(tc_stats.completed_trades_count, 0) AS completed_trades_count,
           CASE 
             WHEN f.id IS NOT NULL AND f.follower_status = '1' THEN 1 
             ELSE 0 
-          END as following
+          END AS following
         FROM users u
         INNER JOIN (
           SELECT
             trader_id,
-            COUNT(*) as trading_cards_count,
-            SUM(CASE WHEN is_traded = '0' AND trading_card_status = '1' AND mark_as_deleted IS NULL THEN 1 ELSE 0 END) as active_cards_count,
-            SUM(CASE WHEN is_traded = '1' THEN 1 ELSE 0 END) as completed_trades_count
+            COUNT(*) AS trading_cards_count,
+            SUM(CASE WHEN is_traded = '0' AND trading_card_status = '1' AND mark_as_deleted IS NULL THEN 1 ELSE 0 END) AS active_cards_count,
+            SUM(CASE WHEN is_traded = '1' THEN 1 ELSE 0 END) AS completed_trades_count
           FROM trading_cards
           WHERE mark_as_deleted IS NULL
-          AND trading_card_status = '1'
-          AND is_traded = '0'
-          AND (can_trade = 1 OR can_buy = 1)
+            AND trading_card_status = '1'
+            AND is_traded = '0'
+            AND (can_trade = 1 OR can_buy = 1)
           GROUP BY trader_id
         ) tc_stats ON u.id = tc_stats.trader_id
-        LEFT JOIN followers f ON u.id = f.trader_id AND f.user_id = ${excludeUserId || 'NULL'} AND f.follower_status = '1'
+        LEFT JOIN followers f ON u.id = f.trader_id 
+          AND f.user_id = ${excludeUserId || 'NULL'} 
+          AND f.follower_status = '1'
         WHERE u.user_status = '1'
-        AND u.user_role = 'user'
-        ${excludeUserId ? `AND u.id != ${excludeUserId}` : ''}
+          AND u.user_role = 'user'
+          ${excludeUserId ? `AND u.id != ${excludeUserId}` : ''}
+          ${searchQuery ? `AND (u.username LIKE :search OR u.first_name LIKE :search OR u.last_name LIKE :search)` : ''}
         ORDER BY
           u.created_at DESC,
           tc_stats.trading_cards_count DESC
@@ -1171,30 +1175,39 @@ export class UserService {
       `;
 
       const countQuery = `
-        SELECT COUNT(*) as total
+        SELECT COUNT(*) AS total
         FROM users u
         INNER JOIN (
           SELECT DISTINCT trader_id
           FROM trading_cards
           WHERE mark_as_deleted IS NULL
-          AND trading_card_status = '1'
-          AND is_traded = '0'
-          AND (can_trade = 1 OR can_buy = 1)
+            AND trading_card_status = '1'
+            AND is_traded = '0'
+            AND (can_trade = 1 OR can_buy = 1)
         ) tc_stats ON u.id = tc_stats.trader_id
-        LEFT JOIN followers f ON u.id = f.trader_id AND f.user_id = ${excludeUserId || 'NULL'} AND f.follower_status = '1'
+        LEFT JOIN followers f ON u.id = f.trader_id 
+          AND f.user_id = ${excludeUserId || 'NULL'} 
+          AND f.follower_status = '1'
         WHERE u.user_status = '1'
-        AND u.user_role = 'user'
-        ${excludeUserId ? `AND u.id != ${excludeUserId}` : ''}
+          AND u.user_role = 'user'
+          ${excludeUserId ? `AND u.id != ${excludeUserId}` : ''}
+          ${searchQuery ? `AND (u.username LIKE :search OR u.first_name LIKE :search OR u.last_name LIKE :search)` : ''}
       `;
 
+      const replacements = {
+        perPage,
+        offset,
+        ...(searchQuery && { search: searchQuery }),
+      };
+
       const result = await sequelize.query(query, {
-        replacements: { perPage, offset },
-        type: QueryTypes.SELECT
+        replacements,
+        type: QueryTypes.SELECT,
       });
 
       const countResult = await sequelize.query(countQuery, {
-        replacements: { excludeUserId },
-        type: QueryTypes.SELECT
+        replacements,
+        type: QueryTypes.SELECT,
       });
 
       const total = (countResult[0] as any)?.total ?? 0;
@@ -1206,10 +1219,10 @@ export class UserService {
         perPage,
         totalPages: Math.ceil(total / perPage),
         hasNextPage: page < Math.ceil(total / perPage),
-        hasPrevPage: page > 1
+        hasPrevPage: page > 1,
       };
     } catch (error) {
-      console.error('Error getting traders list:', error);
+      console.error("Error getting traders list:", error);
       return {
         data: [],
         total: 0,
@@ -1217,10 +1230,11 @@ export class UserService {
         perPage: 10,
         totalPages: 0,
         hasNextPage: false,
-        hasPrevPage: false
+        hasPrevPage: false,
       };
     }
   }
+
 
   // Follow/Unfollow user
   static async toggleFollow(traderId: number, userId: number) {
@@ -3936,7 +3950,7 @@ export class UserService {
                 }
               : null,
             shipmentDetail,
-            tradingCard: tradingCardData, // always array for consistent structure
+            tradingCards: tradingCardData, // always array for consistent structure
             payment_detail: {
               products_offer_amount: cardData.products_offer_amount || 0,
               shipment_amount: cardData.shipment_amount || 0,

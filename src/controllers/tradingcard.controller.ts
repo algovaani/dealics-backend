@@ -575,6 +575,7 @@ export const getDealzoneTradingCards = async (req: Request, res: Response) => {
         category_slug: card.slug || null,
         trade_card_status: card.trade_card_status || null,
         trader_id: card.trader_id || null,
+        trade_value: card.trade_value || null,
         trader_name: card.trader_name || null,
         card_condition: card.card_condition || null,
         graded: card.graded || '0',

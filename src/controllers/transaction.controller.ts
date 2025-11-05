@@ -88,7 +88,7 @@ class TransactionController {
         // Check required profile fields
         const hasBio = !!(user.bio && user.bio.toString().trim());
         const hasAbout = !!(user.about_user && user.about_user.toString().trim());
-        const isEbayVerified = (user.is_ebay_store_verified === '1');
+        const isEbayVerified = (user.is_ebay_store_verified == '1');
 
         const socialCount = await UserSocialMedia.count({ where: { user_id: userId, social_media_url_status: '1' } });
 

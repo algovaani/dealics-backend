@@ -157,7 +157,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
       return sendApiResponse(res, 404, false, "User profile not found", []);
     }
 
-    
+
     // Transform the response to include only required user details
     const response = {
       id: profileData.user.id,
@@ -244,7 +244,7 @@ export const getUserProfile = async (req: Request, res: Response) => {
       const year = currentDate.getFullYear();
       formattedJoinedDate = `${month}, ${year}`;
     }
-
+console.log("profileData in getUserProfile", profileData);
     // Transform the response to match the Laravel structure
     const response = {
       id: profileData.user.id,
@@ -256,6 +256,7 @@ export const getUserProfile = async (req: Request, res: Response) => {
       followers: profileData.user.followers,
       trade_transactions: profileData.user.trade_transactions,
       trading_cards: profileData.user.trading_cards,
+      is_ebay_store_verified: profileData.user.is_ebay_store_verified,
       ratings: profileData.user.ratings,
       ebay_url: profileData.user.ebay_store_url,
       joined_date: formattedJoinedDate,
@@ -1012,6 +1013,7 @@ export const updateUserProfile = async (req: Request, res: Response) => {
         console.error('❌ Failed to send profile updated email:', emailError);
         // Don't fail the request if email sending fails
       }
+      console.log("updatedProfileData", updatedProfileData);
 
       // Transform the response to include only required user details
       const response = {

@@ -279,7 +279,7 @@ export class UserService {
         attributes: [
           'id', 'first_name', 'last_name', 'username', 'profile_picture', 
           'email', 'followers', 'trade_transactions', 'trading_cards', 'ratings',
-          'ebay_store_url', 'created_at', 'updated_at','about_user', 'bio'
+          'ebay_store_url', 'is_ebay_store_verified', 'created_at', 'updated_at','about_user', 'bio'
         ]
       });
 
@@ -2415,7 +2415,7 @@ export class UserService {
         where: {
           grades_ungraded_status: true
         },
-        attributes: ['id', 'sport_name']
+        attributes: ['id', 'sport_name', 'slug']
       });
 
       // Exclude "Sports Memorabilia" from categories list for plural users route response
@@ -2457,7 +2457,7 @@ export class UserService {
             {
               model: Category,
               as: 'category',
-              attributes: ['sport_name']
+              attributes: ['sport_name', 'slug']
             }
           ],
           order: [['created_at', 'DESC']],
@@ -2469,10 +2469,12 @@ export class UserService {
         // Flatten category relationship to only include category_name
         flattenedShippingRates = shippingRates.map((rate: any) => {
           const rateData = rate.toJSON();
+
           return {
             id: rateData.id,
             category_id: rateData.category_id,
             user_id: rateData.user_id,
+            category_slug: rateData.category?.slug || null,
             usa_rate: rateData.usa_rate,
             canada_rate: rateData.canada_rate,
             category_name: rateData.category?.sport_name || null
@@ -2497,7 +2499,7 @@ export class UserService {
             {
               model: Category,
               as: 'category',
-              attributes: ['sport_name']
+              attributes: ['sport_name', 'slug']
             }
           ],
           attributes: ['id', 'category_id', 'user_id', 'usa_rate', 'canada_rate']
@@ -2514,9 +2516,11 @@ export class UserService {
 
         // Flatten category relationship for specific rate
         const rateData = specificRate.toJSON() as any;
+        console.log("rateData", rateData);
         specificShippingRate = {
           id: rateData.id,
           category_id: rateData.category_id,
+          category_slug: rateData.category?.slug || null,
           user_id: rateData.user_id,
           usa_rate: rateData.usa_rate,
           canada_rate: rateData.canada_rate,

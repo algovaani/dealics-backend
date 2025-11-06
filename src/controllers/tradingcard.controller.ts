@@ -86,7 +86,7 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
     const perPageParam = req.query.perPage as string;
     const categoryIdParam = (req.query.categoryId || req.query.category_id) as string;
     const gradedParam = req.query.graded as string;
-    
+    const searchTerm = (req.query.search as string)?.trim(); 
     // Get user ID from req.user (set by userAuth middleware)
     const authenticatedUserId: number | undefined = (req as any).user?.id;
     
@@ -140,7 +140,8 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
         page,
         perPage,
         categoryId,
-        authenticatedUserId
+        authenticatedUserId,
+        searchTerm
       );
       const tradingCards = (myResult.data || []).map((card: any) => {
         // Same transformation as the original method
@@ -223,7 +224,8 @@ export const getUserTradingCards = async (req: Request, res: Response) => {
       page,
       perPage,
       categoryId,
-      loggedInUserId
+      loggedInUserId,
+      searchTerm
     );
 
     // Transform the data - result.data contains the trading cards array

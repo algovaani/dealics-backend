@@ -1212,8 +1212,17 @@ export class UserService {
 
       const total = (countResult[0] as any)?.total ?? 0;
 
+        const tradersWithStats = await Promise.all(
+        result.map(async (trader: any) => {
+          const cardStats = await this.getCardStats(trader.id);
+          return {
+            ...trader,
+            successful_trades: cardStats.successful_trades || 0,
+          };
+        })
+      );
       return {
-        data: result,
+        data: tradersWithStats,
         total,
         page,
         perPage,

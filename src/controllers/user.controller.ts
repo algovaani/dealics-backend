@@ -480,7 +480,7 @@ export const getTradersList = async (req: Request, res: Response) => {
         email: trader.email,
         ratings: trader.ratings,
         followers: trader.followers,
-        successful_trades: trader.completed_trades_count || 0,
+        successful_trades: trader.successful_trades || 0,
         products_count: trader.active_cards_count || 0,
         joined_date: joinedDateFormatted,
         following: trader.following === 1 ? true : false
@@ -508,6 +508,7 @@ export const getTradersList = async (req: Request, res: Response) => {
     });
   }
 };
+
 
 // DELETE /api/user/:id - Delete user (existing method)
 export const deleteUser = async (req: Request, res: Response) => {

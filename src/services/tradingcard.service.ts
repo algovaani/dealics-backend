@@ -260,7 +260,7 @@ export class TradingCardService {
 
   // Get all TradingCard with pagination and category_name
     // Get user's own products (for myproduct source) - only check if not deleted
-  async getUserOwnProducts(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number) {
+  async getUserOwnProducts(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number, searchTerm?: string) {
     try {
       // Validate and sanitize input parameters
       const validPage = isNaN(page) || page < 1 ? 1 : page;
@@ -275,6 +275,9 @@ export class TradingCardService {
       
       if (validCategoryId) {
         whereClause += ` AND tc.category_id = ${validCategoryId}`;
+      }
+      if (searchTerm) {
+        whereClause += ` AND tc.title LIKE :search`;
       }
       
       // Use the same detailed query structure as getAllTradingCardsExceptOwn
@@ -336,12 +339,18 @@ export class TradingCardService {
         LEFT JOIN categories c ON tc.category_id = c.id
         ${whereClause}
       `;
+      const replacements = searchTerm ? { search: `%${searchTerm}%` } : {};
       
       const [tradingCards, countResult] = await Promise.all([
-        sequelize.query(rawQuery, { type: QueryTypes.SELECT }),
-        sequelize.query(countQuery, { type: QueryTypes.SELECT })
+        sequelize.query(rawQuery, {
+          type: QueryTypes.SELECT,
+          replacements
+        }),
+        sequelize.query(countQuery, {
+          type: QueryTypes.SELECT,
+          replacements
+        }),
       ]);
-      
       const totalCount = (countResult[0] as any).total;
       const totalPages = Math.ceil(totalCount / validPerPage);
       
@@ -356,7 +365,7 @@ export class TradingCardService {
     }
   }
 
-    async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number, graded?: string) {
+    async getAllTradingCards(page: number = 1, perPage: number = 10, categoryId?: number, loggedInUserId?: number, graded?: string, searchTerm?: string) {
     // Validate and sanitize input parameters
     const validPage = isNaN(page) || page < 1 ? 1 : page;
     const validPerPage = isNaN(perPage) || perPage < 1 ? 10 : perPage;
@@ -376,7 +385,10 @@ export class TradingCardService {
       // For other users' cards, only show active ones
       whereClause += ` AND tc.trading_card_status = '1'`;
     }
-    
+    if (searchTerm) {
+      whereClause += ` AND tc.title LIKE :search`;
+    }
+
     if (validCategoryId) {
       whereClause += ` AND tc.category_id = ${validCategoryId}`;
     }
@@ -444,12 +456,16 @@ export class TradingCardService {
       LEFT JOIN categories c ON tc.category_id = c.id
       ${whereClause}
     `;
+    const replacements = searchTerm ? { search: `%${searchTerm}%` } : {};
+
     const results = await sequelize.query(rawQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
+      replacements
     });
-    
+
     const countResults = await sequelize.query(countQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
+      replacements
     });
 
     return {

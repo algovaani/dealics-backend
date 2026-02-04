@@ -178,6 +178,11 @@ __decorate([
 ], User.prototype, "cxp_coins", void 0);
 __decorate([
     AllowNull,
+    Column(DataType.INTEGER),
+    __metadata("design:type", Number)
+], User.prototype, "credit", void 0);
+__decorate([
+    AllowNull,
     Column(DataType.STRING(3)),
     __metadata("design:type", String)
 ], User.prototype, "ratings", void 0);
@@ -218,11 +223,10 @@ __decorate([
 ], User.prototype, "add_product_shipping_flat_rate", void 0);
 User = __decorate([
     Table({
-        tableName: "users", // ✅ आपके DB का table नाम
-        timestamps: true, // क्योंकि created_at, updated_at हैं
+        tableName: "users",
+        timestamps: true,
         createdAt: "created_at",
         updatedAt: "updated_at",
     })
 ], User);
 export { User };
-//# sourceMappingURL=user.model.js.map
